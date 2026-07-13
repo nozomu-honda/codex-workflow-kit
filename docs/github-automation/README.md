@@ -10,6 +10,7 @@
 - [Permissions](permissions.md)
 - [Config schema](config-schema.md)
 - [Installation](installation.md)
+- [Installation audit CLI](installation-audit.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
 - [Follow-up Issues](follow-up-issues.md)

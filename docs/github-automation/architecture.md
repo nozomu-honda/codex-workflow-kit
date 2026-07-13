@@ -45,6 +45,18 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 
 このActionはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。caller workflowは後続Issueで追加します。
 
+## Installation audit CLI
+
+`scripts/audit-consumer-installation.mjs` と `packages/chatgpt-automation-core/src/installation-audit/` は、導入先リポジトリのconfigとcaller workflowをローカルで監査するread-only CLI / core moduleです。
+
+- config検証は共通validatorを再利用する
+- caller workflowはYAMLを構造的にparseして、`workflow_dispatch` only、`contents: read` only、job-level reusable workflow `uses`、40桁SHA固定、`dry-run: true`、Secretなしを確認する
+- JSON resultは `ok`、`errors`、`warnings`、`checks`、`capabilities`、`files` を安定schemaとして返す
+- Secret値、token値、Cookie値、OAuth値、環境変数値、絶対path、stack traceは出力しない
+- ネットワークアクセス、GitHub API read/write、自動修正、workflow実行、deploy、mergeは行わない
+
+CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再利用しやすい境界にします。
+
 ## Reusable workflow
 
 `.github/workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。

@@ -27,6 +27,12 @@ npm ci
 npm run validate:config
 ```
 
+導入先リポジトリ全体の設定とcaller workflowをread-onlyで監査する場合は、[Installation audit CLI](installation-audit.md) を使います。
+
+```bash
+node scripts/audit-consumer-installation.mjs --root ../consumer-repo
+```
+
 ## Validate config caller workflow
 
 初回は設定検証専用caller workflowを手動実行します。
@@ -64,6 +70,14 @@ REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
 5. GitHub Actionsの `workflow_dispatch` で手動実行する。
 
 valid configでは成功し、invalid configではfail closedで失敗します。この確認にSecretは不要で、permissionsは `contents: read` のみです。
+
+手動実行前後にCLIでcaller workflowを監査する場合:
+
+```bash
+node scripts/audit-consumer-installation.mjs \
+  --root ../consumer-repo \
+  --expected-ref 0123456789abcdef0123456789abcdef01234567
+```
 
 実イベントtriggerは後続Issueで機能ごとに追加します。
 
