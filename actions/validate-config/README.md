@@ -12,6 +12,10 @@ GitHub Actionsから外部リポジトリでそのまま実行できるように
 
 `dist/package.json` はbundleをES moduleとして実行するための最小ファイルです。source mapや不要なlicense fileは出力していません。
 
+## Runtime
+
+`action.yml` の `runs.using` は `node24` です。`dist/index.js` はNode 24で実行できることを、配布物単体テストと `check:action-dist` で確認します。
+
 sourceを変更した場合は、必ず以下を実行して配布物を更新・確認してください。
 
 ```bash

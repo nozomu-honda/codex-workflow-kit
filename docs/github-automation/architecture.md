@@ -36,6 +36,7 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 
 - default config pathは `.github/chatgpt-automation.yml`
 - `dry-run` のdefaultは `true`
+- GitHub Actions runtimeは `node24`
 - `dist/index.js` はコミット済み配布物で、共通validatorと `yaml` 依存をbundleする
 - 利用先リポジトリで `npm ci` や `npm install` を要求しない
 - validation失敗時はfail closedになり、すべてのcapabilityを `false` として出力する

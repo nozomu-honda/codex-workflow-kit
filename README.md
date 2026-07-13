@@ -38,7 +38,7 @@ docs/github-automation/
 
 このIssueでは、自動レビュー・自動マージ本体の移植や公開はまだ行いません。
 
-`actions/validate-config` には、設定ファイルを読み込んでfail-closed validatorを実行する副作用なしのShared Actionを置いています。このActionはGitHub API write、PR/Issueコメント、自動レビュー、自動マージ、Codex起動を行いません。
+`actions/validate-config` には、設定ファイルを読み込んでfail-closed validatorを実行する副作用なしのShared Actionを置いています。このActionはGitHub API write、PR/Issueコメント、自動レビュー、自動マージ、Codex起動を行いません。GitHub Actions runtimeは `node24` です。
 
 `.github/workflows/validate-config.yml` には、`workflow_call` で `actions/validate-config` を呼び出す読み取り専用reusable workflowの最小骨格を置いています。権限は `contents: read` のみで、Secret input、`secrets: inherit`、GitHub API writeは使いません。内部Action参照もレビュー済みの40桁commit SHAへ固定し、caller側と内部Action側の両方で再現性を保ちます。
 

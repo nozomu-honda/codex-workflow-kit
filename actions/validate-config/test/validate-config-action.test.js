@@ -253,8 +253,14 @@ test('Action metadataのinput/output名が実装と一致する', async () => {
   assert.deepEqual(Object.keys(metadata.outputs).sort(), [...ACTION_OUTPUTS].sort());
   assert.equal(metadata.inputs['config-file'].default, DEFAULT_CONFIG_FILE);
   assert.equal(metadata.inputs['dry-run'].default, 'true');
-  assert.equal(metadata.runs.using, 'node20');
+  assert.equal(metadata.runs.using, 'node24');
   assert.equal(metadata.runs.main, 'dist/index.js');
+});
+
+test('Action metadataはNode 24 runtimeを指定する', async () => {
+  const metadata = await readActionMetadata();
+
+  assert.equal(metadata.runs.using, 'node24');
 });
 
 test('outputsはGitHub Actions output fileへ書き込まれる', async () => {
