@@ -52,11 +52,14 @@ CIでは Node 20.19.0 以上でフルvalidationを行い、Node 24で `actions/v
 
 offline consumer E2Eは、`templates/` から一時的な導入先リポジトリを作り、config / caller workflow / installation audit CLI / Shared Action source / Shared Action distを副作用なしで検証します。このE2Eは実GitHub repository、Secret、外部API、ネットワーク、GitHub API writeを使いません。実導入先リポジトリを使ったcross-repo E2Eは後続Issueで扱います。
 
+`.github/workflows/normalize-event.yml` には、実イベント用caller workflowから呼ぶイベント正規化reusable workflowを置いています。`issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push` を共通形式へ正規化し、fork / same-repository、dry-run、default branch push、workflow conclusionなどを安全側に判定します。Issue #23ではwrite処理、Secret input、`secrets: inherit`、`pull_request_target` は追加しません。導入先caller templateは `templates/workflows/chatgpt-automation-events.yml`、詳細は `docs/github-automation/event-normalization.md` を参照してください。
+
 主なローカル確認コマンド:
 
 ```bash
 npm ci
 npm run ci
+npm run test:events
 npm run test:e2e:consumer
 npm run lint:e2e
 ```

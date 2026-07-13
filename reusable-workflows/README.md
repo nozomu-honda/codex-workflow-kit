@@ -7,6 +7,7 @@
 ## 現在のworkflow
 
 - `.github/workflows/validate-config.yml`: `workflow_call` で設定ファイルを検証する読み取り専用reusable workflow。
+- `.github/workflows/normalize-event.yml`: `workflow_call` で実GitHubイベントpayloadを共通形式へ正規化する読み取り専用reusable workflow。
 
 実行可能なworkflow実体は、GitHub Actionsが認識する `.github/workflows` 直下に置きます。`reusable-workflows/validate-config.yml` は存在せず、同じworkflowを二重管理しません。
 
@@ -50,3 +51,66 @@ jobs:
 ```
 
 caller側のreusable workflow refと、reusable workflow内部のAction refはどちらも固定します。内部Action refは40桁commit SHAだけを許可し、`master` / `main`、branch名、短縮SHA、tag参照は使いません。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認します。
+
+## Event normalization workflow
+
+`.github/workflows/normalize-event.yml` は、導入先caller workflowから実イベントpayloadを受け取り、後続jobが使う安定outputsへ変換します。
+
+対象イベント:
+
+- `issue_comment`
+- `pull_request_review`
+- `pull_request_review_comment`
+- `workflow_run`
+- `pull_request.closed`
+- `push`
+
+公開するworkflow outputs:
+
+- `event_name`
+- `event_action`
+- `repository`
+- `repository_owner`
+- `default_branch`
+- `actor`
+- `issue_number`
+- `pull_request_number`
+- `head_sha`
+- `base_sha`
+- `head_repository`
+- `is_same_repository`
+- `is_fork`
+- `workflow_name`
+- `workflow_conclusion`
+- `dry_run`
+- `eligible`
+- `ineligible_reason`
+
+`eligible=false` の場合、後続のwrite処理へ進めません。Issue #23ではwrite処理自体を実装せず、fork / external PR、失敗した `workflow_run`、未mergeの `pull_request.closed`、default branch以外への `push`、想定外action、入力不備を安全側に倒します。
+
+呼び出し例:
+
+```yaml
+jobs:
+  normalize-event:
+    permissions:
+      contents: read
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@<v1.2.3-or-40-character-commit-sha>
+    with:
+      event-name: ${{ github.event_name }}
+      event-action: ${{ github.event.action || '' }}
+      event-payload-json: ${{ toJson(github.event) }}
+      repository: ${{ github.repository }}
+      repository-owner: ${{ github.repository_owner }}
+      default-branch: ${{ github.event.repository.default_branch }}
+      actor: ${{ github.actor }}
+      ref-name: ${{ github.ref_name }}
+      sha: ${{ github.sha }}
+      dry-run: true
+      permission-mode: read-only
+      requested-capability: normalize-only
+      repository-config-json: ${{ vars.CHATGPT_AUTOMATION_EVENT_CONFIG_JSON || '{}' }}
+      kit-ref: <same-v1.2.3-or-40-character-commit-sha>
+```
+
+`kit-ref` は、このreusable workflowを呼ぶrefと同じ固定refにします。Secret input、`secrets: inherit`、write permission、`pull_request_target` は使いません。

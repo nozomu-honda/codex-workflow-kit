@@ -1,0 +1,48 @@
+name: ChatGPT automation events
+
+"on":
+  issue_comment:
+    types:
+      - created
+      - edited
+  pull_request_review:
+    types:
+      - submitted
+  pull_request_review_comment:
+    types:
+      - created
+      - edited
+  workflow_run:
+    types:
+      - completed
+  pull_request:
+    types:
+      - closed
+  push:
+    branches:
+      - REPLACE_WITH_DEFAULT_BRANCH
+
+permissions:
+  contents: read
+
+jobs:
+  normalize-event:
+    name: Normalize event
+    permissions:
+      contents: read
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    with:
+      event-name: ${{ github.event_name }}
+      event-action: ${{ github.event.action || '' }}
+      event-payload-json: ${{ toJson(github.event) }}
+      repository: ${{ github.repository }}
+      repository-owner: ${{ github.repository_owner }}
+      default-branch: ${{ github.event.repository.default_branch }}
+      actor: ${{ github.actor }}
+      ref-name: ${{ github.ref_name }}
+      sha: ${{ github.sha }}
+      dry-run: true
+      permission-mode: read-only
+      requested-capability: normalize-only
+      repository-config-json: ${{ vars.CHATGPT_AUTOMATION_EVENT_CONFIG_JSON || '{}' }}
+      kit-ref: REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA

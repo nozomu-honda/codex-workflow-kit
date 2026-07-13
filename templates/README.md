@@ -42,4 +42,33 @@
 
 コピー後は `scripts/audit-consumer-installation.mjs` で、導入先のconfigとcaller workflowをread-only監査できます。詳細は `docs/github-automation/installation-audit.md` を参照してください。
 
-実イベントtriggerは後続Issueで機能ごとに追加します。
+### `workflows/chatgpt-automation-events.yml`
+
+導入先で実GitHubイベントを受け、共通reusable workflowへ渡すための、読み取り専用caller workflowテンプレートです。
+
+コピー先:
+
+```text
+.github/workflows/chatgpt-automation-events.yml
+```
+
+このテンプレートの特徴:
+
+- triggerは `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push`
+- jobは `.github/workflows/normalize-event.yml` をjob-level `uses` で呼ぶだけ
+- permissionsは `contents: read` のみ
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- `permission-mode: read-only`
+- `requested-capability: normalize-only`
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
+
+導入手順:
+
+1. `templates/workflows/chatgpt-automation-events.yml` を導入先の `.github/workflows/chatgpt-automation-events.yml` へコピーする。
+2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+3. `REPLACE_WITH_DEFAULT_BRANCH` を導入先のdefault branch名へ置換する。
+4. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_EVENT_CONFIG_JSON` にSecret値を含まないJSONを設定する。
+5. 初回はdry-runのまま、正規化outputsと `eligible` / `ineligible_reason` を確認する。
+
+このテンプレートはイベント受付と正規化だけを行います。ChatGPT review routing、自動マージ、main追従、Codex起動、Queue Issue更新は後続Issueで追加します。

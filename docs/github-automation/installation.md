@@ -79,7 +79,43 @@ node scripts/audit-consumer-installation.mjs \
   --expected-ref 0123456789abcdef0123456789abcdef01234567
 ```
 
-実イベントtriggerは後続Issueで機能ごとに追加します。
+実イベントのwrite処理は後続Issueで機能ごとに追加します。
+
+## Event caller workflow
+
+実イベントを共通reusable workflowへ接続する場合は、実イベント用caller templateを導入先へコピーします。
+
+```text
+templates/workflows/chatgpt-automation-events.yml
+```
+
+コピー先:
+
+```text
+.github/workflows/chatgpt-automation-events.yml
+```
+
+このcaller workflowは次のイベントを受けます。
+
+- `issue_comment`
+- `pull_request_review`
+- `pull_request_review_comment`
+- `workflow_run`
+- `pull_request.closed`
+- `push`
+
+導入時に置換するもの:
+
+- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+- `REPLACE_WITH_DEFAULT_BRANCH`: 導入先default branch名へ置換する
+
+固定refは、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`master` / `main`、feature branch、短縮SHA、`v1` / `v1.2` は使いません。
+
+caller workflowは `permissions: contents: read` だけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のlabels、Variables、Secrets、Queue Issue番号は導入先に残します。repository固有設定を渡す場合は、Secret値を含まないJSONを `CHATGPT_AUTOMATION_EVENT_CONFIG_JSON` variableへ置きます。
+
+共通reusable workflow `.github/workflows/normalize-event.yml` は、payloadを正規化し、`eligible` と `ineligible_reason` を含むoutputsを返します。fork / external PR、失敗した `workflow_run`、未mergeの `pull_request.closed`、default branch以外への `push`、想定外action、入力不備は `eligible=false` になります。
+
+Issue #23ではwrite処理を行いません。ChatGPT review routing、自動マージ、main追従、Codex起動、Queue Issue更新は後続Issueで追加します。
 
 ## 将来の導入ステップ
 
