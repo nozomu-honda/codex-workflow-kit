@@ -11,7 +11,7 @@ const REUSABLE_WORKFLOWS_README = new URL('../README.md', import.meta.url);
 const ACTION_METADATA_FILE = new URL('../../actions/validate-config/action.yml', import.meta.url);
 const EXPECTED_ACTION_REPOSITORY = 'nozomu-honda/codex-workflow-kit';
 const EXPECTED_ACTION_PATH = 'actions/validate-config';
-const EXPECTED_ACTION_REF = '9864aad80419547ad0e8c837ab1066eee4be4a9a';
+const EXPECTED_ACTION_REF = '03d54075f77034124b0b0982200b0d44059bed8a';
 const EXPECTED_ACTION_USES = `${EXPECTED_ACTION_REPOSITORY}/${EXPECTED_ACTION_PATH}@${EXPECTED_ACTION_REF}`;
 const EXPECTED_OUTPUTS = ['ok', 'error-count', 'warning-count', 'capabilities-json', 'dry-run'];
 

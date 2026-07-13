@@ -54,7 +54,7 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 - permissionsはworkflow / jobとも `contents: read`
 - Secret input、`secrets: inherit`、write permissionは使わない
 - `actions/checkout@v4` でcaller repositoryをcheckoutする
-- `actions/validate-config` は `nozomu-honda/codex-workflow-kit/actions/validate-config@9864aad80419547ad0e8c837ab1066eee4be4a9a` として明示参照し、caller repositoryの相対pathとは誤認させない
+- `actions/validate-config` は `nozomu-honda/codex-workflow-kit/actions/validate-config@03d54075f77034124b0b0982200b0d44059bed8a` として明示参照し、caller repositoryの相対pathとは誤認させない
 
 このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。導入先caller workflow templateと実イベントtriggerは別Issueで追加します。caller側のreusable workflow refだけでなく、内部Action refもレビュー済み40桁commit SHAへ固定し、`master` / `main`、branch名、短縮SHA、tag参照で内容が変わる状態を避けます。
 

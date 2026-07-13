@@ -51,7 +51,7 @@ jobs:
 
       - name: Validate config
         id: validate-config
-        uses: nozomu-honda/codex-workflow-kit/actions/validate-config@9864aad80419547ad0e8c837ab1066eee4be4a9a
+        uses: nozomu-honda/codex-workflow-kit/actions/validate-config@03d54075f77034124b0b0982200b0d44059bed8a
         with:
           config-file: ${{ inputs.config-file }}
           dry-run: ${{ inputs.dry-run }}
