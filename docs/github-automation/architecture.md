@@ -18,13 +18,17 @@ GitHub automation共通化では、共通側と導入先側を明確に分けま
 
 GitHub automationの導入先ごとの差分は、バージョン付き設定で表現します。
 
-正本:
+機械判定の正本:
+
+- `packages/chatgpt-automation-core/src/config/index.js`
+
+関連する構造schemaとsample:
 
 - `schemas/chatgpt-automation.schema.json`
-- `packages/chatgpt-automation-core/src/config/index.js`
 - `templates/chatgpt-automation.yml`
 
 validatorは副作用を持ちません。設定欠落、型不一致、危険な上書き、未対応versionがある場合はfail closedになり、write capabilityを有効化しません。
+JSON Schemaは導入先設定の構造契約として提供し、代表的なvalid / invalid fixtureでvalidatorとのparityをテストします。normalized config、warnings、capabilitiesはvalidatorの結果を正とします。
 
 導入先設定で弱体化できない安全条件:
 

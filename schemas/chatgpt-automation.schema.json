@@ -37,7 +37,20 @@
     },
     "labels": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "needsChatGptReview": { "$ref": "#/$defs/nonEmptyString" },
+        "reviewedByChatGpt": { "$ref": "#/$defs/nonEmptyString" },
+        "needsCodexFix": { "$ref": "#/$defs/nonEmptyString" },
+        "codexFixInProgress": { "$ref": "#/$defs/nonEmptyString" },
+        "autoMergeAfterCi": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotMerge": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoReviewRequest": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoCodexFix": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoCodexMainFollowup": { "$ref": "#/$defs/nonEmptyString" },
+        "codexMainFollowupInProgress": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoApproveActions": { "$ref": "#/$defs/nonEmptyString" }
+      }
     },
     "review": {
       "type": "object",
@@ -48,15 +61,15 @@
         },
         "trustedActors": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/nonEmptyString" }
         },
         "markers": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "approved": { "type": "string", "minLength": 1 },
-            "changesRequested": { "type": "string", "minLength": 1 },
-            "reviewRequest": { "type": "string", "minLength": 1 },
+            "approved": { "$ref": "#/$defs/nonEmptyString" },
+            "changesRequested": { "$ref": "#/$defs/nonEmptyString" },
+            "reviewRequest": { "$ref": "#/$defs/nonEmptyString" },
             "ignoreInFencedCodeBlocks": { "const": true },
             "excludeReviewRequestComments": { "const": true }
           }
@@ -75,13 +88,14 @@
       "additionalProperties": true,
       "properties": {
         "disableDefaults": { "const": false },
+        "defaultHardBlockPatterns": false,
         "hardBlockPatterns": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/nonEmptyString" }
         },
         "warningOnlyPatterns": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/nonEmptyString" }
         }
       }
     },
@@ -90,35 +104,131 @@
       "additionalProperties": true,
       "properties": {
         "disableDefaults": { "const": false },
+        "defaultHardBlockPatterns": false,
         "hardBlockPatterns": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/nonEmptyString" }
         },
         "warningOnlyPatterns": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": { "$ref": "#/$defs/nonEmptyString" }
         }
       }
     },
     "queues": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "reviewFix": { "$ref": "#/$defs/queue" },
+        "mainFollowup": { "$ref": "#/$defs/queue" }
+      }
     },
     "codex": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "reviewFix": { "$ref": "#/$defs/codexAutoFix" },
+        "mainFollowup": { "$ref": "#/$defs/codexAutoFix" }
+      }
     },
     "schedules": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "reviewRequest": { "$ref": "#/$defs/schedule" },
+        "autoMerge": { "$ref": "#/$defs/schedule" },
+        "mainFollowup": { "$ref": "#/$defs/schedule" },
+        "actionsApproval": { "$ref": "#/$defs/schedule" }
+      }
     },
     "secrets": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "reviewRequestCommentToken": { "$ref": "#/$defs/envName" },
+        "prBranchUpdateToken": { "$ref": "#/$defs/envName" },
+        "autoMergeToken": { "$ref": "#/$defs/envName" },
+        "actionsApproverToken": { "$ref": "#/$defs/envName" }
+      }
     },
     "variables": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "codexTrigger": { "$ref": "#/$defs/envName" },
+        "mainFollowupEnabled": { "$ref": "#/$defs/envName" },
+        "reviewFixMaxAttempts": { "$ref": "#/$defs/envName" },
+        "mainFollowupMaxAttempts": { "$ref": "#/$defs/envName" }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]*$"
+    },
+    "cron": {
+      "type": "string",
+      "pattern": "^(?:\\*|(?:[0-5]?\\d)(?:-(?:[0-5]?\\d))?(?:\\/(?:[1-9]|[1-5]\\d))?|\\*\\/(?:[1-9]|[1-5]\\d))(?:,(?:\\*|(?:[0-5]?\\d)(?:-(?:[0-5]?\\d))?(?:\\/(?:[1-9]|[1-5]\\d))?|\\*\\/(?:[1-9]|[1-5]\\d)))*\\s+(?:\\*|(?:[01]?\\d|2[0-3])(?:-(?:[01]?\\d|2[0-3]))?(?:\\/(?:[1-9]|1\\d|2[0-3]))?|\\*\\/(?:[1-9]|1\\d|2[0-3]))(?:,(?:\\*|(?:[01]?\\d|2[0-3])(?:-(?:[01]?\\d|2[0-3]))?(?:\\/(?:[1-9]|1\\d|2[0-3]))?|\\*\\/(?:[1-9]|1\\d|2[0-3])))*\\s+(?:\\*|(?:[1-9]|[12]\\d|3[01])(?:-(?:[1-9]|[12]\\d|3[01]))?(?:\\/(?:[1-9]|[12]\\d|3[01]))?|\\*\\/(?:[1-9]|[12]\\d|3[01]))(?:,(?:\\*|(?:[1-9]|[12]\\d|3[01])(?:-(?:[1-9]|[12]\\d|3[01]))?(?:\\/(?:[1-9]|[12]\\d|3[01]))?|\\*\\/(?:[1-9]|[12]\\d|3[01])))*\\s+(?:\\*|(?:[1-9]|1[0-2])(?:-(?:[1-9]|1[0-2]))?(?:\\/(?:[1-9]|1[0-2]))?|\\*\\/(?:[1-9]|1[0-2]))(?:,(?:\\*|(?:[1-9]|1[0-2])(?:-(?:[1-9]|1[0-2]))?(?:\\/(?:[1-9]|1[0-2]))?|\\*\\/(?:[1-9]|1[0-2])))*\\s+(?:\\*|[0-7](?:-[0-7])?(?:\\/[1-7])?|\\*\\/[1-7])(?:,(?:\\*|[0-7](?:-[0-7])?(?:\\/[1-7])?|\\*\\/[1-7]))*$"
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "issueNumber": { "type": "integer", "minimum": 1 },
+        "issueTitle": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "anyOf": [
+              { "required": ["issueNumber"] },
+              { "required": ["issueTitle"] }
+            ]
+          }
+        }
+      ]
+    },
+    "codexAutoFix": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "sameRepoOnly": { "const": true },
+        "allowDraft": { "type": "boolean", "default": false },
+        "blockedLabel": { "$ref": "#/$defs/nonEmptyString" },
+        "inProgressLabel": { "$ref": "#/$defs/nonEmptyString" },
+        "triggerVariableName": { "$ref": "#/$defs/envName" }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "cron": { "$ref": "#/$defs/cron" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "required": ["cron"]
+          }
+        }
+      ]
     }
   }
 }

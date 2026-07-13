@@ -18,3 +18,14 @@
 - 導入先のSecretsやVariables
 
 実装移行は後続Issueで、対象機能ごとに分割します。
+
+## 既存variable名のmapping
+
+設定schemaでは、review-fix系とmain-followup系のmax attempts variable名を分けます。
+
+| 目的 | logical field | 既存/想定variable名 |
+|---|---|---|
+| review fix Codex自動修正の最大試行回数 | `variables.reviewFixMaxAttempts` | `CODEX_AUTO_FIX_MAX_ATTEMPTS` |
+| main follow-up Codex自動修正の最大試行回数 | `variables.mainFollowupMaxAttempts` | `MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS` |
+
+後続移行では、既存導入先が単一名を使っている場合でも暗黙に統合せず、対象処理ごとに対応先を明示します。

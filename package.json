@@ -12,6 +12,7 @@
     "validate:config": "node scripts/validate-config.mjs templates/chatgpt-automation.yml"
   },
   "dependencies": {
+    "ajv": "^8.20.0",
     "yaml": "^2.8.0"
   }
 }

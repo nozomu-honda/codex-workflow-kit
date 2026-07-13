@@ -93,4 +93,5 @@ secrets:
 variables:
   codexTrigger: CODEX_TRIGGER_COMMENT
   mainFollowupEnabled: MAIN_FOLLOWUP_CODEX_AUTO_FIX
-  maxAttempts: CODEX_AUTO_FIX_MAX_ATTEMPTS
+  reviewFixMaxAttempts: CODEX_AUTO_FIX_MAX_ATTEMPTS
+  mainFollowupMaxAttempts: MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS

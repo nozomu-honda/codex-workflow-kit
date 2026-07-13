@@ -19,8 +19,15 @@ export const DEFAULT_LABELS = Object.freeze({
 export const DEFAULT_HARD_BLOCK_FILE_PATTERNS = Object.freeze([
   '.github/**',
   'gas/**',
+  'scripts/**',
+  'actions/**',
+  'reusable-workflows/**',
+  'packages/**',
+  'schemas/**',
+  'templates/**',
   '.env*',
   '.clasp.json',
+  '.chatgpt-review.json',
   'appsscript.json',
   'package.json',
   'package-lock.json',
@@ -70,7 +77,8 @@ const DEFAULT_SECRETS = Object.freeze({
 const DEFAULT_VARIABLES = Object.freeze({
   codexTrigger: 'CODEX_TRIGGER_COMMENT',
   mainFollowupEnabled: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX',
-  maxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS'
+  reviewFixMaxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS',
+  mainFollowupMaxAttempts: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS'
 });
 
 const DEFAULT_CAPABILITIES = Object.freeze({
@@ -110,7 +118,6 @@ const MERGE_METHODS = ['squash', 'merge', 'rebase'];
 const REVIEW_DECISION_MODES = ['marker-only', 'trusted-actors'];
 const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-const CRON_TOKEN_PATTERN = /^[A-Za-z0-9*/,\-?]+$/;
 
 export function validateAutomationConfig(input) {
   const parseResult = parseConfigInput(input);
@@ -853,7 +860,86 @@ function isSafeCron(value) {
 
   const fields = value.trim().split(/\s+/);
 
-  return fields.length === 5 && fields.every((field) => CRON_TOKEN_PATTERN.test(field));
+  if (fields.length !== 5) {
+    return false;
+  }
+
+  const ranges = [
+    { min: 0, max: 59 },
+    { min: 0, max: 23 },
+    { min: 1, max: 31 },
+    { min: 1, max: 12 },
+    { min: 0, max: 7 }
+  ];
+
+  return fields.every((field, index) => isSafeCronField(field, ranges[index]));
+}
+
+function isSafeCronField(field, range) {
+  if (!isNonEmptyString(field) || field.includes('?')) {
+    return false;
+  }
+
+  return field.split(',').every((part) => isSafeCronPart(part, range));
+}
+
+function isSafeCronPart(part, range) {
+  if (!isNonEmptyString(part)) {
+    return false;
+  }
+
+  const pieces = part.split('/');
+
+  if (pieces.length > 2) {
+    return false;
+  }
+
+  const [base, step] = pieces;
+
+  if (step !== undefined && !isSafeCronNumber(step, { min: 1, max: range.max })) {
+    return false;
+  }
+
+  if (base === '*') {
+    return true;
+  }
+
+  if (base.includes('-')) {
+    const bounds = base.split('-');
+
+    if (bounds.length !== 2) {
+      return false;
+    }
+
+    const start = parseCronNumber(bounds[0], range);
+    const end = parseCronNumber(bounds[1], range);
+
+    return start !== null && end !== null && start <= end;
+  }
+
+  if (step !== undefined) {
+    return false;
+  }
+
+  return parseCronNumber(base, range) !== null;
+}
+
+function parseCronNumber(value, range) {
+  if (!isSafeCronNumber(value, range)) {
+    return null;
+  }
+
+  return Number.parseInt(value, 10);
+}
+
+function isSafeCronNumber(value, range) {
+  if (!/^\d+$/.test(value)) {
+    return false;
+  }
+
+  const number = Number.parseInt(value, 10);
+
+  return number >= range.min && number <= range.max;
 }
 
 function isSecretLikePattern(pattern) {

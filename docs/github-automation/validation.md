@@ -33,6 +33,8 @@ node scripts/validate-config.mjs path/to/chatgpt-automation.yml
 
 validatorは設定全文やSecret値をログ出力しません。error / warningは `path`、`code`、固定messageだけを返します。
 
+JSON Schemaは代表fixtureでvalidatorとparity確認します。ただし、normalized config、warnings、capabilitiesを含む機械判定の正本はfail-closed validatorです。
+
 ## Fail closed cases
 
 少なくとも次の場合は `ok: false` になり、すべてのcapabilityが `false` になります。

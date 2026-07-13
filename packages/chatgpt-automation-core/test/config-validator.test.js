@@ -1,11 +1,35 @@
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import Ajv2020 from 'ajv/dist/2020.js';
+import YAML from 'yaml';
 import {
   DEFAULT_HARD_BLOCK_FILE_PATTERNS,
   DEFAULT_SECRET_LIKE_PATTERNS,
   validateAutomationConfig
 } from '../src/config/index.js';
+
+let schemaValidator;
+
+async function getSchemaValidator() {
+  if (schemaValidator) {
+    return schemaValidator;
+  }
+
+  const schemaSource = await readFile(new URL('../../../schemas/chatgpt-automation.schema.json', import.meta.url), 'utf8');
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  schemaValidator = ajv.compile(JSON.parse(schemaSource));
+  return schemaValidator;
+}
+
+async function expectSchemaAndValidator(config, expected) {
+  const validateSchema = await getSchemaValidator();
+  const schemaOk = validateSchema(config);
+  const validatorResult = validateAutomationConfig(config);
+
+  assert.equal(Boolean(schemaOk), expected, JSON.stringify(validateSchema.errors ?? []));
+  assert.equal(validatorResult.ok, expected, JSON.stringify(validatorResult.errors));
+}
 
 function validConfig(overrides = {}) {
   return {
@@ -99,7 +123,8 @@ function validConfig(overrides = {}) {
     variables: {
       codexTrigger: 'CODEX_TRIGGER_COMMENT',
       mainFollowupEnabled: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX',
-      maxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS'
+      reviewFixMaxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS',
+      mainFollowupMaxAttempts: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS'
     },
     ...overrides
   };
@@ -128,6 +153,30 @@ test('loads the sample config and normalizes safe defaults', async () => {
   assert.ok(result.config.protectedFiles.hardBlockPatterns.includes('docs/private/**'));
   assert.ok(result.config.secretLike.hardBlockPatterns.includes('token'));
   assert.ok(result.config.secretLike.hardBlockPatterns.includes('PRIVATE_DEPLOYMENT_URL'));
+});
+
+test('sample config is valid for both JSON Schema and validator', async () => {
+  const source = await readFile(new URL('../../../templates/chatgpt-automation.yml', import.meta.url), 'utf8');
+  const parsed = YAML.parse(source);
+
+  await expectSchemaAndValidator(parsed, true);
+});
+
+test('hard-block defaults include migrated and shared foundation critical areas', () => {
+  const expectedPatterns = [
+    '.github/**',
+    'scripts/**',
+    '.chatgpt-review.json',
+    'actions/**',
+    'reusable-workflows/**',
+    'packages/**',
+    'schemas/**',
+    'templates/**'
+  ];
+
+  for (const pattern of expectedPatterns) {
+    assert.ok(DEFAULT_HARD_BLOCK_FILE_PATTERNS.includes(pattern), `${pattern} should be hard-blocked by default`);
+  }
 });
 
 test('keeps hard-block defaults even when incoming arrays are empty', () => {
@@ -196,13 +245,16 @@ test('keeps token and variable names as names only', () => {
     variables: {
       codexTrigger: 'CODEX_TRIGGER_COMMENT',
       mainFollowupEnabled: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX',
-      maxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS'
+      reviewFixMaxAttempts: 'CODEX_AUTO_FIX_MAX_ATTEMPTS',
+      mainFollowupMaxAttempts: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS'
     }
   }));
 
   assert.equal(result.ok, true);
   assert.equal(result.config.secrets.autoMergeToken, 'AUTO_MERGE_TOKEN');
   assert.equal(result.config.variables.codexTrigger, 'CODEX_TRIGGER_COMMENT');
+  assert.equal(result.config.variables.reviewFixMaxAttempts, 'CODEX_AUTO_FIX_MAX_ATTEMPTS');
+  assert.equal(result.config.variables.mainFollowupMaxAttempts, 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS');
 });
 
 test('rejects unsupported version', () => {
@@ -349,6 +401,49 @@ test('rejects enabled schedules without safe cron', () => {
   }), 'INVALID_CRON');
 });
 
+test('accepts safe GitHub Actions cron values', () => {
+  const result = validateAutomationConfig(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '*/15 1-5 * * 1-5'
+      }
+    }
+  }));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.config.schedules.autoMerge.cron, '*/15 1-5 * * 1-5');
+});
+
+test('rejects out-of-range cron values and step zero', async () => {
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '99 99 99 99 99'
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '*/0 * * * *'
+      }
+    }
+  }), false);
+
+  expectError(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '10-5 * * * *'
+      }
+    }
+  }), 'INVALID_CRON');
+});
+
 test('rejects cross-repository Codex auto-fix', () => {
   expectError(validConfig({
     codex: {
@@ -384,6 +479,56 @@ test('keeps capabilities false when config is invalid', () => {
     mainFollowup: false,
     actionsApproval: false
   });
+});
+
+test('JSON Schema and validator both reject representative invalid configs', async () => {
+  await expectSchemaAndValidator(validConfig({
+    labels: {
+      doNotMerge: ''
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    secrets: {
+      autoMergeToken: 'not valid'
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    variables: {
+      codexTrigger: 'not-valid'
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    queues: {
+      reviewFix: {
+        enabled: true
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    review: {
+      markers: {
+        ignoreInFencedCodeBlocks: false
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    features: {
+      autoMerge: 'true'
+    }
+  }), false);
 });
 
 test('validation errors do not echo input values or full config', () => {
