@@ -14,6 +14,29 @@
 - 導入先リポジトリ固有のlabels、Variables、Secrets、fine-grained PAT、Queue Issueは導入先側に置く。
 - 実際のGitHubイベントは導入先側の薄いcaller workflowで受ける。
 
+## GitHub上の文章言語
+
+GitHub上で人が読む文章は、特別な理由がない限り日本語で作成する。
+
+原則として日本語にするもの:
+
+- Issueのタイトル・本文・コメント
+- PRのタイトル・本文と人向け見出し
+- PRレビュー本文・レビューコメント
+- Codexへの依頼文・修正指示・作業報告
+- Validation / Not run / Safetyなどの説明文
+- GitHub Actionsが生成する人向けコメントやsummary
+
+英語のままでよいもの:
+
+- コード、識別子、変数名、関数名
+- ファイルパス、ブランチ名、コマンド
+- API名、HTTP status、ライブラリ名、製品名
+- エラーコード、外部仕様で固定された文言
+- GitHub markerや機械判定用metadata
+
+技術用語を英語で残す場合も、周囲の説明文は日本語にする。機械連携を壊さないため、marker、metadata、API契約は言語統一だけを理由に変更しない。詳細は `docs/github-writing-language.md` を正とする。
+
 ## ディレクトリ責務
 
 - `desktop/`: AutoHotkey / PowerShell などWindowsローカル補助の整理先。
