@@ -13,7 +13,7 @@
 `.github/workflows/validate-config.yml` は以下だけを行います。
 
 1. caller repositoryを `actions/checkout@v4` でcheckoutする
-2. `nozomu-honda/codex-workflow-kit/actions/validate-config@master` を呼び出す
+2. `nozomu-honda/codex-workflow-kit/actions/validate-config@9864aad80419547ad0e8c837ab1066eee4be4a9a` を呼び出す
 3. Action outputsをworkflow outputsとして公開する
 
 公開するworkflow outputs:
@@ -34,7 +34,7 @@
 
 ## 外部repositoryからの呼び出し方針
 
-このPRではcaller workflow templateは追加しません。後続Issueで導入先の薄いcaller workflowを追加するときは、このreusable workflowをtagまたはcommit SHAへ固定して呼び出します。
+導入先の薄いcaller workflowでは、このreusable workflowを `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ固定して呼び出します。
 
 GitHub Actionsで直接呼び出せる公開パスへ接続した後のcaller例:
 
@@ -43,10 +43,10 @@ jobs:
   validate-config:
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@<tag-or-commit-sha>
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@<v1.2.3-or-40-character-commit-sha>
     with:
       config-file: .github/chatgpt-automation.yml
       dry-run: true
 ```
 
-refは将来的にtagまたはcommit SHAへ固定します。`master` 参照は初期検証中の暫定参照として扱います。
+caller側のreusable workflow refと、reusable workflow内部のAction refはどちらも固定します。内部Action refは40桁commit SHAだけを許可し、`master` / `main`、branch名、短縮SHA、tag参照は使いません。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認します。
