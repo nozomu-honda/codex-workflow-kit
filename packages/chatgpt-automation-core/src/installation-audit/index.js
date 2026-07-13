@@ -292,6 +292,14 @@ function validateWorkflowTriggers(onValue, errors, checks, workflowFile) {
 
   const triggers = Object.keys(onValue);
 
+  if (triggers.length === 0) {
+    addError(errors, checks, 'WORKFLOW_TRIGGER_INVALID', 'Workflow must define workflow_dispatch as its only trigger.', {
+      file: workflowFile,
+      path: 'on'
+    });
+    return;
+  }
+
   if (triggers.length === 1 && triggers[0] === 'workflow_dispatch') {
     const dispatch = onValue.workflow_dispatch;
     if (dispatch !== null && dispatch !== undefined && (!isPlainObject(dispatch) || Object.keys(dispatch).length > 0)) {

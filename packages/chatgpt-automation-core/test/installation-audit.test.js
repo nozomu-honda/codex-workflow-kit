@@ -62,7 +62,8 @@ function workflowSource(options = {}) {
   const repository = options.repository ?? 'nozomu-honda/codex-workflow-kit';
   const workflowPath = options.reusableWorkflowPath ?? '.github/workflows/validate-config.yml';
   const ref = options.ref ?? PINNED_SHA;
-  const trigger = options.on ?? { workflow_dispatch: null };
+  const hasOn = Object.hasOwn(options, 'on');
+  const trigger = hasOn ? options.on : { workflow_dispatch: null };
   const rootPermissions = options.permissions ?? { contents: 'read' };
   const jobPermissions = options.jobPermissions ?? { contents: 'read' };
   const withInputs = options.with ?? {
@@ -81,7 +82,7 @@ function workflowSource(options = {}) {
   };
   const workflow = {
     name: 'Validate ChatGPT automation config',
-    on: trigger,
+    ...(hasOn && trigger === undefined ? {} : { on: trigger }),
     permissions: rootPermissions,
     jobs,
     ...options.root
@@ -363,9 +364,69 @@ test('workflow repository and path must match the shared reusable workflow', asy
 });
 
 test('workflow triggers are limited to workflow_dispatch only', async () => {
+  await withConsumerRepo(async (dir) => {
+    const result = await auditConsumerInstallation({ rootDir: dir });
+
+    assert.equal(result.ok, true);
+    assert.equal(findCode(result, 'WORKFLOW_DISPATCH_ONLY'), true);
+  }, {
+    workflow: workflowSource({ on: { workflow_dispatch: {} } })
+  });
+  await expectAuditCode({ workflow: workflowSource({ on: undefined }) }, 'WORKFLOW_TRIGGER_INVALID');
+  await expectAuditCode({ workflow: workflowSource({ on: null }) }, 'WORKFLOW_TRIGGER_INVALID');
+  await expectAuditCode({ workflow: workflowSource({ on: {} }) }, 'WORKFLOW_TRIGGER_INVALID');
+  await expectAuditCode({ workflow: workflowSource({ on: [] }) }, 'WORKFLOW_TRIGGER_INVALID');
+  await expectAuditCode({ workflow: workflowSource({ on: 'push' }) }, 'WORKFLOW_TRIGGER_INVALID');
   await expectAuditCode({ workflow: workflowSource({ on: { workflow_dispatch: null, push: { branches: ['master'] } } }) }, 'WORKFLOW_TRIGGER_UNEXPECTED');
   await expectAuditCode({ workflow: workflowSource({ on: { pull_request_target: null } }) }, 'PULL_REQUEST_TARGET_FORBIDDEN');
   await expectAuditCode({ workflow: workflowSource({ on: { workflow_dispatch: { inputs: { unsafe: { type: 'string' } } } } }) }, 'WORKFLOW_DISPATCH_INPUTS_UNEXPECTED');
+});
+
+test('CLI output keeps stable error codes for invalid workflow triggers', async () => {
+  const cases = [
+    {
+      code: 'WORKFLOW_TRIGGER_INVALID',
+      workflow: workflowSource({ on: {} })
+    },
+    {
+      code: 'WORKFLOW_TRIGGER_UNEXPECTED',
+      workflow: workflowSource({ on: { workflow_dispatch: null, push: { branches: ['master'] } } })
+    },
+    {
+      code: 'PULL_REQUEST_TARGET_FORBIDDEN',
+      workflow: workflowSource({ on: { pull_request_target: null } })
+    },
+    {
+      code: 'WORKFLOW_DISPATCH_INPUTS_UNEXPECTED',
+      workflow: workflowSource({ on: { workflow_dispatch: { inputs: { unsafe: { type: 'string' } } } } })
+    }
+  ];
+
+  for (const entry of cases) {
+    await withConsumerRepo(async (dir) => {
+      const human = { stdout: '', stderr: '' };
+      const json = { stdout: '', stderr: '' };
+
+      const humanExit = await runAuditConsumerInstallationCli(['--root', dir], {
+        stdout: (message) => { human.stdout += message; },
+        stderr: (message) => { human.stderr += message; }
+      });
+      const jsonExit = await runAuditConsumerInstallationCli(['--root', dir, '--json'], {
+        stdout: (message) => { json.stdout += message; },
+        stderr: (message) => { json.stderr += message; }
+      });
+      const parsed = JSON.parse(json.stdout);
+
+      assert.equal(humanExit, 1);
+      assert.equal(jsonExit, 1);
+      assert.match(human.stdout, new RegExp(entry.code));
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.errors.some((error) => error.code === entry.code), true);
+      assert.deepEqual(parsed.capabilities, falseCapabilities());
+    }, {
+      workflow: entry.workflow
+    });
+  }
 });
 
 test('workflow permissions must be contents read only', async () => {
