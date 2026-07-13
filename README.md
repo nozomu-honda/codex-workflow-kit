@@ -42,6 +42,8 @@ docs/github-automation/
 
 `.github/workflows/validate-config.yml` には、`workflow_call` で `actions/validate-config` を呼び出す読み取り専用reusable workflowの最小骨格を置いています。権限は `contents: read` のみで、Secret input、`secrets: inherit`、GitHub API writeは使いません。導入先caller workflow templateは後続Issueで追加します。
 
+`templates/workflows/validate-config.yml` には、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートを置いています。triggerは `workflow_dispatch` のみで、reusable workflow refは導入時に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換します。
+
 ## 推奨配置
 
 ローカルPCでは、以下のようにプロジェクト横断の共通ファイルとして置く想定です。

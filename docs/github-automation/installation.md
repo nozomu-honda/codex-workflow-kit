@@ -2,7 +2,7 @@
 
 導入先リポジトリでは、薄いcaller workflowからこのリポジトリのreusable workflowまたはActionを呼ぶ想定です。
 
-このIssueでは、まだreusable workflow / Action本体を提供しません。導入手順は後続Issueで実装に合わせて更新します。
+現在は、設定schema、fail-closed validator、設定検証Action、設定検証reusable workflow、初回確認用caller workflowテンプレートを提供しています。自動レビュー、自動マージ、Codex起動、Queue Issue操作のcaller workflowは後続Issueで追加します。
 
 ## Config
 
@@ -26,6 +26,42 @@ templates/chatgpt-automation.yml
 npm ci
 npm run validate:config
 ```
+
+## Validate config caller workflow
+
+初回は設定検証専用caller workflowを手動実行します。
+
+1. 導入先リポジトリへ設定ファイルを追加する。
+
+```text
+.github/chatgpt-automation.yml
+```
+
+2. このリポジトリのテンプレートを導入先へコピーする。
+
+```text
+templates/workflows/validate-config.yml
+```
+
+コピー先:
+
+```text
+.github/workflows/validate-config.yml
+```
+
+3. コピーしたworkflow内のref placeholderを固定refへ置換する。
+
+```text
+REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+```
+
+置換先は、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
+
+4. GitHub Actionsの `workflow_dispatch` で手動実行する。
+
+valid configでは成功し、invalid configではfail closedで失敗します。この確認にSecretは不要で、permissionsは `contents: read` のみです。
+
+実イベントtriggerは後続Issueで機能ごとに追加します。
 
 ## 将来の導入ステップ
 
