@@ -15,6 +15,8 @@ actions/
   validate-config/
     README.md
     action.yml
+    dist/index.js
+    dist/package.json
     src/index.js
     test/
 reusable-workflows/
@@ -93,6 +95,6 @@ GitHub automation areas are intentionally separate:
 - `templates/` for thin caller workflows, config examples, and setup notes
 - `docs/github-automation/` for architecture, permissions, installation, migration, validation, and follow-up planning
 
-`actions/validate-config/` reads a config file and runs the fail-closed validator only. It does not perform GitHub API writes, comments, reviews, merges, Codex triggers, or Queue Issue operations.
+`actions/validate-config/` reads a config file and runs the fail-closed validator only. It does not perform GitHub API writes, comments, reviews, merges, Codex triggers, or Queue Issue operations. `dist/index.js` is the committed bundled runtime so adopters can run the Action without installing this repository's npm dependencies.
 
 This layout does not migrate existing auto-review or auto-merge implementation yet.

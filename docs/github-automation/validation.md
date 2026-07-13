@@ -53,9 +53,15 @@ JSON Schemaは代表fixtureでvalidatorとparity確認します。ただし、no
 Action専用確認:
 
 ```bash
+npm run build:action
+npm run check:action-dist
 npm run test:action
 npm run lint:action
 ```
+
+`npm run check:action-dist` はsourceから再buildした配布物とコミット済み `actions/validate-config/dist/` を比較し、差分がある場合に失敗します。sourceを変更した場合は `npm run build:action` で `dist/index.js` と `dist/package.json` を更新してからコミットします。
+
+配布物単体テストでは、`action.yml` が指す `dist/index.js` を一時ディレクトリへコピーし、外部 `node_modules` なしでvalid / invalid configを処理できることも確認します。
 
 ## Fail closed cases
 

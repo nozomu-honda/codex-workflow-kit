@@ -4,6 +4,21 @@
 
 このActionは設定検証専用です。GitHub API write、label更新、PR/Issueコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作は行いません。
 
+## 配布物
+
+GitHub Actionsから外部リポジトリでそのまま実行できるように、`actions/validate-config/dist/index.js` をコミット済み配布物として管理します。`dist/index.js` にはAction本体、共通validator、`yaml` 依存をbundleしています。
+
+利用先リポジトリで `npm ci` や `npm install` を実行する必要はありません。
+
+`dist/package.json` はbundleをES moduleとして実行するための最小ファイルです。source mapや不要なlicense fileは出力していません。
+
+sourceを変更した場合は、必ず以下を実行して配布物を更新・確認してください。
+
+```bash
+npm run build:action
+npm run check:action-dist
+```
+
 ## Inputs
 
 | input | default | 説明 |

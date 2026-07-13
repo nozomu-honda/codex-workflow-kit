@@ -1,9 +1,11 @@
+import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import YAML from 'yaml';
+import { compareActionDistFiles } from '../../../scripts/check-action-dist.mjs';
 import {
   ACTION_INPUTS,
   ACTION_OUTPUTS,
@@ -33,6 +35,10 @@ async function readSampleConfig() {
   return readFile(SAMPLE_CONFIG, 'utf8');
 }
 
+async function readActionMetadata() {
+  return YAML.parse(await readFile(ACTION_METADATA, 'utf8'));
+}
+
 function collectLogger() {
   const messages = [];
   const push = (level) => (message) => messages.push({ level, message: String(message) });
@@ -60,6 +66,58 @@ async function runAction(dir, env = {}) {
   const outputText = await readFile(outputFile, 'utf8').catch(() => '');
 
   return { ...run, logText: logs.text(), outputText };
+}
+
+async function runBundledAction(dir, configSource, env = {}) {
+  const metadata = await readActionMetadata();
+  const actionRoot = join(dir, 'copied-action');
+  const repoRoot = join(dir, 'repo');
+  const outputFile = join(dir, 'github-output.txt');
+  const mainFile = join(actionRoot, metadata.runs.main);
+  const distPackageFile = join(actionRoot, 'dist/package.json');
+
+  await mkdir(dirname(mainFile), { recursive: true });
+  await writeFile(mainFile, await readFile(new URL(`../${metadata.runs.main}`, import.meta.url)), 'utf8');
+  await writeFile(distPackageFile, await readFile(new URL('../dist/package.json', import.meta.url)), 'utf8');
+  await mkdir(join(repoRoot, '.github'), { recursive: true });
+  await writeFile(join(repoRoot, DEFAULT_CONFIG_FILE), configSource, 'utf8');
+
+  const child = spawnSync(process.execPath, [mainFile], {
+    cwd: repoRoot,
+    env: {
+      PATH: process.env.PATH,
+      PATHEXT: process.env.PATHEXT,
+      SystemRoot: process.env.SystemRoot,
+      COMSPEC: process.env.COMSPEC,
+      TEMP: process.env.TEMP,
+      TMP: process.env.TMP,
+      GITHUB_OUTPUT: outputFile,
+      ...env
+    },
+    encoding: 'utf8'
+  });
+  const outputText = await readFile(outputFile, 'utf8').catch(() => '');
+
+  return {
+    status: child.status,
+    stdout: child.stdout,
+    stderr: child.stderr,
+    outputText,
+    outputs: parseGithubOutput(outputText),
+    actionRoot
+  };
+}
+
+function parseGithubOutput(outputText) {
+  const outputs = {};
+  const pattern = /^([^<\r\n]+)<<__chatgpt_automation_output__\r?\n([\s\S]*?)\r?\n__chatgpt_automation_output__$/gm;
+  let match;
+
+  while ((match = pattern.exec(outputText)) !== null) {
+    outputs[match[1]] = match[2];
+  }
+
+  return outputs;
 }
 
 test('sample configで成功する', async () => {
@@ -189,14 +247,14 @@ test('config-file inputは指定パスを読む', async () => {
 });
 
 test('Action metadataのinput/output名が実装と一致する', async () => {
-  const metadata = YAML.parse(await readFile(ACTION_METADATA, 'utf8'));
+  const metadata = await readActionMetadata();
 
   assert.deepEqual(Object.keys(metadata.inputs).sort(), Object.values(ACTION_INPUTS).sort());
   assert.deepEqual(Object.keys(metadata.outputs).sort(), [...ACTION_OUTPUTS].sort());
   assert.equal(metadata.inputs['config-file'].default, DEFAULT_CONFIG_FILE);
   assert.equal(metadata.inputs['dry-run'].default, 'true');
   assert.equal(metadata.runs.using, 'node20');
-  assert.equal(metadata.runs.main, 'src/index.js');
+  assert.equal(metadata.runs.main, 'dist/index.js');
 });
 
 test('outputsはGitHub Actions output fileへ書き込まれる', async () => {
@@ -208,6 +266,65 @@ test('outputsはGitHub Actions output fileへ書き込まれる', async () => {
     assert.match(run.outputText, /ok<<__chatgpt_automation_output__/);
     assert.match(run.outputText, /capabilities-json<<__chatgpt_automation_output__/);
   });
+});
+
+test('dist配布物は外部node_modulesなしでvalid configを処理する', async () => {
+  await withTempRepo(async (dir) => {
+    const run = await runBundledAction(dir, await readSampleConfig());
+
+    assert.equal(run.status, 0);
+    assert.equal(run.outputs.ok, 'true');
+    assert.equal(run.outputs['error-count'], '0');
+    assert.equal(run.outputs['dry-run'], 'true');
+    assert.equal(JSON.parse(run.outputs['capabilities-json']).routeReview, true);
+    assert.match(run.outputText, /ok<<__chatgpt_automation_output__/);
+    await assert.rejects(readFile(join(run.actionRoot, 'node_modules/yaml/package.json'), 'utf8'));
+  });
+});
+
+test('dist配布物はinvalid configでfail closedになりcapabilityをすべてfalseにする', async () => {
+  await withTempRepo(async (dir) => {
+    const run = await runBundledAction(dir, 'version: 999\n');
+
+    assert.notEqual(run.status, 0);
+    assert.equal(run.outputs.ok, 'false');
+    assert.deepEqual(JSON.parse(run.outputs['capabilities-json']), falseCapabilities());
+    assert.match(`${run.stdout}\n${run.stderr}`, /UNSUPPORTED_VERSION/);
+  });
+});
+
+test('dist配布物もSecret-like文字列やconfig全文をstdout/stderrへ出さない', async () => {
+  await withTempRepo(async (dir) => {
+    const marker = 'dummy-bundled-secret-like-token-value';
+    const uniqueConfigText = 'unique-bundled-full-config-text';
+    const config = YAML.parse(await readSampleConfig());
+    config.secrets.autoMergeToken = marker;
+    config.metadataForBundledTest = uniqueConfigText;
+    const source = YAML.stringify(config);
+    const run = await runBundledAction(dir, source);
+    const logs = `${run.stdout}\n${run.stderr}`;
+
+    assert.notEqual(run.status, 0);
+    assert.equal(logs.includes(marker), false);
+    assert.equal(logs.includes(uniqueConfigText), false);
+    assert.equal(logs.includes(source.trim()), false);
+  });
+});
+
+test('dist整合性比較は古い配布物を検出する', () => {
+  const comparison = compareActionDistFiles(
+    new Map([
+      ['index.js', 'old'],
+      ['package.json', '{"type":"module"}']
+    ]),
+    new Map([
+      ['index.js', 'new'],
+      ['package.json', '{"type":"module"}']
+    ])
+  );
+
+  assert.equal(comparison.ok, false);
+  assert.deepEqual(comparison.changed, ['index.js']);
 });
 
 function falseCapabilities() {
