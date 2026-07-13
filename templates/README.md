@@ -35,8 +35,8 @@
 導入手順:
 
 1. `templates/workflows/validate-config.yml` を導入先の `.github/workflows/validate-config.yml` へコピーする。
-2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリのrelease tagまたは40桁commit SHAへ置換する。
-3. `master` / `main` などの可変branch参照は使わない。
+2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+3. `v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は使わない。
 4. 導入先に `.github/chatgpt-automation.yml` を置く。
 5. GitHub Actionsの `workflow_dispatch` で手動実行し、valid configでは成功、invalid configではfail closedで失敗することを確認する。
 

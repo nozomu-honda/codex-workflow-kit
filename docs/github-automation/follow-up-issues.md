@@ -26,7 +26,7 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
 4. Caller workflow templatesを追加する
    - Issue #11で設定検証用caller workflowテンプレートを対応。
    - 初期テンプレートは `workflow_dispatch` のみ。
-   - reusable workflow refはtagまたは40桁commit SHAへ固定する。
+   - reusable workflow refは `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ固定する。
    - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
    - `issue_comment`
    - `pull_request_review`

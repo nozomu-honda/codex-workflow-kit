@@ -92,6 +92,34 @@ test('reusable workflow参照はpath一致かつ可変branchを使わない', as
   assert.notEqual(ref, 'main');
 });
 
+test('reusable workflow参照refは完全なversion tag、40桁SHA、placeholderだけを許可する', () => {
+  const validRefs = [
+    'v1.2.3',
+    'v10.20.30',
+    '0123456789abcdef0123456789abcdef01234567',
+    'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA'
+  ];
+  const invalidRefs = [
+    'v1',
+    'v1.2',
+    'master',
+    'main',
+    'develop',
+    'feature/test',
+    '0123456',
+    '',
+    '   '
+  ];
+
+  for (const ref of validRefs) {
+    assert.equal(isAllowedFixedRef(ref), true, `${ref} should be valid`);
+  }
+
+  for (const ref of invalidRefs) {
+    assert.equal(isAllowedFixedRef(ref), false, `${JSON.stringify(ref)} should be invalid`);
+  }
+});
+
 test('docsのコピー先とテンプレート実体pathが一致する', async () => {
   const readme = await readFile(TEMPLATES_README, 'utf8');
   const installation = await readFile(INSTALLATION_DOC, 'utf8');
@@ -103,7 +131,7 @@ test('docsのコピー先とテンプレート実体pathが一致する', async 
 });
 
 function isAllowedFixedRef(ref) {
-  return /^v\d+(?:\.\d+){0,2}$/.test(ref)
+  return /^v\d+\.\d+\.\d+$/.test(ref)
     || /^[a-f0-9]{40}$/i.test(ref)
     || ref === 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
 }

@@ -55,7 +55,7 @@ templates/workflows/validate-config.yml
 REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
 ```
 
-置換先は、このリポジトリのrelease tagまたは40桁commit SHAにします。`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
+置換先は、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
 
 4. GitHub Actionsの `workflow_dispatch` で手動実行する。
 

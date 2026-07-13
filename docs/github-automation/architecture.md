@@ -55,7 +55,7 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 - `actions/checkout@v4` でcaller repositoryをcheckoutする
 - `actions/validate-config` は `nozomu-honda/codex-workflow-kit/actions/validate-config@master` として明示参照し、caller repositoryの相対pathとは誤認させない
 
-このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。導入先caller workflow templateと実イベントtriggerは後続Issueで追加します。refは将来的にtagまたはcommit SHAへ固定します。
+このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。導入先caller workflow templateと実イベントtriggerは後続Issueで追加します。refは将来的に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ固定します。
 
 ## Caller workflow template
 
@@ -67,9 +67,9 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 - `config-file` は `.github/chatgpt-automation.yml`
 - `dry-run` は `true`
 - Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
-- reusable workflow refは `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を導入時にtagまたは40桁commit SHAへ置換する
+- reusable workflow refは `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を導入時に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する
 
-`master` / `main` などの可変branch参照は禁止します。初回は `workflow_dispatch` で手動検証し、実イベントtriggerは後続Issueで機能ごとに追加します。
+`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は禁止します。初回は `workflow_dispatch` で手動検証し、実イベントtriggerは後続Issueで機能ごとに追加します。
 
 導入先設定で弱体化できない安全条件:
 
