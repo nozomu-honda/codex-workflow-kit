@@ -77,6 +77,8 @@ npm run lint:action
 - workflow / job permissionsが `contents: read` のみ
 - write permission、`pull_request_target`、`secrets: inherit` がない
 - stepsが `actions/checkout@v4` と `actions/validate-config` 呼び出しだけで、`run` を持たない
+- `actions/validate-config` 呼び出しのrepository名とAction pathが `nozomu-honda/codex-workflow-kit/actions/validate-config` と一致する
+- `actions/validate-config` 呼び出しのrefはレビュー済み40桁commit SHAのみ許可し、`master`、`main`、branch名、短縮SHA、tag参照を拒否する
 - workflow outputs、job outputs、Action outputsが一致する
 - 外部呼び出し例のpathと実体ファイルpathが一致する
 
@@ -87,7 +89,7 @@ npm run test:workflow
 npm run lint:workflow
 ```
 
-GitHub Actions上の外部repository E2Eは、caller workflow templateを追加する後続Issueで確認します。
+GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
 
 ## Caller workflow template validation
 

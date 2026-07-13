@@ -57,7 +57,11 @@ REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
 
 置換先は、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
 
-4. GitHub Actionsの `workflow_dispatch` で手動実行する。
+4. reusable workflow内部のAction参照も40桁commit SHAへ固定されていることを確認する。
+
+現在の `.github/workflows/validate-config.yml` は、レビュー済みcommit `9864aad80419547ad0e8c837ab1066eee4be4a9a` の `actions/validate-config` を参照します。このcommitには `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認済みです。内部Action refを更新する場合も、40桁commit SHAだけを使い、対象commitにAction metadataと配布物があることを確認します。
+
+5. GitHub Actionsの `workflow_dispatch` で手動実行する。
 
 valid configでは成功し、invalid configではfail closedで失敗します。この確認にSecretは不要で、permissionsは `contents: read` のみです。
 

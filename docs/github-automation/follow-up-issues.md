@@ -22,6 +22,7 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - `reusable-workflows/` に `workflow_call` の入口を作る。
    - 導入先の薄いcaller workflowから呼べる形にする。
    - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
+   - Issue #13で内部 `actions/validate-config` 参照をレビュー済み40桁commit SHAへ固定。
 
 4. Caller workflow templatesを追加する
    - Issue #11で設定検証用caller workflowテンプレートを対応。
