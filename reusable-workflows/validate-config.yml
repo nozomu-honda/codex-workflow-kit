@@ -1,0 +1,57 @@
+name: Validate ChatGPT automation config
+
+"on":
+  workflow_call:
+    inputs:
+      config-file:
+        description: 検証するChatGPT automation設定ファイルのパス。
+        type: string
+        required: false
+        default: .github/chatgpt-automation.yml
+      dry-run:
+        description: dry-run指定。設定検証だけを行い、write処理は実行しません。
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      ok:
+        description: 設定検証が成功したか。
+        value: ${{ jobs.validate-config.outputs.ok }}
+      error-count:
+        description: validation error数。
+        value: ${{ jobs.validate-config.outputs.error-count }}
+      warning-count:
+        description: validation warning数。
+        value: ${{ jobs.validate-config.outputs.warning-count }}
+      capabilities-json:
+        description: boolean capabilityだけを含むJSON。
+        value: ${{ jobs.validate-config.outputs.capabilities-json }}
+      dry-run:
+        description: 実効dry-run値。
+        value: ${{ jobs.validate-config.outputs.dry-run }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate-config:
+    name: Validate config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ok: ${{ steps.validate-config.outputs.ok }}
+      error-count: ${{ steps.validate-config.outputs.error-count }}
+      warning-count: ${{ steps.validate-config.outputs.warning-count }}
+      capabilities-json: ${{ steps.validate-config.outputs.capabilities-json }}
+      dry-run: ${{ steps.validate-config.outputs.dry-run }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+
+      - name: Validate config
+        id: validate-config
+        uses: nozomu-honda/codex-workflow-kit/actions/validate-config@master
+        with:
+          config-file: ${{ inputs.config-file }}
+          dry-run: ${{ inputs.dry-run }}
