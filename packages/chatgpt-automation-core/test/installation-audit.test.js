@@ -120,8 +120,7 @@ test('valid minimal installation passes with stable result schema', async () => 
       workflow: DEFAULT_AUDIT_WORKFLOW_FILE
     });
     assert.equal(result.errors.length, 0);
-    assert.equal(result.capabilities.autoRequest, true);
-    assert.equal(result.capabilities.routeReview, true);
+    assert.deepEqual(result.capabilities, falseCapabilities());
     assert.equal(findCode(result, 'CONFIG_VALID'), true);
     assert.equal(findCode(result, 'REUSABLE_WORKFLOW_REF_PINNED'), true);
   });
@@ -230,18 +229,29 @@ test('invalid config cases are detected without weakening the shared validator',
   await expectAuditCode({ config: 'version: 1\nbaseBranch: [' }, 'YAML_PARSE_ERROR');
   await expectAuditCode({ config: await mutateConfig((config) => { config.features.autoMerge = 'true'; })() }, 'BOOLEAN_REQUIRED');
   await expectAuditCode({ config: await mutateConfig((config) => { config.dryRunDefault = false; })() }, 'CONFIG_DRY_RUN_DEFAULT_FALSE');
-  await withConsumerRepo(async (dir) => {
-    const result = await auditConsumerInstallation({ rootDir: dir });
+});
 
-    assert.equal(result.ok, true);
-    assert.equal(result.capabilities.autoMerge, true);
-  }, {
-    config: await mutateConfig((config) => { config.features.autoMerge = true; })()
-  });
+test('enabled capabilities fail closed during initial installation audit', async () => {
+  for (const capability of Object.keys(falseCapabilities())) {
+    await withConsumerRepo(async (dir) => {
+      const result = await auditConsumerInstallation({ rootDir: dir });
+
+      assert.equal(result.ok, false, capability);
+      assert.equal(findCode(result, 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN'), true);
+      assert.deepEqual(result.capabilities, falseCapabilities());
+      assert.equal(result.errors.some((error) => error.path === `features.${capability}`), true);
+    }, {
+      config: await mutateConfig((config) => { config.features[capability] = true; })()
+    });
+  }
+});
+
+test('config errors keep capabilities fail closed even when enabled features are present', async () => {
   await withConsumerRepo(async (dir) => {
     const result = await auditConsumerInstallation({ rootDir: dir });
 
     assert.equal(result.ok, false);
+    assert.equal(findCode(result, 'INVALID_MERGE_METHOD'), true);
     assert.deepEqual(result.capabilities, falseCapabilities());
   }, {
     config: await mutateConfig((config) => {
@@ -251,17 +261,87 @@ test('invalid config cases are detected without weakening the shared validator',
   });
 });
 
-test('unknown config keys are warnings and strict mode can fail them', async () => {
+test('unknown config keys fail closed by default at root and nested paths', async () => {
+  const fixtures = [
+    {
+      path: 'root.unknownRootForAuditTest',
+      config: `${await readSampleConfig()}\nunknownRootForAuditTest: true\n`
+    },
+    {
+      path: 'review.unknownNestedForAuditTest',
+      config: await mutateConfig((config) => {
+        config.review.unknownNestedForAuditTest = true;
+      })()
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    await withConsumerRepo(async (dir) => {
+      const normal = await auditConsumerInstallation({ rootDir: dir });
+      const strict = await auditConsumerInstallation({ rootDir: dir, strict: true });
+
+      assert.equal(normal.ok, false, fixture.path);
+      assert.equal(strict.ok, false, fixture.path);
+      assert.equal(findCode(normal, 'UNKNOWN_KEY'), true);
+      assert.equal(normal.errors.some((error) => error.code === 'UNKNOWN_KEY' && error.path === fixture.path), true);
+      assert.deepEqual(normal.capabilities, falseCapabilities());
+    }, {
+      config: fixture.config
+    });
+  }
+});
+
+test('CLI human and JSON output keep stable error codes for default fail-closed cases', async () => {
+  const cases = [
+    {
+      code: 'UNKNOWN_KEY',
+      config: `${await readSampleConfig()}\nunknownRootForAuditTest: true\n`
+    },
+    {
+      code: 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN',
+      config: await mutateConfig((config) => {
+        config.features.autoMerge = true;
+      })()
+    }
+  ];
+
+  for (const entry of cases) {
+    await withConsumerRepo(async (dir) => {
+      const human = { stdout: '', stderr: '' };
+      const json = { stdout: '', stderr: '' };
+
+      const humanExit = await runAuditConsumerInstallationCli(['--root', dir], {
+        stdout: (message) => { human.stdout += message; },
+        stderr: (message) => { human.stderr += message; }
+      });
+      const jsonExit = await runAuditConsumerInstallationCli(['--root', dir, '--json'], {
+        stdout: (message) => { json.stdout += message; },
+        stderr: (message) => { json.stderr += message; }
+      });
+      const parsed = JSON.parse(json.stdout);
+
+      assert.equal(humanExit, 1);
+      assert.equal(jsonExit, 1);
+      assert.match(human.stdout, new RegExp(entry.code));
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.errors.some((error) => error.code === entry.code), true);
+      assert.deepEqual(parsed.capabilities, falseCapabilities());
+    }, {
+      config: entry.config
+    });
+  }
+});
+
+test('strict mode remains compatible when the default audit has no warnings', async () => {
   await withConsumerRepo(async (dir) => {
     const normal = await auditConsumerInstallation({ rootDir: dir });
     const strict = await auditConsumerInstallation({ rootDir: dir, strict: true });
 
     assert.equal(normal.ok, true);
-    assert.equal(findCode(normal, 'UNKNOWN_KEY'), true);
-    assert.equal(strict.ok, false);
-    assert.equal(findCode(strict, 'STRICT_WARNINGS_FOUND'), true);
+    assert.equal(strict.ok, true);
+    assert.equal(normal.warnings.length, 0);
   }, {
-    config: `${await readSampleConfig()}\nunknownRootForAuditTest: true\n`
+    config: await readSampleConfig()
   });
 });
 

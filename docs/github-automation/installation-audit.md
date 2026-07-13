@@ -48,7 +48,7 @@ node scripts/audit-consumer-installation.mjs \
   --expected-ref 0123456789abcdef0123456789abcdef01234567
 ```
 
-warningも失敗扱いにする場合:
+将来、監査に非致命warningを追加した場合も失敗扱いにする場合:
 
 ```bash
 node scripts/audit-consumer-installation.mjs --root ../consumer-repo --strict
@@ -70,7 +70,7 @@ node scripts/audit-consumer-installation.mjs --help
 | `--config <path>` | `.github/chatgpt-automation.yml` | root相対のconfig path |
 | `--workflow <path>` | `.github/workflows/validate-config.yml` | root相対のcaller workflow path |
 | `--expected-ref <sha>` | unset | reusable workflow refが指定SHAと一致することを要求 |
-| `--strict` | false | warningsをaudit failureとして扱う |
+| `--strict` | false | 非致命warningがある場合もaudit failureとして扱う |
 | `--json` | false | stable JSON resultを出力 |
 | `--help`, `-h` | false | helpを表示 |
 
@@ -87,8 +87,8 @@ JSON出力はhuman-readable出力と独立した安定schemaです。
   "warnings": [],
   "checks": [],
   "capabilities": {
-    "autoRequest": true,
-    "routeReview": true,
+    "autoRequest": false,
+    "routeReview": false,
     "autoMerge": false,
     "mainFollowup": false,
     "actionsApproval": false
@@ -111,8 +111,8 @@ ChatGPT automation installation audit: OK
 config: .github/chatgpt-automation.yml
 workflow: .github/workflows/validate-config.yml
 capabilities:
-- autoRequest: true
-- routeReview: true
+- autoRequest: false
+- routeReview: false
 - autoMerge: false
 - mainFollowup: false
 - actionsApproval: false
@@ -138,10 +138,11 @@ config監査は `packages/chatgpt-automation-core/src/config/index.js` の共通
 - config fileを読める
 - YAML parseが成功する
 - 共通validatorが成功する
-- unknown keyをwarningとして保持する
+- unknown keyを導入監査のerrorとして検出する
 - 型不正や安全条件の弱体化をfail closedにする
 - `dryRunDefault` が `true`
-- capabilities一覧と有効状態
+- 初期導入ではすべてのcapabilityがdisabledであること
+- capabilityが1つでもenabledなら `CONFIG_CAPABILITY_ENABLED_FORBIDDEN` で失敗する
 - config欠落、読み取り失敗、validation失敗時は全capabilityを `false`
 
 ## Caller workflow監査
@@ -174,6 +175,7 @@ caller workflowは構造的にYAML parseして確認します。
 - `CONFIG_MISSING`
 - `CONFIG_READ_FAILED`
 - `CONFIG_DRY_RUN_DEFAULT_FALSE`
+- `CONFIG_CAPABILITY_ENABLED_FORBIDDEN`
 - `WORKFLOW_MISSING`
 - `WORKFLOW_READ_FAILED`
 - `WORKFLOW_YAML_PARSE_ERROR`
@@ -274,6 +276,8 @@ npm run audit:template
 
 - `CONFIG_MISSING`: `--root` と `--config` の組み合わせを確認する。
 - `WORKFLOW_MISSING`: caller workflowのコピー先pathを確認する。
+- `UNKNOWN_KEY`: typoまたは未審査の設定が混入しているため、config keyを削除するか別Issueでschema/validatorを拡張する。
+- `CONFIG_CAPABILITY_ENABLED_FORBIDDEN`: 初期導入監査では全capabilityを無効化する。自動化を有効にする場合は別Issueで安全条件と運用手順を確認する。
 - `REUSABLE_WORKFLOW_REF_PLACEHOLDER`: `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を40桁commit SHAへ置換する。
 - `REUSABLE_WORKFLOW_REF_TAG`: tag参照ではなく40桁commit SHAを使う。
 - `WORKFLOW_CONFIG_FILE_MISMATCH`: caller workflowの `with.config-file` とCLIの `--config` を一致させる。

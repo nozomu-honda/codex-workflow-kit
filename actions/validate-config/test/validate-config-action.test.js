@@ -130,7 +130,7 @@ test('sample configで成功する', async () => {
     assert.equal(run.outputs.ok, 'true');
     assert.equal(run.outputs['error-count'], '0');
     assert.equal(run.outputs['dry-run'], 'true');
-    assert.equal(JSON.parse(run.outputs['capabilities-json']).autoRequest, true);
+    assert.deepEqual(JSON.parse(run.outputs['capabilities-json']), falseCapabilities());
   });
 });
 
@@ -282,7 +282,7 @@ test('dist配布物は外部node_modulesなしでvalid configを処理する', a
     assert.equal(run.outputs.ok, 'true');
     assert.equal(run.outputs['error-count'], '0');
     assert.equal(run.outputs['dry-run'], 'true');
-    assert.equal(JSON.parse(run.outputs['capabilities-json']).routeReview, true);
+    assert.deepEqual(JSON.parse(run.outputs['capabilities-json']), falseCapabilities());
     assert.match(run.outputText, /ok<<__chatgpt_automation_output__/);
     await assert.rejects(readFile(join(run.actionRoot, 'node_modules/yaml/package.json'), 'utf8'));
   });

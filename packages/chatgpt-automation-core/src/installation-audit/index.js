@@ -159,7 +159,7 @@ async function auditConfig({ readFile, configPath, checks }) {
   const validation = validateAutomationConfig(source);
 
   for (const warning of validation.warnings) {
-    addWarning(warnings, checks, warning.code, warning.message, {
+    addError(errors, checks, warning.code, warning.message, {
       file: configPath.relativePath,
       path: warning.path
     });
@@ -195,9 +195,16 @@ async function auditConfig({ readFile, configPath, checks }) {
   }
 
   for (const [name, enabled] of Object.entries(validation.capabilities)) {
-    addCheck(checks, `CAPABILITY_${name}`, `Capability ${name} is ${enabled ? 'enabled' : 'disabled'}.`, 'pass', {
-      file: configPath.relativePath
-    });
+    if (enabled) {
+      addError(errors, checks, 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN', 'Initial consumer installation audit requires every capability to stay disabled.', {
+        file: configPath.relativePath,
+        path: `features.${name}`
+      });
+    } else {
+      addCheck(checks, `CAPABILITY_${name}`, `Capability ${name} is disabled.`, 'pass', {
+        file: configPath.relativePath
+      });
+    }
   }
 
   return {
