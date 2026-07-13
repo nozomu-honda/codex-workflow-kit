@@ -46,6 +46,21 @@ docs/github-automation/
 
 `scripts/audit-consumer-installation.mjs` には、導入先リポジトリのChatGPT automation設定とcaller workflowをネットワークアクセスなし・GitHub API writeなしで監査するread-only CLIを置いています。詳細は `docs/github-automation/installation-audit.md` を参照してください。
 
+`.github/workflows/ci.yml` には、この共通キット自身のread-only CIを置いています。`pull_request`、`master` push、`workflow_dispatch` で起動し、workflow / job permissionsは `contents: read` のみに固定します。外部Actionはレビュー済み40桁commit SHAで参照し、Secret、GitHub API write、release、deploy、tag作成、mergeは行いません。
+
+CIでは Node 20.19.0 以上でフルvalidationを行い、Node 24で `actions/validate-config` と配布物整合性を確認します。さらにローカルのreusable workflow smokeをjob-level `uses` で実行し、`ok`、`error-count`、`warning-count`、`capabilities-json`、`dry-run` outputsが期待どおりであることを確認します。
+
+offline consumer E2Eは、`templates/` から一時的な導入先リポジトリを作り、config / caller workflow / installation audit CLI / Shared Action source / Shared Action distを副作用なしで検証します。このE2Eは実GitHub repository、Secret、外部API、ネットワーク、GitHub API writeを使いません。実導入先リポジトリを使ったcross-repo E2Eは後続Issueで扱います。
+
+主なローカル確認コマンド:
+
+```bash
+npm ci
+npm run ci
+npm run test:e2e:consumer
+npm run lint:e2e
+```
+
 ## 推奨配置
 
 ローカルPCでは、以下のようにプロジェクト横断の共通ファイルとして置く想定です。

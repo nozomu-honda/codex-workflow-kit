@@ -20,6 +20,11 @@ npm ci
 npm test
 npm run lint
 npm run validate:config
+npm run check:action-dist
+npm run audit:template
+npm run test:e2e:consumer
+npm run lint:e2e
+npm run ci
 git diff --check
 ```
 
@@ -94,6 +99,31 @@ npm run lint:action
 
 配布物単体テストでは、`action.yml` が指す `dist/index.js` を一時ディレクトリへコピーし、外部 `node_modules` なしでvalid / invalid configを処理できることも確認します。
 
+## Offline consumer E2E
+
+`npm run test:e2e:consumer` は、実GitHub repositoryを使わずに導入先を模した一時ディレクトリを作り、`templates/` からconfigとcaller workflowを配置して検証します。テスト終了時に一時ディレクトリは削除します。
+
+確認対象:
+
+- valid consumer fixtureでconfig validatorとinstallation auditが成功する
+- human-readable出力が成功を示す
+- JSON出力が `ok`、`errors`、`warnings`、`checks`、`capabilities`、`files` の安定schemaを返す
+- `dryRunDefault` が `true`
+- `features`、`queues`、`codex`、`schedules` のcapabilityがすべてdisabled
+- caller workflowが `workflow_dispatch` only、`contents: read` only、40桁SHA固定、Secretなしである
+- placeholder、branch、tag、短縮SHA、未知config key、capability有効化、`dryRunDefault: false`、write permission、`pull_request_target`、`secrets: inherit`、inline `run`、`steps`、`runs-on`、path escape、config / workflow欠落、不正YAMLをfail closedで検出する
+- invalid caseはnon-zero exit codeとstable error codeを返す
+- Secret-like fixture値、絶対path、stack trace、config全文を出力しない
+
+Action source / dist E2Eでは、同じconsumer configを `actions/validate-config/src/index.js` と `actions/validate-config/dist/index.js` へ通し、valid時のoutputs一致、invalid時のfail-closed、capability false、配布物が外部 `node_modules` なしで動くことを確認します。コマンド注入風の値をfixtureへ入れてもログへ出さないことも確認します。
+
+E2E専用確認:
+
+```bash
+npm run test:e2e:consumer
+npm run lint:e2e
+```
+
 ## Reusable workflow validation
 
 `.github/workflows/validate-config.yml` は静的検証で安全境界を確認します。
@@ -121,6 +151,39 @@ npm run lint:workflow
 ```
 
 GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
+
+## Repository CI validation
+
+`.github/workflows/ci.yml` は、この共通キット自身のCIです。
+
+確認対象:
+
+- triggerは `pull_request`、`master` push、`workflow_dispatch`
+- workflow / job permissionsは `contents: read` のみ
+- `pull_request_target`、Secret、`secrets: inherit`、write permission、deploy、release、tag作成、mergeを持たない
+- 外部Actionはレビュー済み40桁commit SHAで固定し、branch / tag参照を使わない
+- Node 20.19.0以上で `npm run ci` を実行する
+- Node 24で `npm run test:action` と `npm run check:action-dist` を実行する
+- reusable workflow smokeをjob-level `uses: ./.github/workflows/validate-config.yml` で実行し、専用fixture `reusable-workflows/fixtures/valid-chatgpt-automation.yml` を読む
+- smoke後続jobで `ok=true`、`error-count=0`、`warning-count=0`、`dry-run=true`、すべてのcapabilityが `false` であることを検証する
+
+`npm run ci` はread-onlyのローカル集約コマンドです。失敗時は次の順で切り分けます。
+
+1. `npm test` でvalidator / Action / workflow / template / audit / consumer E2Eのどこが落ちたか確認する。
+2. `npm run check:action-dist` でsourceとdistの差分を確認する。
+3. `npm run audit:template` と `npm run test:e2e:consumer` で導入先テンプレートとoffline consumer E2Eの境界を確認する。
+4. workflow smokeだけ落ちる場合は、reusable workflowのoutputs配線とGitHub Actions上の `node24` runtimeを確認する。
+
+CIやE2Eが失敗した場合、自動修正や外部repository変更は行いません。原因調査し、必要なら別Issueとして分離します。
+
+正常時の期待値:
+
+- `ok=true`
+- `errors=0`
+- `warnings=0`
+- `dry-run=true`
+- write operations disabled
+- Node 20廃止警告なし
 
 ## Caller workflow template validation
 
