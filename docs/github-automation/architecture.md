@@ -68,7 +68,21 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - `actions/checkout@v4` でcaller repositoryをcheckoutする
 - `actions/validate-config` は `nozomu-honda/codex-workflow-kit/actions/validate-config@03d54075f77034124b0b0982200b0d44059bed8a` として明示参照し、caller repositoryの相対pathとは誤認させない
 
-このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。導入先caller workflow templateと実イベントtriggerは別Issueで追加します。caller側のreusable workflow refだけでなく、内部Action refもレビュー済み40桁commit SHAへ固定し、`master` / `main`、branch名、短縮SHA、tag参照で内容が変わる状態を避けます。
+このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。caller側のreusable workflow refだけでなく、内部Action refもレビュー済み40桁commit SHAへ固定し、`master` / `main`、branch名、短縮SHA、tag参照で内容が変わる状態を避けます。
+
+`.github/workflows/normalize-event.yml` は、実イベント用caller workflowから呼ぶ読み取り専用reusable workflowです。
+
+- inputsはGitHub event name / action、`toJson(github.event)`、repository情報、actor、ref、sha、dry-run、permission mode、requested capability、repository config JSON、`kit-ref`
+- outputsは `event_name`、`event_action`、`repository`、`repository_owner`、`default_branch`、`actor`、`issue_number`、`pull_request_number`、`head_sha`、`base_sha`、`head_repository`、`is_same_repository`、`is_fork`、`workflow_name`、`workflow_conclusion`、`dry_run`、`eligible`、`ineligible_reason`
+- permissionsはworkflow / jobとも `contents: read`
+- Secret input、`secrets: inherit`、write permissionは使わない
+- `pull_request_target` は使わない
+- `scripts/normalize-event.mjs` と `packages/chatgpt-automation-core/src/events/` の純粋ロジックでpayloadを正規化する
+- `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push` を対象にする
+- fork / external PR、失敗workflow_run、未mergeのPR close、default branch以外へのpush、想定外action、入力不備は `eligible=false` にする
+- PR上の `issue_comment` はpayloadだけではfork / same-repository境界を検証できないため、PR情報取得契約が追加されるまでは `eligible=false` にする
+
+Issue #23ではイベント受付・正規化・安全判定までを共通化し、ChatGPT review routing、自動マージ、main追従、Codex起動、Queue Issue更新などのwrite処理は後続Issueに分けます。
 
 ## Caller workflow template
 
@@ -82,7 +96,18 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
 - reusable workflow refは `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を導入時に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する
 
-`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は禁止します。初回は `workflow_dispatch` で手動検証し、実イベントtriggerは後続Issueで機能ごとに追加します。
+`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は禁止します。初回は `workflow_dispatch` で手動検証し、実イベントのwrite処理は後続Issueで機能ごとに追加します。
+
+`templates/workflows/chatgpt-automation-events.yml` は、導入先が `.github/workflows/chatgpt-automation-events.yml` へコピーして使う実イベント用caller workflowテンプレートです。
+
+- triggerは `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push`
+- jobは `.github/workflows/normalize-event.yml` をjob-level `uses` で呼ぶだけ
+- permissionsは `contents: read`
+- `event-payload-json` は `toJson(github.event)` を渡す
+- `repository-config-json` は導入先Variableから渡せるが、Secret値は渡さない
+- reusable workflow refと `kit-ref` は同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する
+- `push.branches` の `REPLACE_WITH_DEFAULT_BRANCH` は導入先default branch名へ置換する
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
 
 導入先設定で弱体化できない安全条件:
 

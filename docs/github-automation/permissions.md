@@ -26,3 +26,19 @@ GitHub automation共通化では、権限を最小化し、強い権限を導入
 - validation tests
 
 実際の権限値は導入先リポジトリの運用に依存するため、このリポジトリには実値や実IDを置きません。
+
+## 実イベント正規化の権限境界
+
+Issue #23の実イベント受付では、導入先caller workflowと共通reusable workflowのどちらもdefaultをread-onlyにします。
+
+- workflow / job permissionsは `contents: read`
+- `pull_request_target` は使わない
+- Secret inputは定義しない
+- `secrets: inherit` は使わない
+- fork / external PRは `eligible=false` にする
+- PR上の `issue_comment` は、payloadだけではfork / same-repository境界を検証できないため `eligible=false` にする
+- `permission-mode` は `read-only` だけを許可する
+- `requested-capability` は `normalize-only` だけを許可する
+- write相当capabilityが要求された場合はfail closedにする
+
+導入先固有のlabels、Variables、Secrets、fine-grained PAT、Queue Issue番号は導入先側に残します。Issue #24以降でwrite処理を追加する場合も、Secretをfork / external PRへ渡さず、Issue #23の `eligible` outputとfork/same-repository判定を前提に分岐します。

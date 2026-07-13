@@ -22,6 +22,7 @@ npm run lint
 npm run validate:config
 npm run check:action-dist
 npm run audit:template
+npm run test:events
 npm run test:e2e:consumer
 npm run lint:e2e
 npm run ci
@@ -117,6 +118,16 @@ npm run lint:action
 
 Action source / dist E2Eでは、同じconsumer configを `actions/validate-config/src/index.js` と `actions/validate-config/dist/index.js` へ通し、valid時のoutputs一致、invalid時のfail-closed、capability false、配布物が外部 `node_modules` なしで動くことを確認します。コマンド注入風の値をfixtureへ入れてもログへ出さないことも確認します。
 
+実イベントcaller E2Eでは、`templates/workflows/chatgpt-automation-events.yml` から一時consumer workflowを作り、次を確認します。
+
+- reusable workflow refと `kit-ref` が同じ固定SHAへ置換される
+- caller側は `contents: read` のjob-level `uses` だけを持つ
+- repository固有設定はVariable由来のJSONとしてcaller側に残せる
+- valid payloadで安定したoutputsが得られる
+- fork相当payloadは `eligible=false`
+- dry-runではwrite処理が発生しない
+- Secret、`pull_request_target`、inline write処理を含まない
+
 E2E専用確認:
 
 ```bash
@@ -148,6 +159,26 @@ Workflow専用確認:
 ```bash
 npm run test:workflow
 npm run lint:workflow
+```
+
+`.github/workflows/normalize-event.yml` は、実イベント正規化reusable workflowとして静的検証します。
+
+確認対象:
+
+- `workflow_call` だけを入口にする
+- Secret inputがない
+- workflow / job permissionsが `contents: read` のみ
+- outputsが `packages/chatgpt-automation-core/src/events/` の正規化output名と一致する
+- `kit-ref` は40桁commit SHAまたは `v1.2.3` 形式の完全なversion tagだけを許可する
+- `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- 共通script `scripts/normalize-event.mjs` だけを実行する
+- `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+
+イベント正規化専用確認:
+
+```bash
+npm run test:events
+npm run lint:events
 ```
 
 GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
@@ -212,6 +243,20 @@ Template専用確認:
 npm run test:template
 npm run lint:template
 ```
+
+`templates/workflows/chatgpt-automation-events.yml` は実イベント用caller workflow templateとして静的検証します。
+
+確認対象:
+
+- 対象イベントが `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push`
+- jobは1つだけで `.github/workflows/normalize-event.yml` をjob-level `uses` で呼ぶ
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- `permission-mode: read-only`
+- `requested-capability: normalize-only`
+- reusable workflow refと `kit-ref` は同じ固定refへ置換する
+- `push.branches` は導入先default branchへ置換する
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
 
 ## Fail closed cases
 

@@ -1,0 +1,191 @@
+name: Normalize GitHub automation event
+
+"on":
+  workflow_call:
+    inputs:
+      event-name:
+        description: GitHub event name from the caller workflow.
+        type: string
+        required: true
+      event-action:
+        description: GitHub event action from the caller workflow. Use an empty string for push.
+        type: string
+        required: false
+        default: ''
+      event-payload-json:
+        description: JSON string produced by toJson(github.event) in the caller workflow.
+        type: string
+        required: true
+      repository:
+        description: Caller repository full name.
+        type: string
+        required: true
+      repository-owner:
+        description: Caller repository owner.
+        type: string
+        required: true
+      default-branch:
+        description: Caller repository default branch.
+        type: string
+        required: true
+      actor:
+        description: GitHub actor from the caller workflow.
+        type: string
+        required: true
+      ref-name:
+        description: GitHub ref_name from the caller workflow.
+        type: string
+        required: false
+        default: ''
+      sha:
+        description: GitHub sha from the caller workflow.
+        type: string
+        required: false
+        default: ''
+      dry-run:
+        description: Dry-run flag. Defaults to true and does not enable write processing.
+        type: boolean
+        required: false
+        default: true
+      permission-mode:
+        description: Permission mode requested by the caller. Issue #23 supports read-only only.
+        type: string
+        required: false
+        default: read-only
+      requested-capability:
+        description: Capability requested by the caller. Issue #23 supports normalize-only only.
+        type: string
+        required: false
+        default: normalize-only
+      repository-config-json:
+        description: Optional repository-specific variables encoded as JSON. Secret values must not be passed.
+        type: string
+        required: false
+        default: '{}'
+      kit-ref:
+        description: Fixed codex-workflow-kit ref used to checkout the shared normalizer script.
+        type: string
+        required: true
+    outputs:
+      event_name:
+        description: Normalized event name.
+        value: ${{ jobs.normalize-event.outputs.event_name }}
+      event_action:
+        description: Normalized event action.
+        value: ${{ jobs.normalize-event.outputs.event_action }}
+      repository:
+        description: Normalized repository full name.
+        value: ${{ jobs.normalize-event.outputs.repository }}
+      repository_owner:
+        description: Normalized repository owner.
+        value: ${{ jobs.normalize-event.outputs.repository_owner }}
+      default_branch:
+        description: Normalized default branch.
+        value: ${{ jobs.normalize-event.outputs.default_branch }}
+      actor:
+        description: Normalized actor.
+        value: ${{ jobs.normalize-event.outputs.actor }}
+      issue_number:
+        description: Normalized issue number, or empty string.
+        value: ${{ jobs.normalize-event.outputs.issue_number }}
+      pull_request_number:
+        description: Normalized pull request number, or empty string.
+        value: ${{ jobs.normalize-event.outputs.pull_request_number }}
+      head_sha:
+        description: Normalized head SHA, or empty string.
+        value: ${{ jobs.normalize-event.outputs.head_sha }}
+      base_sha:
+        description: Normalized base SHA, or empty string.
+        value: ${{ jobs.normalize-event.outputs.base_sha }}
+      head_repository:
+        description: Normalized head repository full name, or empty string.
+        value: ${{ jobs.normalize-event.outputs.head_repository }}
+      is_same_repository:
+        description: Whether the event is from the same repository.
+        value: ${{ jobs.normalize-event.outputs.is_same_repository }}
+      is_fork:
+        description: Whether the event is from a fork or external repository.
+        value: ${{ jobs.normalize-event.outputs.is_fork }}
+      workflow_name:
+        description: Normalized workflow_run workflow name, or empty string.
+        value: ${{ jobs.normalize-event.outputs.workflow_name }}
+      workflow_conclusion:
+        description: Normalized workflow_run conclusion, or empty string.
+        value: ${{ jobs.normalize-event.outputs.workflow_conclusion }}
+      dry_run:
+        description: Effective dry-run value.
+        value: ${{ jobs.normalize-event.outputs.dry_run }}
+      eligible:
+        description: Whether downstream read-only processing may continue.
+        value: ${{ jobs.normalize-event.outputs.eligible }}
+      ineligible_reason:
+        description: Stable reason when eligible is false.
+        value: ${{ jobs.normalize-event.outputs.ineligible_reason }}
+
+permissions:
+  contents: read
+
+jobs:
+  normalize-event:
+    name: Normalize event
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      event_name: ${{ steps.normalize-event.outputs.event_name }}
+      event_action: ${{ steps.normalize-event.outputs.event_action }}
+      repository: ${{ steps.normalize-event.outputs.repository }}
+      repository_owner: ${{ steps.normalize-event.outputs.repository_owner }}
+      default_branch: ${{ steps.normalize-event.outputs.default_branch }}
+      actor: ${{ steps.normalize-event.outputs.actor }}
+      issue_number: ${{ steps.normalize-event.outputs.issue_number }}
+      pull_request_number: ${{ steps.normalize-event.outputs.pull_request_number }}
+      head_sha: ${{ steps.normalize-event.outputs.head_sha }}
+      base_sha: ${{ steps.normalize-event.outputs.base_sha }}
+      head_repository: ${{ steps.normalize-event.outputs.head_repository }}
+      is_same_repository: ${{ steps.normalize-event.outputs.is_same_repository }}
+      is_fork: ${{ steps.normalize-event.outputs.is_fork }}
+      workflow_name: ${{ steps.normalize-event.outputs.workflow_name }}
+      workflow_conclusion: ${{ steps.normalize-event.outputs.workflow_conclusion }}
+      dry_run: ${{ steps.normalize-event.outputs.dry_run }}
+      eligible: ${{ steps.normalize-event.outputs.eligible }}
+      ineligible_reason: ${{ steps.normalize-event.outputs.ineligible_reason }}
+    steps:
+      - name: Validate kit ref
+        env:
+          KIT_REF: ${{ inputs.kit-ref }}
+        run: |
+          node - <<'NODE'
+          const ref = process.env.KIT_REF || '';
+          const ok = /^[a-f0-9]{40}$/i.test(ref) || /^v\d+\.\d+\.\d+$/.test(ref);
+          if (!ok) {
+            console.error('kit-ref must be a 40-character commit SHA or complete version tag.');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Checkout shared kit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: nozomu-honda/codex-workflow-kit
+          ref: ${{ inputs.kit-ref }}
+          path: .codex-workflow-kit
+          persist-credentials: false
+
+      - name: Normalize event
+        id: normalize-event
+        env:
+          EVENT_NAME: ${{ inputs.event-name }}
+          EVENT_ACTION: ${{ inputs.event-action }}
+          EVENT_PAYLOAD_JSON: ${{ inputs.event-payload-json }}
+          REPOSITORY: ${{ inputs.repository }}
+          REPOSITORY_OWNER: ${{ inputs.repository-owner }}
+          DEFAULT_BRANCH: ${{ inputs.default-branch }}
+          ACTOR: ${{ inputs.actor }}
+          REF_NAME: ${{ inputs.ref-name }}
+          SHA: ${{ inputs.sha }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          PERMISSION_MODE: ${{ inputs.permission-mode }}
+          REQUESTED_CAPABILITY: ${{ inputs.requested-capability }}
+          REPOSITORY_CONFIG_JSON: ${{ inputs.repository-config-json }}
+        run: node .codex-workflow-kit/scripts/normalize-event.mjs
