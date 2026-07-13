@@ -49,6 +49,8 @@ JSON Schemaは代表fixtureでvalidatorとparity確認します。ただし、no
 - `dry-run` defaultは `true`
 - `dry-run=false` でも副作用処理は存在しない
 - `action.yml` のinput/output名と実装が一致する
+- `action.yml` の `runs.using` が `node24`
+- `dist/index.js` がNode 24でvalid / invalid configを処理できる
 
 Action専用確認:
 
