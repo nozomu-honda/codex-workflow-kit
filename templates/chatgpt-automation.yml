@@ -5,8 +5,8 @@ mergeMethod: squash
 dryRunDefault: true
 
 features:
-  autoRequest: true
-  routeReview: true
+  autoRequest: false
+  routeReview: false
   autoMerge: false
   mainFollowup: false
   actionsApproval: false

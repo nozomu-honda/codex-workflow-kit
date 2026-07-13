@@ -44,6 +44,8 @@ docs/github-automation/
 
 `templates/workflows/validate-config.yml` には、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートを置いています。triggerは `workflow_dispatch` のみで、reusable workflow refは導入時に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換します。
 
+`scripts/audit-consumer-installation.mjs` には、導入先リポジトリのChatGPT automation設定とcaller workflowをネットワークアクセスなし・GitHub API writeなしで監査するread-only CLIを置いています。詳細は `docs/github-automation/installation-audit.md` を参照してください。
+
 ## 推奨配置
 
 ローカルPCでは、以下のようにプロジェクト横断の共通ファイルとして置く想定です。

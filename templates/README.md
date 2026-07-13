@@ -40,4 +40,6 @@
 4. 導入先に `.github/chatgpt-automation.yml` を置く。
 5. GitHub Actionsの `workflow_dispatch` で手動実行し、valid configでは成功、invalid configではfail closedで失敗することを確認する。
 
+コピー後は `scripts/audit-consumer-installation.mjs` で、導入先のconfigとcaller workflowをread-only監査できます。詳細は `docs/github-automation/installation-audit.md` を参照してください。
+
 実イベントtriggerは後続Issueで機能ごとに追加します。

@@ -148,8 +148,8 @@ test('loads the sample config and normalizes safe defaults', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.config.version, 1);
   assert.equal(result.config.baseBranch, 'master');
-  assert.equal(result.capabilities.autoRequest, true);
-  assert.equal(result.capabilities.routeReview, true);
+  assert.equal(result.capabilities.autoRequest, false);
+  assert.equal(result.capabilities.routeReview, false);
   assert.equal(result.capabilities.autoMerge, false);
   assert.ok(result.config.protectedFiles.hardBlockPatterns.includes('.github/**'));
   assert.ok(result.config.protectedFiles.hardBlockPatterns.includes('docs/private/**'));

@@ -35,6 +35,35 @@ validatorは設定全文やSecret値をログ出力しません。error / warnin
 
 JSON Schemaは代表fixtureでvalidatorとparity確認します。ただし、normalized config、warnings、capabilitiesを含む機械判定の正本はfail-closed validatorです。
 
+## Installation audit CLI validation
+
+`scripts/audit-consumer-installation.mjs` は、導入先リポジトリのconfigとcaller workflowをread-onlyで監査します。詳細は [Installation audit CLI](installation-audit.md) を参照します。
+
+確認対象:
+
+- valid consumer fixtureで成功する
+- `--config` / `--workflow` / `--expected-ref` を処理できる
+- human-readable出力とJSON出力が安定している
+- config欠落、読み取り不可、不正YAML、未知キー、型不正、`dryRunDefault: false` を検出する
+- workflow欠落、不正YAML、branch/tag/短縮SHA/placeholder ref、wrong repository/path、禁止trigger、write permission、secrets、`secrets: inherit`、`runs-on`、`steps`、`run`、`shell`、複数job、想定外input/outputを検出する
+- Secret-like fixture値、絶対path、stack traceを出力しない
+- invalid時はnon-zero exit codeになる
+- template dogfood監査ではplaceholderを一時fixture内で40桁SHAへ置換し、本番監査ではplaceholderを拒否する
+
+Audit専用確認:
+
+```bash
+npm run test:audit
+npm run lint:audit
+npm run audit:template
+```
+
+導入先を直接監査する場合:
+
+```bash
+npm run audit:consumer -- --root ../consumer-repo --expected-ref 0123456789abcdef0123456789abcdef01234567
+```
+
 ## Shared Action validation
 
 `actions/validate-config` は同じvalidatorを使い、設定読み込みと検証だけを行います。
