@@ -80,6 +80,7 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - `scripts/normalize-event.mjs` と `packages/chatgpt-automation-core/src/events/` の純粋ロジックでpayloadを正規化する
 - `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push` を対象にする
 - fork / external PR、失敗workflow_run、未mergeのPR close、default branch以外へのpush、想定外action、入力不備は `eligible=false` にする
+- PR上の `issue_comment` はpayloadだけではfork / same-repository境界を検証できないため、PR情報取得契約が追加されるまでは `eligible=false` にする
 
 Issue #23ではイベント受付・正規化・安全判定までを共通化し、ChatGPT review routing、自動マージ、main追従、Codex起動、Queue Issue更新などのwrite処理は後続Issueに分けます。
 

@@ -10,18 +10,59 @@ const HEAD_SHA = '1111111111111111111111111111111111111111';
 const BASE_SHA = '2222222222222222222222222222222222222222';
 const BEFORE_SHA = '3333333333333333333333333333333333333333';
 
-test('same-repo issue commentを正規化する', () => {
+test('通常Issueへのissue_commentを正規化する', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'issue_comment',
+    eventAction: 'created',
+    payload: issueCommentPayload({ isPullRequest: false })
+  }));
+
+  assertEligible(result);
+  assert.equal(result.outputs.issue_number, '42');
+  assert.equal(result.outputs.pull_request_number, '');
+  assert.equal(result.outputs.is_same_repository, 'true');
+  assert.equal(result.outputs.is_fork, 'false');
+});
+
+test('same-repo PR上のissue_commentはPR provenance未検証のためeligibleにしない', () => {
   const result = normalizeAutomationEvent(baseInput({
     eventName: 'issue_comment',
     eventAction: 'created',
     payload: issueCommentPayload()
   }));
 
-  assertEligible(result);
+  assertIneligible(result, /pull request issue_comment provenance is not verified/);
   assert.equal(result.outputs.issue_number, '42');
   assert.equal(result.outputs.pull_request_number, '42');
-  assert.equal(result.outputs.is_same_repository, 'true');
+  assert.equal(result.outputs.is_same_repository, 'false');
   assert.equal(result.outputs.is_fork, 'false');
+});
+
+test('fork PR上のissue_commentもPR provenance未検証のためfail closedにする', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'issue_comment',
+    eventAction: 'created',
+    payload: issueCommentPayload()
+  }));
+
+  assertIneligible(result, /pull request issue_comment provenance is not verified/);
+  assert.equal(result.outputs.pull_request_number, '42');
+  assert.equal(result.outputs.is_same_repository, 'false');
+  assert.equal(result.outputs.is_fork, 'false');
+});
+
+test('PR情報を検証できないissue_commentはfail closedにする', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'issue_comment',
+    eventAction: 'created',
+    payload: issueCommentPayload({
+      pullRequest: { url: 'https://api.example.invalid/repos/owner/repo/pulls/42' }
+    })
+  }));
+
+  assertIneligible(result, /pull request issue_comment provenance is not verified/);
+  assert.equal(result.outputs.pull_request_number, '42');
+  assert.equal(result.outputs.head_repository, '');
 });
 
 test('same-repo PR reviewを正規化する', () => {
@@ -255,15 +296,21 @@ function senderPayload() {
   return { login: ACTOR };
 }
 
-function issueCommentPayload() {
+function issueCommentPayload(options = {}) {
+  const isPullRequest = options.isPullRequest ?? true;
+  const issue = {
+    number: 42
+  };
+
+  if (isPullRequest) {
+    issue.pull_request = options.pullRequest ?? { url: 'https://api.example.invalid/repos/owner/repo/pulls/42' };
+  }
+
   return {
     action: 'created',
     repository: repositoryPayload(),
     sender: senderPayload(),
-    issue: {
-      number: 42,
-      pull_request: { url: 'https://api.example.invalid/repos/owner/repo/pulls/42' }
-    },
+    issue,
     comment: {
       body: 'review marker'
     }

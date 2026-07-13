@@ -148,6 +148,7 @@ export function normalizeAutomationEvent(input = {}) {
 
 function normalizeIssueComment({ payload, eventAction, repository, baseOutputs }) {
   const issueNumber = numberToOutput(payload?.issue?.number);
+  const isPullRequestComment = Boolean(payload?.issue?.pull_request);
   const errors = [];
 
   if (!ALLOWED_ACTIONS.issue_comment.has(eventAction)) {
@@ -156,12 +157,15 @@ function normalizeIssueComment({ payload, eventAction, repository, baseOutputs }
   if (!issueNumber) {
     errors.push('missing issue number');
   }
+  if (isPullRequestComment) {
+    errors.push('pull request issue_comment provenance is not verified');
+  }
 
   return finalize({
     ...baseOutputs,
     issue_number: issueNumber,
-    pull_request_number: payload?.issue?.pull_request ? issueNumber : '',
-    is_same_repository: 'true',
+    pull_request_number: isPullRequestComment ? issueNumber : '',
+    is_same_repository: isPullRequestComment ? 'false' : 'true',
     is_fork: 'false'
   }, errors);
 }

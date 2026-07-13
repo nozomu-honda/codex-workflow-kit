@@ -81,7 +81,7 @@ test('dry-runではwrite処理が発生せずwrite相当capabilityはfail closed
   const readOnly = normalizeAutomationEvent(consumerInput({
     eventName: 'issue_comment',
     eventAction: 'created',
-    payload: issueCommentPayload(),
+    payload: issueCommentPayload({ isPullRequest: false }),
     dryRun: true
   }));
   const writeRequested = normalizeAutomationEvent(consumerInput({
@@ -95,6 +95,19 @@ test('dry-runではwrite処理が発生せずwrite相当capabilityはfail closed
   assert.equal(readOnly.outputs.eligible, 'true');
   assert.equal(writeRequested.outputs.eligible, 'false');
   assert.match(writeRequested.outputs.ineligible_reason, /write capability is not implemented/);
+});
+
+test('PR上のissue_commentはPR provenance未検証のためconsumer E2Eでもfail closedになる', () => {
+  const result = normalizeAutomationEvent(consumerInput({
+    eventName: 'issue_comment',
+    eventAction: 'created',
+    payload: issueCommentPayload()
+  }));
+
+  assert.equal(result.outputs.eligible, 'false');
+  assert.equal(result.outputs.pull_request_number, '42');
+  assert.equal(result.outputs.is_same_repository, 'false');
+  assert.match(result.outputs.ineligible_reason, /pull request issue_comment provenance is not verified/);
 });
 
 test('consumer templateはSecret、pull_request_target、inline write処理を含まない', async () => {
@@ -155,15 +168,20 @@ function repositoryPayload() {
   };
 }
 
-function issueCommentPayload() {
+function issueCommentPayload(options = {}) {
+  const issue = {
+    number: 42
+  };
+
+  if (options.isPullRequest ?? true) {
+    issue.pull_request = { url: 'https://api.example.invalid/repos/owner/repo/pulls/42' };
+  }
+
   return {
     action: 'created',
     repository: repositoryPayload(),
     sender: { login: 'octocat' },
-    issue: {
-      number: 42,
-      pull_request: { url: 'https://api.example.invalid/repos/owner/repo/pulls/42' }
-    }
+    issue
   };
 }
 

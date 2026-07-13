@@ -36,6 +36,7 @@ Issue #23の実イベント受付では、導入先caller workflowと共通reusa
 - Secret inputは定義しない
 - `secrets: inherit` は使わない
 - fork / external PRは `eligible=false` にする
+- PR上の `issue_comment` は、payloadだけではfork / same-repository境界を検証できないため `eligible=false` にする
 - `permission-mode` は `read-only` だけを許可する
 - `requested-capability` は `normalize-only` だけを許可する
 - write相当capabilityが要求された場合はfail closedにする
