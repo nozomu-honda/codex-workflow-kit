@@ -42,7 +42,20 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 - `capabilities-json` はboolean capabilityだけを含む
 - Secret-like values、config全文、正規化済みconfig全文をログへ出さない
 
-このActionはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。caller workflowとreusable workflowは後続Issueで追加します。
+このActionはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。caller workflowは後続Issueで追加します。
+
+## Reusable workflow
+
+`.github/workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。
+
+- inputsは `config-file` と `dry-run` のみ
+- workflow outputsは `ok`、`error-count`、`warning-count`、`capabilities-json`、`dry-run`
+- permissionsはworkflow / jobとも `contents: read`
+- Secret input、`secrets: inherit`、write permissionは使わない
+- `actions/checkout@v4` でcaller repositoryをcheckoutする
+- `actions/validate-config` は `nozomu-honda/codex-workflow-kit/actions/validate-config@master` として明示参照し、caller repositoryの相対pathとは誤認させない
+
+このreusable workflowはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。導入先caller workflow templateと実イベントtriggerは後続Issueで追加します。refは将来的にtagまたはcommit SHAへ固定します。
 
 導入先設定で弱体化できない安全条件:
 

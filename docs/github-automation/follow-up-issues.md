@@ -18,9 +18,10 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
 
 3. Reusable workflowの最小骨格を追加する
+   - Issue #9で対応。
    - `reusable-workflows/` に `workflow_call` の入口を作る。
    - 導入先の薄いcaller workflowから呼べる形にする。
-   - Issue #3ではまだ追加しない。
+   - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
 
 4. Caller workflow templatesを追加する
    - `issue_comment`
