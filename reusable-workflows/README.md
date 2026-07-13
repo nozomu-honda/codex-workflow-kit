@@ -13,7 +13,7 @@
 `.github/workflows/validate-config.yml` は以下だけを行います。
 
 1. caller repositoryを `actions/checkout@v4` でcheckoutする
-2. `nozomu-honda/codex-workflow-kit/actions/validate-config@9864aad80419547ad0e8c837ab1066eee4be4a9a` を呼び出す
+2. `nozomu-honda/codex-workflow-kit/actions/validate-config@03d54075f77034124b0b0982200b0d44059bed8a` を呼び出す
 3. Action outputsをworkflow outputsとして公開する
 
 公開するworkflow outputs:

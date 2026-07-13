@@ -59,7 +59,7 @@ REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
 
 4. reusable workflow内部のAction参照も40桁commit SHAへ固定されていることを確認する。
 
-現在の `.github/workflows/validate-config.yml` は、レビュー済みcommit `9864aad80419547ad0e8c837ab1066eee4be4a9a` の `actions/validate-config` を参照します。このcommitには `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認済みです。内部Action refを更新する場合も、40桁commit SHAだけを使い、対象commitにAction metadataと配布物があることを確認します。
+現在の `.github/workflows/validate-config.yml` は、レビュー済みcommit `03d54075f77034124b0b0982200b0d44059bed8a` の `actions/validate-config` を参照します。このcommitには `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在し、Action metadataの `runs.using` が `node24` であることを確認済みです。内部Action refを更新する場合も、40桁commit SHAだけを使い、対象commitにAction metadataと配布物があることを確認します。
 
 5. GitHub Actionsの `workflow_dispatch` で手動実行する。
 
