@@ -4,6 +4,8 @@
 README.md
 AGENTS.md
 LICENSE
+package.json
+package-lock.json
 install.ps1
 codex-cross-project-autohotkey-v2.ahk
 desktop/
@@ -14,6 +16,9 @@ reusable-workflows/
   README.md
 templates/
   README.md
+  chatgpt-automation.yml
+scripts/
+  validate-config.mjs
 examples/
   AGENTS.example.md
   current-status.example.md
@@ -52,11 +57,18 @@ docs/
   github-automation/
     README.md
     architecture.md
+    config-schema.md
     permissions.md
     installation.md
     migration.md
     validation.md
     follow-up-issues.md
+packages/
+  chatgpt-automation-core/
+    src/config/
+    test/
+schemas/
+  chatgpt-automation.schema.json
 ```
 
 ## Compatibility notes

@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nozomu-honda/codex-workflow-kit/schemas/chatgpt-automation.schema.json",
+  "title": "ChatGPT automation config",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "baseBranch", "ciWorkflowName"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "baseBranch": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "ciWorkflowName": {
+      "type": "string",
+      "pattern": "^(?=.*\\S)[^\\r\\n]+$"
+    },
+    "mergeMethod": {
+      "enum": ["squash", "merge", "rebase"]
+    },
+    "dryRunDefault": {
+      "type": "boolean",
+      "default": true
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "autoRequest": { "type": "boolean", "default": false },
+        "routeReview": { "type": "boolean", "default": false },
+        "autoMerge": { "type": "boolean", "default": false },
+        "mainFollowup": { "type": "boolean", "default": false },
+        "actionsApproval": { "type": "boolean", "default": false }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "needsChatGptReview": { "$ref": "#/$defs/nonEmptyString" },
+        "reviewedByChatGpt": { "$ref": "#/$defs/nonEmptyString" },
+        "needsCodexFix": { "$ref": "#/$defs/nonEmptyString" },
+        "codexFixInProgress": { "$ref": "#/$defs/nonEmptyString" },
+        "autoMergeAfterCi": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotMerge": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoReviewRequest": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoCodexFix": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoCodexMainFollowup": { "$ref": "#/$defs/nonEmptyString" },
+        "codexMainFollowupInProgress": { "$ref": "#/$defs/nonEmptyString" },
+        "doNotAutoApproveActions": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "decisionMode": {
+          "enum": ["marker-only", "trusted-actors"]
+        },
+        "trustedActors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "markers": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "approved": { "$ref": "#/$defs/nonEmptyString" },
+            "changesRequested": { "$ref": "#/$defs/nonEmptyString" },
+            "reviewRequest": { "$ref": "#/$defs/nonEmptyString" },
+            "ignoreInFencedCodeBlocks": { "const": true },
+            "excludeReviewRequestComments": { "const": true }
+          }
+        },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "stopOnLatestChangesRequested": { "const": true }
+          }
+        }
+      }
+    },
+    "protectedFiles": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "disableDefaults": { "const": false },
+        "defaultHardBlockPatterns": false,
+        "hardBlockPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "warningOnlyPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "secretLike": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "disableDefaults": { "const": false },
+        "defaultHardBlockPatterns": false,
+        "hardBlockPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "warningOnlyPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "queues": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "reviewFix": { "$ref": "#/$defs/queue" },
+        "mainFollowup": { "$ref": "#/$defs/queue" }
+      }
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "reviewFix": { "$ref": "#/$defs/codexAutoFix" },
+        "mainFollowup": { "$ref": "#/$defs/codexAutoFix" }
+      }
+    },
+    "schedules": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "reviewRequest": { "$ref": "#/$defs/schedule" },
+        "autoMerge": { "$ref": "#/$defs/schedule" },
+        "mainFollowup": { "$ref": "#/$defs/schedule" },
+        "actionsApproval": { "$ref": "#/$defs/schedule" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "reviewRequestCommentToken": { "$ref": "#/$defs/envName" },
+        "prBranchUpdateToken": { "$ref": "#/$defs/envName" },
+        "autoMergeToken": { "$ref": "#/$defs/envName" },
+        "actionsApproverToken": { "$ref": "#/$defs/envName" }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "codexTrigger": { "$ref": "#/$defs/envName" },
+        "mainFollowupEnabled": { "$ref": "#/$defs/envName" },
+        "reviewFixMaxAttempts": { "$ref": "#/$defs/envName" },
+        "mainFollowupMaxAttempts": { "$ref": "#/$defs/envName" }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "pattern": ".*\\S.*"
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]*$"
+    },
+    "cron": {
+      "type": "string",
+      "format": "github-actions-cron"
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "issueNumber": { "type": "integer", "minimum": 1 },
+        "issueTitle": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "anyOf": [
+              { "required": ["issueNumber"] },
+              { "required": ["issueTitle"] }
+            ]
+          }
+        }
+      ]
+    },
+    "codexAutoFix": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "sameRepoOnly": { "const": true },
+        "allowDraft": { "type": "boolean", "default": false },
+        "blockedLabel": { "$ref": "#/$defs/nonEmptyString" },
+        "inProgressLabel": { "$ref": "#/$defs/nonEmptyString" },
+        "triggerVariableName": { "$ref": "#/$defs/envName" }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "cron": { "$ref": "#/$defs/cron" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          },
+          "then": {
+            "required": ["cron"]
+          }
+        }
+      ]
+    }
+  }
+}

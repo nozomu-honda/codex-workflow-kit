@@ -8,10 +8,36 @@ GitHub automation共通化では、共通側と導入先側を明確に分けま
 
 - 判定ロジック
 - 設定スキーマ
+- fail-closed validator
 - caller workflow templates
 - reusable workflow / Action
 - tests
 - 導入・移行・検証ドキュメント
+
+## 設定schema
+
+GitHub automationの導入先ごとの差分は、バージョン付き設定で表現します。
+
+機械判定の正本:
+
+- `packages/chatgpt-automation-core/src/config/index.js`
+
+関連する構造schemaとsample:
+
+- `schemas/chatgpt-automation.schema.json`
+- `templates/chatgpt-automation.yml`
+
+validatorは副作用を持ちません。設定欠落、型不一致、危険な上書き、未対応versionがある場合はfail closedになり、write capabilityを有効化しません。
+JSON Schemaは導入先設定の構造契約として提供し、代表的なvalid / invalid fixtureでvalidatorとのparityをテストします。normalized config、warnings、capabilitiesはvalidatorの結果を正とします。
+
+導入先設定で弱体化できない安全条件:
+
+- 共通hard-block defaults
+- fenced code block内markerの無視
+- review request commentの判定除外
+- 最新 `changes_requested` で停止
+- secret-like hard block
+- fork / same-repository安全境界
 
 ## 導入先側
 
@@ -40,5 +66,6 @@ GitHub automation共通化では、共通側と導入先側を明確に分けま
 - 既存導入先のworkflow/script移植
 - 自動レビュー本体の公開
 - 自動マージ本体の公開
+- GitHub API write処理
 - 導入先リポジトリのSecretsやlabels作成
 - `pull_request_target` を使うworkflow追加

@@ -8,6 +8,7 @@
 
 - [Architecture](architecture.md)
 - [Permissions](permissions.md)
+- [Config schema](config-schema.md)
 - [Installation](installation.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
