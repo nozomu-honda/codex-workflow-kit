@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nozomu-honda/codex-workflow-kit/schemas/chatgpt-automation.schema.json",
+  "title": "ChatGPT automation config",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["version", "baseBranch", "ciWorkflowName"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "baseBranch": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "ciWorkflowName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mergeMethod": {
+      "enum": ["squash", "merge", "rebase"]
+    },
+    "dryRunDefault": {
+      "type": "boolean",
+      "default": true
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "autoRequest": { "type": "boolean", "default": false },
+        "routeReview": { "type": "boolean", "default": false },
+        "autoMerge": { "type": "boolean", "default": false },
+        "mainFollowup": { "type": "boolean", "default": false },
+        "actionsApproval": { "type": "boolean", "default": false }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "decisionMode": {
+          "enum": ["marker-only", "trusted-actors"]
+        },
+        "trustedActors": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "markers": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "approved": { "type": "string", "minLength": 1 },
+            "changesRequested": { "type": "string", "minLength": 1 },
+            "reviewRequest": { "type": "string", "minLength": 1 },
+            "ignoreInFencedCodeBlocks": { "const": true },
+            "excludeReviewRequestComments": { "const": true }
+          }
+        },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "stopOnLatestChangesRequested": { "const": true }
+          }
+        }
+      }
+    },
+    "protectedFiles": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "disableDefaults": { "const": false },
+        "hardBlockPatterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "warningOnlyPatterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "secretLike": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "disableDefaults": { "const": false },
+        "hardBlockPatterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "warningOnlyPatterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "queues": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "codex": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "schedules": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "variables": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

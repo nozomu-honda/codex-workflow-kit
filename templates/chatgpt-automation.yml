@@ -1,0 +1,96 @@
+version: 1
+baseBranch: master
+ciWorkflowName: CI
+mergeMethod: squash
+dryRunDefault: true
+
+features:
+  autoRequest: true
+  routeReview: true
+  autoMerge: false
+  mainFollowup: false
+  actionsApproval: false
+
+labels:
+  needsChatGptReview: needs-chatgpt-review
+  reviewedByChatGpt: reviewed-by-chatgpt
+  needsCodexFix: needs-codex-fix
+  codexFixInProgress: codex-fix-in-progress
+  autoMergeAfterCi: auto-merge-after-ci
+  doNotMerge: do-not-merge
+  doNotAutoReviewRequest: do-not-auto-review-request
+  doNotAutoCodexFix: do-not-auto-codex-fix
+  doNotAutoCodexMainFollowup: do-not-auto-codex-main-followup
+  codexMainFollowupInProgress: codex-main-followup-in-progress
+  doNotAutoApproveActions: do-not-auto-approve-actions
+
+review:
+  decisionMode: marker-only
+  trustedActors: []
+  markers:
+    approved: '<!-- chatgpt-review: approved -->'
+    changesRequested: '<!-- chatgpt-review: changes_requested -->'
+    reviewRequest: '<!-- chatgpt-review-request -->'
+    ignoreInFencedCodeBlocks: true
+    excludeReviewRequestComments: true
+  decisions:
+    stopOnLatestChangesRequested: true
+
+protectedFiles:
+  hardBlockPatterns:
+    - docs/private/**
+  warningOnlyPatterns:
+    - docs/drafts/**
+
+secretLike:
+  hardBlockPatterns:
+    - PRIVATE_DEPLOYMENT_URL
+  warningOnlyPatterns:
+    - generated-placeholder
+
+queues:
+  reviewFix:
+    enabled: false
+    issueTitle: 'Codex Queue: review fix tasks'
+  mainFollowup:
+    enabled: false
+    issueTitle: 'Codex Queue: main follow-up tasks'
+
+codex:
+  reviewFix:
+    enabled: false
+    maxAttempts: 2
+    sameRepoOnly: true
+    allowDraft: false
+    blockedLabel: do-not-auto-codex-fix
+    inProgressLabel: codex-fix-in-progress
+    triggerVariableName: CODEX_TRIGGER_COMMENT
+  mainFollowup:
+    enabled: false
+    maxAttempts: 2
+    sameRepoOnly: true
+    allowDraft: false
+    blockedLabel: do-not-auto-codex-main-followup
+    inProgressLabel: codex-main-followup-in-progress
+    triggerVariableName: CODEX_TRIGGER_COMMENT
+
+schedules:
+  reviewRequest:
+    enabled: false
+  autoMerge:
+    enabled: false
+  mainFollowup:
+    enabled: false
+  actionsApproval:
+    enabled: false
+
+secrets:
+  reviewRequestCommentToken: REVIEW_REQUEST_COMMENT_TOKEN
+  prBranchUpdateToken: PR_BRANCH_UPDATE_TOKEN
+  autoMergeToken: AUTO_MERGE_TOKEN
+  actionsApproverToken: ACTIONS_APPROVER_TOKEN
+
+variables:
+  codexTrigger: CODEX_TRIGGER_COMMENT
+  mainFollowupEnabled: MAIN_FOLLOWUP_CODEX_AUTO_FIX
+  maxAttempts: CODEX_AUTO_FIX_MAX_ATTEMPTS

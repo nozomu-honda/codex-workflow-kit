@@ -33,6 +33,8 @@ docs/github-automation/
 | `reusable-workflows/` | `workflow_call` 対応の共通workflow配置先 |
 | `templates/` | 導入先caller workflow、config、labels、setup examples |
 | `docs/github-automation/` | architecture、permissions、installation、migration、validation |
+| `packages/chatgpt-automation-core/` | GitHub automation設定schema / validatorなどの純粋ロジック |
+| `schemas/` | JSON Schemaなど、設定正本の配置先 |
 
 このIssueでは、自動レビュー・自動マージ本体の移植や公開はまだ行いません。
 

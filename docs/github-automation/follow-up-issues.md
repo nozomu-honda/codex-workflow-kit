@@ -7,16 +7,19 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
 ## 候補Issue
 
 1. Config schemaを定義する
+   - Issue #3で対応。
    - base branch、labels、protected file patterns、token env names、dry-run設定を記述できるschemaを作る。
    - 設定欠落や不正値は安全側に倒す。
 
 2. Shared Actionの最小骨格を追加する
    - `actions/` に副作用のないdry-run可能なエントリを作る。
    - Secret-like valuesをログに出さないテストを追加する。
+   - Issue #3ではまだ追加しない。
 
 3. Reusable workflowの最小骨格を追加する
    - `reusable-workflows/` に `workflow_call` の入口を作る。
    - 導入先の薄いcaller workflowから呼べる形にする。
+   - Issue #3ではまだ追加しない。
 
 4. Caller workflow templatesを追加する
    - `issue_comment`
@@ -25,6 +28,7 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - `workflow_run`
    - `pull_request.closed`
    - `push`
+   - Issue #3ではまだ追加しない。
 
 5. ChatGPT review routingの共通化を検討する
    - 既存導入先の仕様を棚卸しし、共通化できる判定だけを切り出す。

@@ -31,6 +31,7 @@
 - docs/windows-startup.md
 - docs/github-automation/README.md
 - docs/github-automation/architecture.md
+- docs/github-automation/config-schema.md
 - docs/github-automation/permissions.md
 - docs/github-automation/installation.md
 - docs/github-automation/migration.md
