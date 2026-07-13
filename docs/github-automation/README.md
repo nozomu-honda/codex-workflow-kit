@@ -12,6 +12,7 @@
 - [Installation](installation.md)
 - [Installation audit CLI](installation-audit.md)
 - [Event normalization](event-normalization.md)
+- [ChatGPT review routing](review-routing.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
 - [Follow-up Issues](follow-up-issues.md)
@@ -21,6 +22,7 @@
 - 共通側は判定ロジック、設定スキーマ、テンプレート、reusable workflow / Action、テスト、導入ドキュメントを持つ
 - 導入先側はイベントを受ける薄いcaller workflowと、repository固有設定、labels、Variables、Secrets、fine-grained PAT、Queue Issueを持つ
 - 実イベントは薄いcaller workflowから共通reusable workflowへ渡し、共通形式へ正規化してから後続処理に渡す
+- ChatGPT review routingはrouting plan生成までを共通化し、write処理は後続Issueへ分離する
 - `pull_request_target` は使わない
 - fork / external PRへSecretを渡さない
 - 設定欠落や不正値は安全側に倒す

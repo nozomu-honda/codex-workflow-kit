@@ -127,6 +127,19 @@ test('default branchへのpushを正規化する', () => {
   assert.equal(result.outputs.head_repository, REPOSITORY);
 });
 
+test('manual workflow_dispatchのPR番号を正規化する', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'workflow_dispatch',
+    eventAction: '',
+    payload: workflowDispatchPayload({ pullRequestNumber: '42' })
+  }));
+
+  assertEligible(result);
+  assert.equal(result.outputs.pull_request_number, '42');
+  assert.equal(result.outputs.head_repository, REPOSITORY);
+  assert.equal(result.outputs.is_same_repository, 'true');
+});
+
 test('fork PRはeligibleにしない', () => {
   const result = normalizeAutomationEvent(baseInput({
     eventName: 'pull_request_review',
@@ -164,6 +177,16 @@ test('必要なPR番号がないpayloadはeligibleにしない', () => {
   }));
 
   assertIneligible(result, /missing pull request number/);
+});
+
+test('manual workflow_dispatchでPR番号がない場合はeligibleにしない', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'workflow_dispatch',
+    eventAction: '',
+    payload: workflowDispatchPayload({ pullRequestNumber: '' })
+  }));
+
+  assertIneligible(result, /missing manual pull request number/);
 });
 
 test('想定外actionはeligibleにしない', () => {
@@ -370,5 +393,15 @@ function pushPayload(options = {}) {
     ref: options.ref,
     before: BEFORE_SHA,
     after: HEAD_SHA
+  };
+}
+
+function workflowDispatchPayload(options = {}) {
+  return {
+    repository: repositoryPayload(),
+    sender: senderPayload(),
+    inputs: {
+      pull_request_number: options.pullRequestNumber
+    }
   };
 }

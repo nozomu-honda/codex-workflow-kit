@@ -1,0 +1,56 @@
+name: ChatGPT review routing events
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created, edited]
+  workflow_run:
+    types: [completed]
+  pull_request:
+    types: [closed]
+  push:
+    branches:
+      - REPLACE_WITH_DEFAULT_BRANCH
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request number to evaluate for a manual review request.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
+
+jobs:
+  review-routing:
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+      checks: read
+      statuses: read
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/review-routing.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    with:
+      event-name: ${{ github.event_name }}
+      event-action: ${{ github.event.action || '' }}
+      event-payload-json: ${{ toJson(github.event) }}
+      repository: ${{ github.repository }}
+      repository-owner: ${{ github.repository_owner }}
+      default-branch: ${{ github.event.repository.default_branch }}
+      actor: ${{ github.actor }}
+      ref-name: ${{ github.ref_name }}
+      sha: ${{ github.sha }}
+      dry-run: true
+      repository-config-json: ${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_CONFIG_JSON || '{}' }}
+      existing-dedupe-keys: ${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_DEDUPE_KEYS || '' }}
+      last-routed-at: ${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_LAST_ROUTED_AT || '' }}
+      kit-ref: REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA

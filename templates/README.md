@@ -72,3 +72,33 @@
 5. 初回はdry-runのまま、正規化outputsと `eligible` / `ineligible_reason` を確認する。
 
 このテンプレートはイベント受付と正規化だけを行います。ChatGPT review routing、自動マージ、main追従、Codex起動、Queue Issue更新は後続Issueで追加します。
+
+### `workflows/chatgpt-review-routing-events.yml`
+
+導入先で実GitHubイベントを受け、ChatGPT review routing planを共通reusable workflowで作るための、読み取り専用caller workflowテンプレートです。
+
+コピー先:
+
+```text
+.github/workflows/chatgpt-review-routing-events.yml
+```
+
+このテンプレートの特徴:
+
+- triggerは `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push`、`workflow_dispatch`
+- jobは `.github/workflows/review-routing.yml` をjob-level `uses` で呼ぶだけ
+- permissionsはread-onlyの `contents`、`pull-requests`、`issues`、`actions`、`checks`、`statuses`
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
+
+導入手順:
+
+1. `templates/workflows/chatgpt-review-routing-events.yml` を導入先の `.github/workflows/chatgpt-review-routing-events.yml` へコピーする。
+2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+3. `REPLACE_WITH_DEFAULT_BRANCH` を導入先のdefault branch名へ置換する。
+4. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_REVIEW_ROUTING_CONFIG_JSON` にSecret値を含まないJSONを設定する。
+5. 重複抑制やcooldownを外部で管理する場合は、Secretを含まないVariableでdedupe keyやlast routed timestampを渡す。
+6. 初回はdry-runのまま、`should_route`、`skip_reason`、`actor_trust`、`dedupe_key` を確認する。
+
+このテンプレートはrouting planの生成だけを行います。ChatGPT実行、コメント投稿、reaction、label操作、reviewer追加、自動マージ、Codex起動、Queue Issue更新は後続Issueで追加します。

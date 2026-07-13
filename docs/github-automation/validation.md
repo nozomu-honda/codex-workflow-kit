@@ -23,6 +23,7 @@ npm run validate:config
 npm run check:action-dist
 npm run audit:template
 npm run test:events
+npm run test:review-routing
 npm run test:e2e:consumer
 npm run lint:e2e
 npm run ci
@@ -128,6 +129,16 @@ Action source / dist E2Eでは、同じconsumer configを `actions/validate-conf
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
 
+Review routing consumer E2Eでは、`templates/workflows/chatgpt-review-routing-events.yml` から一時consumer workflowを作り、次を確認します。
+
+- reusable workflow refと `kit-ref` が同じ固定SHAへ置換される
+- caller側はread-only permissionsのjob-level `uses` だけを持つ
+- repository固有command / label / reviewer / trusted actor設定はVariable由来JSONとしてcaller側に残せる
+- same-repo、trusted actor、CI successで `should_route=true` になる
+- fork相当payloadとunknown actorは `should_route=false`
+- dry-runではwrite処理が発生しない
+- Secret、`pull_request_target`、inline write処理を含まない
+
 E2E専用確認:
 
 ```bash
@@ -179,6 +190,27 @@ npm run lint:workflow
 ```bash
 npm run test:events
 npm run lint:events
+```
+
+`.github/workflows/review-routing.yml` は、ChatGPT review routing reusable workflowとして静的検証します。
+
+確認対象:
+
+- `workflow_call` だけを入口にする
+- Secret inputがない
+- workflow / job permissionsがread-onlyだけ
+- Issue #23の `.github/workflows/normalize-event.yml` を先に呼ぶ
+- outputsが `packages/chatgpt-automation-core/src/review-routing/` のrouting output名と一致する
+- `kit-ref` は40桁commit SHAまたは `v1.2.3` 形式の完全なversion tagだけを許可する
+- `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- `scripts/route-review.mjs` だけを実行する
+- `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+
+Review routing専用確認:
+
+```bash
+npm run test:review-routing
+npm run lint:review-routing
 ```
 
 GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
@@ -254,6 +286,19 @@ npm run lint:template
 - `dry-run: true`
 - `permission-mode: read-only`
 - `requested-capability: normalize-only`
+- reusable workflow refと `kit-ref` は同じ固定refへ置換する
+- `push.branches` は導入先default branchへ置換する
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
+
+`templates/workflows/chatgpt-review-routing-events.yml` はChatGPT review routing用caller workflow templateとして静的検証します。
+
+確認対象:
+
+- 対象イベントが `issue_comment`、`pull_request_review`、`pull_request_review_comment`、`workflow_run`、`pull_request.closed`、`push`、`workflow_dispatch`
+- jobは1つだけで `.github/workflows/review-routing.yml` をjob-level `uses` で呼ぶ
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- repository固有config、dedupe key、cooldown情報はSecretを含まないVariablesとして渡す
 - reusable workflow refと `kit-ref` は同じ固定refへ置換する
 - `push.branches` は導入先default branchへ置換する
 - Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない

@@ -39,8 +39,12 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - 実イベントのwrite処理は後続Issueで追加する。
 
 5. ChatGPT review routingの共通化を検討する
+   - Issue #24で対応。
    - 既存導入先の仕様を棚卸しし、共通化できる判定だけを切り出す。
+   - Issue #23の正規化outputsを使い、ChatGPTレビュー依頼へ進めるかのrouting planを作る。
+   - `should_route`、`skip_reason`、`actor_trust`、`dedupe_key` などをoutputsとして返す。
    - 導入先固有のlabels、Variables、Secrets、Queue Issueは導入先に残す。
+   - GitHub API write、ChatGPT実行、コメント投稿、label操作、reviewer追加は含めない。
 
 6. Reviewed PR auto-mergeの共通化を検討する
    - 既存の安全条件を緩めずに移植範囲を決める。

@@ -42,3 +42,24 @@ Issue #23の実イベント受付では、導入先caller workflowと共通reusa
 - write相当capabilityが要求された場合はfail closedにする
 
 導入先固有のlabels、Variables、Secrets、fine-grained PAT、Queue Issue番号は導入先側に残します。Issue #24以降でwrite処理を追加する場合も、Secretをfork / external PRへ渡さず、Issue #23の `eligible` outputとfork/same-repository判定を前提に分岐します。
+
+## ChatGPT review routingの権限境界
+
+Issue #24のreview routingは、正規化eventとread-only GitHub API結果からrouting planを作るだけです。
+
+- workflow / job permissionsはread-onlyに限定する
+  - `contents: read`
+  - `pull-requests: read`
+  - `issues: read`
+  - `actions: read`
+  - `checks: read`
+  - `statuses: read`
+- `github.token` はPR情報、changed files、actor権限などのreadにだけ使う
+- token値、Secret値、Cookie、OAuth情報、private URL、payload全文はログへ出さない
+- Secret inputは定義しない
+- `secrets: inherit` は使わない
+- `pull_request_target` は使わない
+- fork / external PR、未知actor、GitHub Actions bot、API read失敗は `should_route=false` にする
+- dry-run defaultで、review request作成、コメント投稿、reaction、label操作、reviewer追加、ChatGPT/Codex起動、Queue Issue更新は行わない
+
+PR上の `issue_comment` はpayloadだけではprovenanceを安全に検証できないため、Issue #24ではrouting対象外です。将来この経路を有効化する場合も、read-only APIでPR番号、base repository、head repository、head SHA、fork境界、actorを確認し、失敗時はfail closedにします。

@@ -83,6 +83,62 @@
         }
       }
     },
+    "reviewRouting": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "dryRun": { "const": true },
+        "allowedBaseBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "acceptedTriggerTypes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewRoutingTriggerType" }
+        },
+        "commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requestLabels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "reviewerNames": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "trustedHumanActors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "trustedBotActors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "allowDraft": { "type": "boolean", "default": false },
+        "allowFork": { "const": false },
+        "requireSameRepository": { "const": true },
+        "requiredWorkflows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "ignoredPathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "sensitivePathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "maxChangedFiles": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "maxAdditions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "maxDeletions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "cooldownSeconds": { "type": "integer", "minimum": 0, "maximum": 604800 },
+        "duplicatePolicy": { "enum": ["dedupe-key", "allow-rerun"] }
+      }
+    },
     "protectedFiles": {
       "type": "object",
       "additionalProperties": true,
@@ -174,6 +230,17 @@
     "cron": {
       "type": "string",
       "format": "github-actions-cron"
+    },
+    "reviewRoutingTriggerType": {
+      "enum": [
+        "ci-success",
+        "trusted-review-command",
+        "trusted-review-request",
+        "manual-review-request",
+        "label-request",
+        "draft-ready",
+        "pr-updated"
+      ]
     },
     "queue": {
       "type": "object",

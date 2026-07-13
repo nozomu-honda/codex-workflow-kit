@@ -43,6 +43,7 @@ validatorは次の安全defaultを常に保持します。
 - review request commentの判定除外
 - 最新 `changes_requested` を停止条件にすること
 - fork / cross-repository PRをCodex自動修正対象にしないsame-repository境界
+- ChatGPT review routingのdry-run default、fork禁止、same-repository必須
 
 導入先設定は、これらを削除または弱体化できません。弱体化を試みる設定はvalidation errorになります。
 
@@ -150,6 +151,19 @@ scheduleのcronはGitHub Actionsで使う5フィールドcronの安全な数値s
 | `review.markers.ignoreInFencedCodeBlocks` | `true` |
 | `review.markers.excludeReviewRequestComments` | `true` |
 | `review.decisions.stopOnLatestChangesRequested` | `true` |
+| `reviewRouting.enabled` | `false` |
+| `reviewRouting.dryRun` | `true` |
+| `reviewRouting.acceptedTriggerTypes` | `ci-success`, `trusted-review-command`, `manual-review-request` |
+| `reviewRouting.commands` | `/chatgpt-review` |
+| `reviewRouting.requestLabels` | `needs-chatgpt-review` |
+| `reviewRouting.allowDraft` | `false` |
+| `reviewRouting.allowFork` | `false` |
+| `reviewRouting.requireSameRepository` | `true` |
+| `reviewRouting.maxChangedFiles` | `100` |
+| `reviewRouting.maxAdditions` | `2000` |
+| `reviewRouting.maxDeletions` | `2000` |
+| `reviewRouting.cooldownSeconds` | `0` |
+| `reviewRouting.duplicatePolicy` | `dedupe-key` |
 | `codex.reviewFix.maxAttempts` | `2` |
 | `codex.reviewFix.sameRepoOnly` | `true` |
 | `codex.reviewFix.allowDraft` | `false` |
@@ -172,6 +186,7 @@ npm ci
 npm test
 npm run lint
 npm run validate:config
+npm run test:review-routing
 git diff --check
 ```
 

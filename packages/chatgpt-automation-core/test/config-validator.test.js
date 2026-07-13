@@ -74,6 +74,28 @@ function validConfig(overrides = {}) {
         stopOnLatestChangesRequested: true
       }
     },
+    reviewRouting: {
+      enabled: false,
+      dryRun: true,
+      allowedBaseBranches: ['master'],
+      acceptedTriggerTypes: ['ci-success', 'trusted-review-command', 'manual-review-request'],
+      commands: ['/chatgpt-review'],
+      requestLabels: ['needs-chatgpt-review'],
+      reviewerNames: [],
+      trustedHumanActors: [],
+      trustedBotActors: [],
+      allowDraft: false,
+      allowFork: false,
+      requireSameRepository: true,
+      requiredWorkflows: ['CI'],
+      ignoredPathPatterns: [],
+      sensitivePathPatterns: ['.github/**', 'scripts/**'],
+      maxChangedFiles: 100,
+      maxAdditions: 2000,
+      maxDeletions: 2000,
+      cooldownSeconds: 0,
+      duplicatePolicy: 'dedupe-key'
+    },
     protectedFiles: {
       hardBlockPatterns: ['docs/private/**'],
       warningOnlyPatterns: ['docs/drafts/**']
@@ -155,6 +177,9 @@ test('loads the sample config and normalizes safe defaults', async () => {
   assert.ok(result.config.protectedFiles.hardBlockPatterns.includes('docs/private/**'));
   assert.ok(result.config.secretLike.hardBlockPatterns.includes('token'));
   assert.ok(result.config.secretLike.hardBlockPatterns.includes('PRIVATE_DEPLOYMENT_URL'));
+  assert.equal(result.config.reviewRouting.dryRun, true);
+  assert.equal(result.config.reviewRouting.allowFork, false);
+  assert.equal(result.config.reviewRouting.requireSameRepository, true);
 });
 
 test('sample config is valid for both JSON Schema and validator', async () => {
@@ -257,6 +282,60 @@ test('keeps token and variable names as names only', () => {
   assert.equal(result.config.variables.codexTrigger, 'CODEX_TRIGGER_COMMENT');
   assert.equal(result.config.variables.reviewFixMaxAttempts, 'CODEX_AUTO_FIX_MAX_ATTEMPTS');
   assert.equal(result.config.variables.mainFollowupMaxAttempts, 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS');
+});
+
+test('review routing config is valid for both JSON Schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    reviewRouting: {
+      enabled: true,
+      dryRun: true,
+      allowedBaseBranches: ['master'],
+      acceptedTriggerTypes: ['ci-success', 'trusted-review-command'],
+      commands: ['/chatgpt-review'],
+      requestLabels: ['needs-chatgpt-review'],
+      reviewerNames: ['chatgpt-reviewer'],
+      trustedHumanActors: ['owner'],
+      trustedBotActors: ['review-bot[bot]'],
+      allowDraft: false,
+      allowFork: false,
+      requireSameRepository: true,
+      requiredWorkflows: ['CI'],
+      ignoredPathPatterns: ['docs/drafts/**'],
+      sensitivePathPatterns: ['.github/**', 'scripts/**'],
+      maxChangedFiles: 50,
+      maxAdditions: 1000,
+      maxDeletions: 1000,
+      cooldownSeconds: 300,
+      duplicatePolicy: 'dedupe-key'
+    }
+  }), true);
+});
+
+test('review routing unsafe booleans and invalid trigger config are invalid in schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    reviewRouting: {
+      ...validConfig().reviewRouting,
+      dryRun: false
+    }
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    reviewRouting: {
+      ...validConfig().reviewRouting,
+      allowFork: true
+    }
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    reviewRouting: {
+      ...validConfig().reviewRouting,
+      requireSameRepository: false
+    }
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    reviewRouting: {
+      ...validConfig().reviewRouting,
+      acceptedTriggerTypes: ['unknown-trigger']
+    }
+  }), false);
 });
 
 test('rejects unsupported version', () => {

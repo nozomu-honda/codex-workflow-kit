@@ -1,0 +1,222 @@
+name: Plan ChatGPT review routing
+
+on:
+  workflow_call:
+    inputs:
+      event-name:
+        description: GitHub event name.
+        type: string
+        required: true
+      event-action:
+        description: GitHub event action.
+        type: string
+        required: false
+        default: ''
+      event-payload-json:
+        description: GitHub event payload JSON.
+        type: string
+        required: true
+      repository:
+        description: Repository full name.
+        type: string
+        required: true
+      repository-owner:
+        description: Repository owner login.
+        type: string
+        required: true
+      default-branch:
+        description: Repository default branch.
+        type: string
+        required: true
+      actor:
+        description: GitHub actor login.
+        type: string
+        required: true
+      ref-name:
+        description: GitHub ref name.
+        type: string
+        required: false
+        default: ''
+      sha:
+        description: Event SHA.
+        type: string
+        required: false
+        default: ''
+      dry-run:
+        description: Dry-run flag. Defaults to true and does not enable write processing.
+        type: boolean
+        required: false
+        default: true
+      repository-config-json:
+        description: Secret-free repository config JSON.
+        type: string
+        required: false
+        default: '{}'
+      existing-dedupe-keys:
+        description: Comma-separated dedupe keys already routed by the caller.
+        type: string
+        required: false
+        default: ''
+      last-routed-at:
+        description: Last route timestamp for cooldown checks.
+        type: string
+        required: false
+        default: ''
+      kit-ref:
+        description: Fixed codex-workflow-kit ref.
+        type: string
+        required: true
+    outputs:
+      should_route:
+        value: ${{ jobs.review-routing.outputs.should_route }}
+      route_reason:
+        value: ${{ jobs.review-routing.outputs.route_reason }}
+      skip_reason:
+        value: ${{ jobs.review-routing.outputs.skip_reason }}
+      repository:
+        value: ${{ jobs.review-routing.outputs.repository }}
+      pull_request_number:
+        value: ${{ jobs.review-routing.outputs.pull_request_number }}
+      head_sha:
+        value: ${{ jobs.review-routing.outputs.head_sha }}
+      base_sha:
+        value: ${{ jobs.review-routing.outputs.base_sha }}
+      head_repository:
+        value: ${{ jobs.review-routing.outputs.head_repository }}
+      base_repository:
+        value: ${{ jobs.review-routing.outputs.base_repository }}
+      is_same_repository:
+        value: ${{ jobs.review-routing.outputs.is_same_repository }}
+      is_fork:
+        value: ${{ jobs.review-routing.outputs.is_fork }}
+      actor:
+        value: ${{ jobs.review-routing.outputs.actor }}
+      actor_trust:
+        value: ${{ jobs.review-routing.outputs.actor_trust }}
+      trigger_type:
+        value: ${{ jobs.review-routing.outputs.trigger_type }}
+      trigger_source:
+        value: ${{ jobs.review-routing.outputs.trigger_source }}
+      review_mode:
+        value: ${{ jobs.review-routing.outputs.review_mode }}
+      requested_reviewer:
+        value: ${{ jobs.review-routing.outputs.requested_reviewer }}
+      requested_label:
+        value: ${{ jobs.review-routing.outputs.requested_label }}
+      requested_command:
+        value: ${{ jobs.review-routing.outputs.requested_command }}
+      is_draft:
+        value: ${{ jobs.review-routing.outputs.is_draft }}
+      ci_required:
+        value: ${{ jobs.review-routing.outputs.ci_required }}
+      ci_satisfied:
+        value: ${{ jobs.review-routing.outputs.ci_satisfied }}
+      duplicate_suppressed:
+        value: ${{ jobs.review-routing.outputs.duplicate_suppressed }}
+      cooldown_active:
+        value: ${{ jobs.review-routing.outputs.cooldown_active }}
+      dry_run:
+        value: ${{ jobs.review-routing.outputs.dry_run }}
+      eligible:
+        value: ${{ jobs.review-routing.outputs.eligible }}
+      dedupe_key:
+        value: ${{ jobs.review-routing.outputs.dedupe_key }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
+
+jobs:
+  normalize-event:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/normalize-event.yml
+    with:
+      event-name: ${{ inputs.event-name }}
+      event-action: ${{ inputs.event-action }}
+      event-payload-json: ${{ inputs.event-payload-json }}
+      repository: ${{ inputs.repository }}
+      repository-owner: ${{ inputs.repository-owner }}
+      default-branch: ${{ inputs.default-branch }}
+      actor: ${{ inputs.actor }}
+      ref-name: ${{ inputs.ref-name }}
+      sha: ${{ inputs.sha }}
+      dry-run: ${{ inputs.dry-run }}
+      permission-mode: read-only
+      requested-capability: normalize-only
+      repository-config-json: ${{ inputs.repository-config-json }}
+      kit-ref: ${{ inputs.kit-ref }}
+
+  review-routing:
+    name: Plan review routing
+    runs-on: ubuntu-latest
+    needs: normalize-event
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+      checks: read
+      statuses: read
+    outputs:
+      should_route: ${{ steps.review-routing.outputs.should_route }}
+      route_reason: ${{ steps.review-routing.outputs.route_reason }}
+      skip_reason: ${{ steps.review-routing.outputs.skip_reason }}
+      repository: ${{ steps.review-routing.outputs.repository }}
+      pull_request_number: ${{ steps.review-routing.outputs.pull_request_number }}
+      head_sha: ${{ steps.review-routing.outputs.head_sha }}
+      base_sha: ${{ steps.review-routing.outputs.base_sha }}
+      head_repository: ${{ steps.review-routing.outputs.head_repository }}
+      base_repository: ${{ steps.review-routing.outputs.base_repository }}
+      is_same_repository: ${{ steps.review-routing.outputs.is_same_repository }}
+      is_fork: ${{ steps.review-routing.outputs.is_fork }}
+      actor: ${{ steps.review-routing.outputs.actor }}
+      actor_trust: ${{ steps.review-routing.outputs.actor_trust }}
+      trigger_type: ${{ steps.review-routing.outputs.trigger_type }}
+      trigger_source: ${{ steps.review-routing.outputs.trigger_source }}
+      review_mode: ${{ steps.review-routing.outputs.review_mode }}
+      requested_reviewer: ${{ steps.review-routing.outputs.requested_reviewer }}
+      requested_label: ${{ steps.review-routing.outputs.requested_label }}
+      requested_command: ${{ steps.review-routing.outputs.requested_command }}
+      is_draft: ${{ steps.review-routing.outputs.is_draft }}
+      ci_required: ${{ steps.review-routing.outputs.ci_required }}
+      ci_satisfied: ${{ steps.review-routing.outputs.ci_satisfied }}
+      duplicate_suppressed: ${{ steps.review-routing.outputs.duplicate_suppressed }}
+      cooldown_active: ${{ steps.review-routing.outputs.cooldown_active }}
+      dry_run: ${{ steps.review-routing.outputs.dry_run }}
+      eligible: ${{ steps.review-routing.outputs.eligible }}
+      dedupe_key: ${{ steps.review-routing.outputs.dedupe_key }}
+    steps:
+      - name: Validate kit ref
+        shell: bash
+        run: |
+          if [[ ! "${KIT_REF}" =~ ^[a-f0-9]{40}$ && ! "${KIT_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "kit-ref must be a 40-character SHA or full version tag." >&2
+            exit 1
+          fi
+        env:
+          KIT_REF: ${{ inputs.kit-ref }}
+
+      - name: Checkout shared kit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: nozomu-honda/codex-workflow-kit
+          ref: ${{ inputs.kit-ref }}
+          path: .codex-workflow-kit
+          persist-credentials: false
+
+      - name: Plan review routing
+        id: review-routing
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NORMALIZED_EVENT_JSON: >-
+            {"event_name":"${{ needs.normalize-event.outputs.event_name }}","event_action":"${{ needs.normalize-event.outputs.event_action }}","repository":"${{ needs.normalize-event.outputs.repository }}","repository_owner":"${{ needs.normalize-event.outputs.repository_owner }}","default_branch":"${{ needs.normalize-event.outputs.default_branch }}","actor":"${{ needs.normalize-event.outputs.actor }}","issue_number":"${{ needs.normalize-event.outputs.issue_number }}","pull_request_number":"${{ needs.normalize-event.outputs.pull_request_number }}","head_sha":"${{ needs.normalize-event.outputs.head_sha }}","base_sha":"${{ needs.normalize-event.outputs.base_sha }}","head_repository":"${{ needs.normalize-event.outputs.head_repository }}","is_same_repository":"${{ needs.normalize-event.outputs.is_same_repository }}","is_fork":"${{ needs.normalize-event.outputs.is_fork }}","workflow_name":"${{ needs.normalize-event.outputs.workflow_name }}","workflow_conclusion":"${{ needs.normalize-event.outputs.workflow_conclusion }}","dry_run":"${{ needs.normalize-event.outputs.dry_run }}","eligible":"${{ needs.normalize-event.outputs.eligible }}","ineligible_reason":"${{ needs.normalize-event.outputs.ineligible_reason }}"}
+          EVENT_PAYLOAD_JSON: ${{ inputs.event-payload-json }}
+          REPOSITORY_CONFIG_JSON: ${{ inputs.repository-config-json }}
+          EXISTING_DEDUPE_KEYS: ${{ inputs.existing-dedupe-keys }}
+          LAST_ROUTED_AT: ${{ inputs.last-routed-at }}
+        run: node .codex-workflow-kit/scripts/route-review.mjs

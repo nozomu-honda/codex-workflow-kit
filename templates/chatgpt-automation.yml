@@ -36,6 +36,38 @@ review:
   decisions:
     stopOnLatestChangesRequested: true
 
+reviewRouting:
+  enabled: false
+  dryRun: true
+  allowedBaseBranches:
+    - master
+  acceptedTriggerTypes:
+    - ci-success
+    - trusted-review-command
+    - manual-review-request
+  commands:
+    - /chatgpt-review
+  requestLabels:
+    - needs-chatgpt-review
+  reviewerNames: []
+  trustedHumanActors: []
+  trustedBotActors: []
+  allowDraft: false
+  allowFork: false
+  requireSameRepository: true
+  requiredWorkflows:
+    - CI
+  ignoredPathPatterns:
+    - docs/drafts/**
+  sensitivePathPatterns:
+    - .github/**
+    - scripts/**
+  maxChangedFiles: 100
+  maxAdditions: 2000
+  maxDeletions: 2000
+  cooldownSeconds: 0
+  duplicatePolicy: dedupe-key
+
 protectedFiles:
   hardBlockPatterns:
     - docs/private/**
