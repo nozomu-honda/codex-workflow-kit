@@ -6,6 +6,7 @@ import YAML from 'yaml';
 import {
   DEFAULT_HARD_BLOCK_FILE_PATTERNS,
   DEFAULT_SECRET_LIKE_PATTERNS,
+  isSafeGithubActionsCron,
   validateAutomationConfig
 } from '../src/config/index.js';
 
@@ -18,6 +19,7 @@ async function getSchemaValidator() {
 
   const schemaSource = await readFile(new URL('../../../schemas/chatgpt-automation.schema.json', import.meta.url), 'utf8');
   const ajv = new Ajv2020({ allErrors: true, strict: false });
+  ajv.addFormat('github-actions-cron', { type: 'string', validate: isSafeGithubActionsCron });
   schemaValidator = ajv.compile(JSON.parse(schemaSource));
   return schemaValidator;
 }
@@ -415,6 +417,35 @@ test('accepts safe GitHub Actions cron values', () => {
   assert.equal(result.config.schedules.autoMerge.cron, '*/15 1-5 * * 1-5');
 });
 
+test('keeps GitHub Actions cron parity for numeric step values', async () => {
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '20/15 * * * *'
+      }
+    }
+  }), true);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '0/10 1-5 * * 1-5'
+      }
+    }
+  }), true);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '0 0 * * 0'
+      }
+    }
+  }), true);
+});
+
 test('rejects out-of-range cron values and step zero', async () => {
   await expectSchemaAndValidator(validConfig({
     schedules: {
@@ -430,6 +461,33 @@ test('rejects out-of-range cron values and step zero', async () => {
       autoMerge: {
         enabled: true,
         cron: '*/0 * * * *'
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '* * * * 7'
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '0 0 * * 7'
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    schedules: {
+      autoMerge: {
+        enabled: true,
+        cron: '0 0 * * 6-7'
       }
     }
   }), false);
@@ -483,8 +541,53 @@ test('keeps capabilities false when config is invalid', () => {
 
 test('JSON Schema and validator both reject representative invalid configs', async () => {
   await expectSchemaAndValidator(validConfig({
+    version: 1
+  }), true);
+
+  await expectSchemaAndValidator(validConfig({
+    version: '1'
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
     labels: {
       doNotMerge: ''
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    labels: {
+      doNotMerge: '   '
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    ciWorkflowName: '   '
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    ciWorkflowName: 'CI\nOther'
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    review: {
+      markers: {
+        approved: '   '
+      }
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    review: {
+      trustedActors: ['   ']
+    }
+  }), false);
+
+  await expectSchemaAndValidator(validConfig({
+    queues: {
+      reviewFix: {
+        enabled: true,
+        issueTitle: '   '
+      }
     }
   }), false);
 

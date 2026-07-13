@@ -94,6 +94,30 @@ Secret値、token値、Cookie、OAuth情報、実URL、実IDはsample、tests、
 
 unknown keyはwarningになります。ただし、安全に関係する既知keyの型不一致や無効化要求はerrorです。
 
+## Cron
+
+scheduleのcronはGitHub Actionsで使う5フィールドcronの安全な数値subsetとして検証します。
+
+対応する構文:
+
+- `*`
+- 数値
+- 範囲: `1-5`
+- list: `1,3,5`
+- step: `*/15`, `20/15`, `1-10/2`
+
+値域:
+
+| Field | Range |
+|---|---|
+| minute | `0-59` |
+| hour | `0-23` |
+| day of month | `1-31` |
+| month | `1-12` |
+| day of week | `0-6` |
+
+`SUN-SAT` のような曜日名はこの初期schemaでは扱いません。値域外、step 0、逆順range、不正構文はfail closedになります。
+
 ## Logical fields and defaults
 
 後続Issueで既存導入先設定からmappingできるよう、主要な論理フィールドとdefaultを記録します。このIssueでは既存 `.chatgpt-review.json` 互換layerは実装しません。

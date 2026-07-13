@@ -200,7 +200,7 @@ export function validateAutomationConfigObject(rawConfig) {
 }
 
 function normalizeVersion(value, errors) {
-  if (value === CONFIG_VERSION || value === String(CONFIG_VERSION)) {
+  if (value === CONFIG_VERSION) {
     return CONFIG_VERSION;
   }
 
@@ -695,7 +695,7 @@ function normalizeSchedule(value, path, errors, warnings) {
   normalized.enabled = normalizeOptionalBoolean(value.enabled, false, `${path}.enabled`, errors);
 
   if (value.cron !== undefined) {
-    if (!isSafeCron(value.cron)) {
+    if (!isSafeGithubActionsCron(value.cron)) {
       errors.push(issue(`${path}.cron`, 'INVALID_CRON', 'Cron must use a safe five-field cron expression.'));
     } else {
       normalized.cron = value.cron;
@@ -853,7 +853,7 @@ function isSafeEnvName(value) {
   return typeof value === 'string' && ENV_NAME_PATTERN.test(value);
 }
 
-function isSafeCron(value) {
+export function isSafeGithubActionsCron(value) {
   if (!isNonEmptyString(value)) {
     return false;
   }
@@ -869,7 +869,7 @@ function isSafeCron(value) {
     { min: 0, max: 23 },
     { min: 1, max: 31 },
     { min: 1, max: 12 },
-    { min: 0, max: 7 }
+    { min: 0, max: 6 }
   ];
 
   return fields.every((field, index) => isSafeCronField(field, ranges[index]));
@@ -915,10 +915,6 @@ function isSafeCronPart(part, range) {
     const end = parseCronNumber(bounds[1], range);
 
     return start !== null && end !== null && start <= end;
-  }
-
-  if (step !== undefined) {
-    return false;
   }
 
   return parseCronNumber(base, range) !== null;
