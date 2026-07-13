@@ -141,8 +141,8 @@ config監査は `packages/chatgpt-automation-core/src/config/index.js` の共通
 - unknown keyを導入監査のerrorとして検出する
 - 型不正や安全条件の弱体化をfail closedにする
 - `dryRunDefault` が `true`
-- 初期導入ではすべてのcapabilityがdisabledであること
-- capabilityが1つでもenabledなら `CONFIG_CAPABILITY_ENABLED_FORBIDDEN` で失敗する
+- 初期導入では `features`、`queues`、`codex`、`schedules` のすべての有効化入口がdisabledであること
+- 有効化入口が1つでもenabledなら `CONFIG_CAPABILITY_ENABLED_FORBIDDEN` で失敗する
 - config欠落、読み取り失敗、validation失敗時は全capabilityを `false`
 
 ## Caller workflow監査

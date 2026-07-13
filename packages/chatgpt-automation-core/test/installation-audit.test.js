@@ -95,6 +95,75 @@ function findCode(result, code) {
   return [...result.errors, ...result.warnings, ...result.checks].some((entry) => entry.code === code);
 }
 
+function enabledAutomationCases() {
+  return [
+    {
+      path: 'features.autoRequest',
+      mutate: (config) => { config.features.autoRequest = true; }
+    },
+    {
+      path: 'features.routeReview',
+      mutate: (config) => { config.features.routeReview = true; }
+    },
+    {
+      path: 'features.autoMerge',
+      mutate: (config) => { config.features.autoMerge = true; }
+    },
+    {
+      path: 'features.mainFollowup',
+      mutate: (config) => { config.features.mainFollowup = true; }
+    },
+    {
+      path: 'features.actionsApproval',
+      mutate: (config) => { config.features.actionsApproval = true; }
+    },
+    {
+      path: 'queues.reviewFix.enabled',
+      mutate: (config) => { config.queues.reviewFix.enabled = true; }
+    },
+    {
+      path: 'queues.mainFollowup.enabled',
+      mutate: (config) => { config.queues.mainFollowup.enabled = true; }
+    },
+    {
+      path: 'codex.reviewFix.enabled',
+      mutate: (config) => { config.codex.reviewFix.enabled = true; }
+    },
+    {
+      path: 'codex.mainFollowup.enabled',
+      mutate: (config) => { config.codex.mainFollowup.enabled = true; }
+    },
+    {
+      path: 'schedules.reviewRequest.enabled',
+      mutate: (config) => {
+        config.schedules.reviewRequest.enabled = true;
+        config.schedules.reviewRequest.cron = '*/15 * * * *';
+      }
+    },
+    {
+      path: 'schedules.autoMerge.enabled',
+      mutate: (config) => {
+        config.schedules.autoMerge.enabled = true;
+        config.schedules.autoMerge.cron = '*/15 * * * *';
+      }
+    },
+    {
+      path: 'schedules.mainFollowup.enabled',
+      mutate: (config) => {
+        config.schedules.mainFollowup.enabled = true;
+        config.schedules.mainFollowup.cron = '*/15 * * * *';
+      }
+    },
+    {
+      path: 'schedules.actionsApproval.enabled',
+      mutate: (config) => {
+        config.schedules.actionsApproval.enabled = true;
+        config.schedules.actionsApproval.cron = '*/15 * * * *';
+      }
+    }
+  ];
+}
+
 async function expectAuditCode(options, code) {
   await withConsumerRepo(async (dir) => {
     const result = await auditConsumerInstallation({
@@ -232,17 +301,17 @@ test('invalid config cases are detected without weakening the shared validator',
   await expectAuditCode({ config: await mutateConfig((config) => { config.dryRunDefault = false; })() }, 'CONFIG_DRY_RUN_DEFAULT_FALSE');
 });
 
-test('enabled capabilities fail closed during initial installation audit', async () => {
-  for (const capability of Object.keys(falseCapabilities())) {
+test('enabled automation entries fail closed during initial installation audit', async () => {
+  for (const entry of enabledAutomationCases()) {
     await withConsumerRepo(async (dir) => {
       const result = await auditConsumerInstallation({ rootDir: dir });
 
-      assert.equal(result.ok, false, capability);
+      assert.equal(result.ok, false, entry.path);
       assert.equal(findCode(result, 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN'), true);
       assert.deepEqual(result.capabilities, falseCapabilities());
-      assert.equal(result.errors.some((error) => error.path === `features.${capability}`), true);
+      assert.equal(result.errors.some((error) => error.path === entry.path), true);
     }, {
-      config: await mutateConfig((config) => { config.features[capability] = true; })()
+      config: await mutateConfig(entry.mutate)()
     });
   }
 });
@@ -297,14 +366,16 @@ test('CLI human and JSON output keep stable error codes for default fail-closed 
     {
       code: 'UNKNOWN_KEY',
       config: `${await readSampleConfig()}\nunknownRootForAuditTest: true\n`
-    },
-    {
-      code: 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN',
-      config: await mutateConfig((config) => {
-        config.features.autoMerge = true;
-      })()
     }
   ];
+
+  for (const entry of enabledAutomationCases()) {
+    cases.push({
+      code: 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN',
+      path: entry.path,
+      config: await mutateConfig(entry.mutate)()
+    });
+  }
 
   for (const entry of cases) {
     await withConsumerRepo(async (dir) => {
@@ -326,6 +397,9 @@ test('CLI human and JSON output keep stable error codes for default fail-closed 
       assert.match(human.stdout, new RegExp(entry.code));
       assert.equal(parsed.ok, false);
       assert.equal(parsed.errors.some((error) => error.code === entry.code), true);
+      if (entry.path) {
+        assert.equal(parsed.errors.some((error) => error.path === entry.path), true);
+      }
       assert.deepEqual(parsed.capabilities, falseCapabilities());
     }, {
       config: entry.config

@@ -26,6 +26,21 @@ const REQUIRED_JOB_NAME = 'validate-config';
 const SHA40_PATTERN = /^[a-f0-9]{40}$/i;
 const SHORT_SHA_PATTERN = /^[a-f0-9]{7,39}$/i;
 const PLACEHOLDER_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const INITIAL_DISABLED_CONFIG_PATHS = Object.freeze([
+  'features.autoRequest',
+  'features.routeReview',
+  'features.autoMerge',
+  'features.mainFollowup',
+  'features.actionsApproval',
+  'queues.reviewFix.enabled',
+  'queues.mainFollowup.enabled',
+  'codex.reviewFix.enabled',
+  'codex.mainFollowup.enabled',
+  'schedules.reviewRequest.enabled',
+  'schedules.autoMerge.enabled',
+  'schedules.mainFollowup.enabled',
+  'schedules.actionsApproval.enabled'
+]);
 
 export async function auditConsumerInstallation(options = {}) {
   const rootDir = resolve(options.rootDir ?? process.cwd());
@@ -194,14 +209,16 @@ async function auditConfig({ readFile, configPath, checks }) {
     });
   }
 
-  for (const [name, enabled] of Object.entries(validation.capabilities)) {
+  for (const pathName of INITIAL_DISABLED_CONFIG_PATHS) {
+    const enabled = readDottedPath(validation.config, pathName);
+
     if (enabled) {
-      addError(errors, checks, 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN', 'Initial consumer installation audit requires every capability to stay disabled.', {
+      addError(errors, checks, 'CONFIG_CAPABILITY_ENABLED_FORBIDDEN', 'Initial consumer installation audit requires every automation capability to stay disabled.', {
         file: configPath.relativePath,
-        path: `features.${name}`
+        path: pathName
       });
     } else {
-      addCheck(checks, `CAPABILITY_${name}`, `Capability ${name} is disabled.`, 'pass', {
+      addCheck(checks, `CONFIG_${toCodeFragment(pathName)}_DISABLED`, `Config ${pathName} is disabled.`, 'pass', {
         file: configPath.relativePath
       });
     }
@@ -566,6 +583,19 @@ function normalizeRepositoryPath(value) {
     .replaceAll('\\', '/')
     .replace(/^\.\//, '')
     .replace(/\/+/g, '/');
+}
+
+function readDottedPath(value, path) {
+  return path
+    .split('.')
+    .reduce((current, key) => isPlainObject(current) ? current[key] : undefined, value);
+}
+
+function toCodeFragment(value) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .toUpperCase();
 }
 
 function rootKeyCode(key) {
