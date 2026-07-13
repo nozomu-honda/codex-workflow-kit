@@ -89,6 +89,34 @@ npm run lint:workflow
 
 GitHub Actions上の外部repository E2Eは、caller workflow templateを追加する後続Issueで確認します。
 
+## Caller workflow template validation
+
+`templates/workflows/validate-config.yml` は静的検証で安全境界を確認します。
+
+確認対象:
+
+- YAMLがparse可能
+- triggerは `workflow_dispatch` のみ
+- jobは1つだけ
+- reusable workflowをjob-level `uses` で呼ぶ
+- `runs-on`、`steps`、`run` がない
+- permissionsは `contents: read` のみ
+- write permissionがない
+- Secret、`secrets: inherit`、`pull_request_target` がない
+- `config-file` が `.github/chatgpt-automation.yml`
+- `dry-run` がbooleanの `true`
+- reusable workflow pathが `.github/workflows/validate-config.yml` と一致する
+- `master` / `main` などの可変branch参照を使わない
+- refはtag、40桁commit SHA、または明確な置換プレースホルダーにする
+- docsのコピー先とテンプレート実体pathが一致する
+
+Template専用確認:
+
+```bash
+npm run test:template
+npm run lint:template
+```
+
 ## Fail closed cases
 
 少なくとも次の場合は `ok: false` になり、すべてのcapabilityが `false` になります。

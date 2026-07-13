@@ -24,13 +24,17 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
 
 4. Caller workflow templatesを追加する
+   - Issue #11で設定検証用caller workflowテンプレートを対応。
+   - 初期テンプレートは `workflow_dispatch` のみ。
+   - reusable workflow refはtagまたは40桁commit SHAへ固定する。
+   - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
    - `issue_comment`
    - `pull_request_review`
    - `pull_request_review_comment`
    - `workflow_run`
    - `pull_request.closed`
    - `push`
-   - Issue #3ではまだ追加しない。
+   - 実イベントtriggerは後続Issueで追加する。
 
 5. ChatGPT review routingの共通化を検討する
    - 既存導入先の仕様を棚卸しし、共通化できる判定だけを切り出す。

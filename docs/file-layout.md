@@ -28,6 +28,9 @@ reusable-workflows/
 templates/
   README.md
   chatgpt-automation.yml
+  workflows/
+    validate-config.yml
+  test/
 scripts/
   validate-config.mjs
 examples/
@@ -98,10 +101,13 @@ GitHub automation areas are intentionally separate:
 - `.github/workflows/validate-config.yml` for the read-only config validation reusable workflow source
 - `reusable-workflows/` for reusable workflow design notes and static tests
 - `templates/` for thin caller workflows, config examples, and setup notes
+- `templates/workflows/validate-config.yml` for the copyable validation caller workflow template
 - `docs/github-automation/` for architecture, permissions, installation, migration, validation, and follow-up planning
 
 `actions/validate-config/` reads a config file and runs the fail-closed validator only. It does not perform GitHub API writes, comments, reviews, merges, Codex triggers, or Queue Issue operations. `dist/index.js` is the committed bundled runtime so adopters can run the Action without installing this repository's npm dependencies.
 
 `.github/workflows/validate-config.yml` calls the validation Action through `workflow_call` and keeps permissions at `contents: read`. It does not define Secret inputs, use `secrets: inherit`, or perform write operations.
+
+`templates/workflows/validate-config.yml` is a caller workflow template for adopters to copy into `.github/workflows/validate-config.yml`. It uses only `workflow_dispatch`, calls the reusable workflow through job-level `uses`, and requires adopters to replace the ref placeholder with a tag or 40-character commit SHA.
 
 This layout does not migrate existing auto-review or auto-merge implementation yet.
