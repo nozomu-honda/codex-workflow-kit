@@ -1,9 +1,13 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import YAML from 'yaml';
 
-const WORKFLOW_FILE = new URL('../validate-config.yml', import.meta.url);
+const WORKFLOW_PATH = '.github/workflows/validate-config.yml';
+const OLD_WORKFLOW_PATH = 'reusable-workflows/validate-config.yml';
+const WORKFLOW_FILE = new URL(`../../${WORKFLOW_PATH}`, import.meta.url);
+const OLD_WORKFLOW_FILE = new URL(`../../${OLD_WORKFLOW_PATH}`, import.meta.url);
+const REUSABLE_WORKFLOWS_README = new URL('../README.md', import.meta.url);
 const ACTION_METADATA_FILE = new URL('../../actions/validate-config/action.yml', import.meta.url);
 const EXPECTED_OUTPUTS = ['ok', 'error-count', 'warning-count', 'capabilities-json', 'dry-run'];
 
@@ -18,6 +22,11 @@ async function readWorkflow() {
 async function readActionMetadata() {
   return YAML.parse(await readFile(ACTION_METADATA_FILE, 'utf8'));
 }
+
+test('workflow実体はGitHub Actionsが認識する場所にあり旧pathは存在しない', async () => {
+  await assert.doesNotReject(access(WORKFLOW_FILE));
+  await assert.rejects(access(OLD_WORKFLOW_FILE));
+});
 
 test('workflow YAMLがparse可能でworkflow_callだけを入口にする', async () => {
   const { workflow } = await readWorkflow();
@@ -89,6 +98,13 @@ test('checkoutとvalidate-config Action以外の外部処理を持たない', as
   assert.equal(steps[1].run, undefined);
 });
 
+test('外部呼び出し例のpathと実体ファイルpathが一致する', async () => {
+  const readme = await readFile(REUSABLE_WORKFLOWS_README, 'utf8');
+
+  assert.match(readme, new RegExp(`uses: nozomu-honda/codex-workflow-kit/${escapeRegExp(WORKFLOW_PATH)}@<tag-or-commit-sha>`));
+  assert.equal(readme.includes(`uses: nozomu-honda/codex-workflow-kit/${OLD_WORKFLOW_PATH}`), false);
+});
+
 test('禁止設定を含まない', async () => {
   const { source, workflow } = await readWorkflow();
 
@@ -108,6 +124,10 @@ function assertNoWritePermission(permissions) {
   for (const value of Object.values(permissions ?? {})) {
     assert.notEqual(value, 'write');
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function assertNoForbiddenKeys(value) {

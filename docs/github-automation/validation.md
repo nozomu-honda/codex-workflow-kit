@@ -65,11 +65,12 @@ npm run lint:action
 
 ## Reusable workflow validation
 
-`reusable-workflows/validate-config.yml` は静的検証で安全境界を確認します。
+`.github/workflows/validate-config.yml` は静的検証で安全境界を確認します。
 
 確認対象:
 
 - workflow YAMLがparse可能
+- 実体ファイルが `.github/workflows/validate-config.yml` にあり、旧 `reusable-workflows/validate-config.yml` が存在しない
 - `on.workflow_call` だけを入口にする
 - `config-file` / `dry-run` inputsのtype、required、defaultが要件どおり
 - Secret inputがない
@@ -77,6 +78,7 @@ npm run lint:action
 - write permission、`pull_request_target`、`secrets: inherit` がない
 - stepsが `actions/checkout@v4` と `actions/validate-config` 呼び出しだけで、`run` を持たない
 - workflow outputs、job outputs、Action outputsが一致する
+- 外部呼び出し例のpathと実体ファイルpathが一致する
 
 Workflow専用確認:
 

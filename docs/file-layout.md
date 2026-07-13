@@ -21,8 +21,10 @@ actions/
     test/
 reusable-workflows/
   README.md
-  validate-config.yml
   test/
+.github/
+  workflows/
+    validate-config.yml
 templates/
   README.md
   chatgpt-automation.yml
@@ -93,13 +95,13 @@ GitHub automation areas are intentionally separate:
 
 - `actions/` for shared JavaScript Action or implementation code
 - `actions/validate-config/` for the side-effect-free config validation Action
-- `reusable-workflows/` for `workflow_call` workflows
-- `reusable-workflows/validate-config.yml` for the read-only config validation reusable workflow source
+- `.github/workflows/validate-config.yml` for the read-only config validation reusable workflow source
+- `reusable-workflows/` for reusable workflow design notes and static tests
 - `templates/` for thin caller workflows, config examples, and setup notes
 - `docs/github-automation/` for architecture, permissions, installation, migration, validation, and follow-up planning
 
 `actions/validate-config/` reads a config file and runs the fail-closed validator only. It does not perform GitHub API writes, comments, reviews, merges, Codex triggers, or Queue Issue operations. `dist/index.js` is the committed bundled runtime so adopters can run the Action without installing this repository's npm dependencies.
 
-`reusable-workflows/validate-config.yml` calls the validation Action through `workflow_call` and keeps permissions at `contents: read`. It does not define Secret inputs, use `secrets: inherit`, or perform write operations.
+`.github/workflows/validate-config.yml` calls the validation Action through `workflow_call` and keeps permissions at `contents: read`. It does not define Secret inputs, use `secrets: inherit`, or perform write operations.
 
 This layout does not migrate existing auto-review or auto-merge implementation yet.

@@ -40,7 +40,7 @@ docs/github-automation/
 
 `actions/validate-config` には、設定ファイルを読み込んでfail-closed validatorを実行する副作用なしのShared Actionを置いています。このActionはGitHub API write、PR/Issueコメント、自動レビュー、自動マージ、Codex起動を行いません。
 
-`reusable-workflows/validate-config.yml` には、`workflow_call` で `actions/validate-config` を呼び出す読み取り専用reusable workflowの最小骨格を置いています。権限は `contents: read` のみで、Secret input、`secrets: inherit`、GitHub API writeは使いません。導入先caller workflow templateは後続Issueで追加します。
+`.github/workflows/validate-config.yml` には、`workflow_call` で `actions/validate-config` を呼び出す読み取り専用reusable workflowの最小骨格を置いています。権限は `contents: read` のみで、Secret input、`secrets: inherit`、GitHub API writeは使いません。導入先caller workflow templateは後続Issueで追加します。
 
 ## 推奨配置
 

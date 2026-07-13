@@ -46,7 +46,7 @@ JSON Schemaは導入先設定の構造契約として提供し、代表的なval
 
 ## Reusable workflow
 
-`reusable-workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。
+`.github/workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。
 
 - inputsは `config-file` と `dry-run` のみ
 - workflow outputsは `ok`、`error-count`、`warning-count`、`capabilities-json`、`dry-run`

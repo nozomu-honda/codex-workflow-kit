@@ -1,14 +1,16 @@
 # reusable-workflows
 
-`workflow_call` に対応した共通workflowを置く予定の領域です。
+`workflow_call` に対応した共通workflowの設計説明を置く領域です。
 
 導入先リポジトリでは、`issue_comment`、`pull_request_review`、`workflow_run`、`pull_request.closed`、`push` などのイベントを薄いcaller workflowで受け、必要に応じてここに置くreusable workflowを呼び出す想定です。
 
 ## 現在のworkflow
 
-- `validate-config.yml`: `workflow_call` で設定ファイルを検証する読み取り専用reusable workflow。
+- `.github/workflows/validate-config.yml`: `workflow_call` で設定ファイルを検証する読み取り専用reusable workflow。
 
-`validate-config.yml` は以下だけを行います。
+実行可能なworkflow実体は、GitHub Actionsが認識する `.github/workflows` 直下に置きます。`reusable-workflows/validate-config.yml` は存在せず、同じworkflowを二重管理しません。
+
+`.github/workflows/validate-config.yml` は以下だけを行います。
 
 1. caller repositoryを `actions/checkout@v4` でcheckoutする
 2. `nozomu-honda/codex-workflow-kit/actions/validate-config@master` を呼び出す
