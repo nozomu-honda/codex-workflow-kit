@@ -12,6 +12,11 @@ desktop/
   README.md
 actions/
   README.md
+  validate-config/
+    README.md
+    action.yml
+    src/index.js
+    test/
 reusable-workflows/
   README.md
 templates/
@@ -83,8 +88,11 @@ The existing Windows helper entrypoints stay at the repository root:
 GitHub automation areas are intentionally separate:
 
 - `actions/` for shared JavaScript Action or implementation code
+- `actions/validate-config/` for the side-effect-free config validation Action
 - `reusable-workflows/` for `workflow_call` workflows
 - `templates/` for thin caller workflows, config examples, and setup notes
 - `docs/github-automation/` for architecture, permissions, installation, migration, validation, and follow-up planning
+
+`actions/validate-config/` reads a config file and runs the fail-closed validator only. It does not perform GitHub API writes, comments, reviews, merges, Codex triggers, or Queue Issue operations.
 
 This layout does not migrate existing auto-review or auto-merge implementation yet.

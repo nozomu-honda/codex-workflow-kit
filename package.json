@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "node --test",
-    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check scripts/validate-config.mjs",
+    "test:action": "node --test actions/validate-config/test/validate-config-action.test.js",
+    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check actions/validate-config/src/index.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check scripts/validate-config.mjs",
+    "lint:action": "node --check actions/validate-config/src/index.js && node --check actions/validate-config/test/validate-config-action.test.js",
     "validate:config": "node scripts/validate-config.mjs templates/chatgpt-automation.yml"
   },
   "dependencies": {

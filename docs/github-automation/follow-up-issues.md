@@ -12,9 +12,10 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - 設定欠落や不正値は安全側に倒す。
 
 2. Shared Actionの最小骨格を追加する
+   - Issue #7で対応。
    - `actions/` に副作用のないdry-run可能なエントリを作る。
    - Secret-like valuesをログに出さないテストを追加する。
-   - Issue #3ではまだ追加しない。
+   - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
 
 3. Reusable workflowの最小骨格を追加する
    - `reusable-workflows/` に `workflow_call` の入口を作る。
