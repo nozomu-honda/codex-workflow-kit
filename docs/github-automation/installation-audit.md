@@ -116,10 +116,12 @@ capabilities:
 - autoMerge: false
 - mainFollowup: false
 - actionsApproval: false
-checks: 18
+checks: <count>
 - [pass] CONFIG_VALID: Config passed the shared fail-closed validator. (.github/chatgpt-automation.yml)
 - [pass] WORKFLOW_DISPATCH_ONLY: Workflow trigger is workflow_dispatch only. (.github/workflows/validate-config.yml)
 ```
+
+`checks` の件数は監査項目の追加で変わることがあります。機械判定では件数そのものではなく、stable JSONの `ok`、`errors`、`warnings`、`capabilities`、`files` と、必要な `code` を確認します。
 
 ## Exit code
 
@@ -271,6 +273,21 @@ jobs:
 ```bash
 npm run audit:template
 ```
+
+## Offline consumer E2E
+
+`npm run test:e2e:consumer` は、テンプレートを一時的なconsumer repositoryへ配置し、installation audit CLIをvalid / invalidの両方で実行します。このE2Eはネットワーク、GitHub API、Secret、外部repository書き込みを使いません。
+
+確認すること:
+
+- valid consumer fixtureでhuman-readable出力とJSON出力が成功する
+- JSON result schemaが安定している
+- `dryRunDefault: true` と全capability disabledを維持する
+- caller workflowの `workflow_dispatch` only、`contents: read` only、40桁SHA固定、Secretなしを確認する
+- placeholder、branch、tag、短縮SHA、未知config key、capability有効化、`dryRunDefault: false`、write permission、`pull_request_target`、`secrets: inherit`、inline `run`、`steps`、`runs-on`、path escape、欠落file、不正YAMLをnon-zero exit codeとstable error codeで検出する
+- Secret-like fixture値、絶対path、stack traceを出力しない
+
+このE2Eは現在checkoutしているheadのテンプレート、validator、installation audit、Shared Action source / distを確認します。実GitHub repositoryを使うcross-repo E2Eは後続Issueで扱います。
 
 ## Troubleshooting
 

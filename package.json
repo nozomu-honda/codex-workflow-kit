@@ -9,19 +9,22 @@
   "scripts": {
     "test": "node --test",
     "test:action": "node --test actions/validate-config/test/validate-config-action.test.js",
-    "test:workflow": "node --test reusable-workflows/test/validate-config-workflow.test.js",
+    "test:workflow": "node --test reusable-workflows/test/validate-config-workflow.test.js reusable-workflows/test/ci-workflow.test.js",
     "test:template": "node --test templates/test/validate-config-caller-template.test.js",
     "test:audit": "node --test packages/chatgpt-automation-core/test/installation-audit.test.js",
+    "test:e2e:consumer": "node --test packages/chatgpt-automation-core/test/consumer-e2e.test.js",
     "build:action": "ncc build actions/validate-config/src/index.js -o actions/validate-config/dist --target es2022 --minify --no-source-map-register --no-cache",
     "check:action-dist": "node scripts/check-action-dist.mjs",
-    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check reusable-workflows/test/validate-config-workflow.test.js && node --check templates/test/validate-config-caller-template.test.js && node --check scripts/check-action-dist.mjs && node --check scripts/validate-config.mjs && npm run lint:audit",
-    "lint:action": "node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check scripts/check-action-dist.mjs",
-    "lint:workflow": "node --check reusable-workflows/test/validate-config-workflow.test.js",
+    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/helpers.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check reusable-workflows/test/validate-config-workflow.test.js && node --check reusable-workflows/test/ci-workflow.test.js && node --check templates/test/validate-config-caller-template.test.js && node --check scripts/check-action-dist.mjs && node --check scripts/validate-config.mjs && npm run lint:audit && npm run lint:e2e",
+    "lint:action": "node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/helpers.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check scripts/check-action-dist.mjs",
+    "lint:workflow": "node --check reusable-workflows/test/validate-config-workflow.test.js && node --check reusable-workflows/test/ci-workflow.test.js",
     "lint:template": "node --check templates/test/validate-config-caller-template.test.js",
     "lint:audit": "node --check packages/chatgpt-automation-core/src/installation-audit/index.js && node --check packages/chatgpt-automation-core/test/installation-audit.test.js && node --check scripts/audit-consumer-installation.mjs && node --check scripts/audit-template.mjs",
+    "lint:e2e": "node --check packages/chatgpt-automation-core/test/consumer-e2e.test.js",
     "validate:config": "node scripts/validate-config.mjs templates/chatgpt-automation.yml",
     "audit:template": "node scripts/audit-template.mjs",
-    "audit:consumer": "node scripts/audit-consumer-installation.mjs"
+    "audit:consumer": "node scripts/audit-consumer-installation.mjs",
+    "ci": "npm test && npm run lint && npm run validate:config && npm run check:action-dist && npm run audit:template && npm run test:e2e:consumer && git diff --check"
   },
   "dependencies": {
     "ajv": "^8.20.0",

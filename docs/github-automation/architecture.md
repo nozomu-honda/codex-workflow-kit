@@ -93,6 +93,38 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - secret-like hard block
 - fork / same-repository安全境界
 
+## CI / E2E
+
+`.github/workflows/ci.yml` は、この共通キット自身のPR CIです。
+
+- triggerは `pull_request`、`master` push、`workflow_dispatch`
+- workflow / job permissionsは `contents: read` のみ
+- 外部Actionはレビュー済み40桁commit SHAで固定する
+- Secret、`secrets: inherit`、GitHub API write、release、deploy、tag作成、mergeは使わない
+- fork PRでもSecretを渡さず、read-only検証だけを行う
+- concurrencyで同一refの重複実行を抑制する
+
+Node 20.19.0以上のjobは、`npm ci` 後に `npm run ci` を実行します。`npm run ci` は `npm test`、`npm run lint`、`npm run validate:config`、`npm run check:action-dist`、`npm run audit:template`、offline consumer E2E、`git diff --check` をまとめて実行するread-only検証です。
+
+Node 24のjobは、GitHub Actions runtimeが `node24` のShared Actionに対して `npm run test:action` と `npm run check:action-dist` を実行します。validatorの入出力仕様やdry-run時のwrite禁止は変えません。
+
+offline consumer E2Eは、`templates/` から一時的な導入先リポジトリを作り、以下を確認します。
+
+- config validator success
+- installation audit success
+- human-readable / JSON output schema
+- `dryRunDefault: true`
+- `features`、`queues`、`codex`、`schedules` のcapabilityがすべてdisabled
+- caller workflowの `workflow_dispatch` only、`contents: read` only、40桁SHA固定、Secretなし
+- invalid fixtureがnon-zero exit codeとstable error codeでfail closedになる
+- Secret-like fixture値、絶対path、stack trace、config全文を出力しない
+
+Shared Action source / dist E2Eでは、同じconsumer configを `actions/validate-config/src/index.js` と `actions/validate-config/dist/index.js` の両方へ通し、outputs、fail-closed、capability false、配布物の外部 `node_modules` 非依存を確認します。
+
+GitHub-hosted reusable workflow smokeは、CI内で `uses: ./.github/workflows/validate-config.yml` をjob-levelに呼び出し、専用fixture `reusable-workflows/fixtures/valid-chatgpt-automation.yml` で `ok`、`error-count`、`warning-count`、`capabilities-json`、`dry-run` outputsを後続jobで検証します。offline E2Eは現在headのAction source / distを検証し、smokeはreusable workflowの配線とoutputsを検証する役割です。
+
+実GitHub repositoryを使うcross-repo E2E、導入先Secret / Variables / labels / Queue Issueの作成、GitHub API writeは後続Issueで扱います。
+
 ## 導入先側
 
 各リポジトリが保持するもの:

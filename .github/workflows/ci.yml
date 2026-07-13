@@ -1,0 +1,105 @@
+name: CI
+
+"on":
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node20:
+    name: Node 20 full validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run CI validation
+        run: npm run ci
+
+  node24:
+    name: Node 24 action validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test validate-config Action
+        run: npm run test:action
+
+      - name: Check validate-config dist
+        run: npm run check:action-dist
+
+  validate-config-smoke:
+    name: Reusable workflow smoke
+    permissions:
+      contents: read
+    uses: ./.github/workflows/validate-config.yml
+    with:
+      config-file: reusable-workflows/fixtures/valid-chatgpt-automation.yml
+      dry-run: true
+
+  validate-config-smoke-assertions:
+    name: Assert reusable workflow outputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - validate-config-smoke
+    permissions:
+      contents: read
+    steps:
+      - name: Assert smoke outputs
+        env:
+          SMOKE_OK: ${{ needs.validate-config-smoke.outputs.ok }}
+          SMOKE_ERROR_COUNT: ${{ needs.validate-config-smoke.outputs.error-count }}
+          SMOKE_WARNING_COUNT: ${{ needs.validate-config-smoke.outputs.warning-count }}
+          SMOKE_CAPABILITIES_JSON: ${{ needs.validate-config-smoke.outputs.capabilities-json }}
+          SMOKE_DRY_RUN: ${{ needs.validate-config-smoke.outputs.dry-run }}
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+
+          assert.equal(process.env.SMOKE_OK, 'true');
+          assert.equal(process.env.SMOKE_ERROR_COUNT, '0');
+          assert.equal(process.env.SMOKE_WARNING_COUNT, '0');
+          assert.equal(process.env.SMOKE_DRY_RUN, 'true');
+          assert.deepEqual(JSON.parse(process.env.SMOKE_CAPABILITIES_JSON), {
+            autoRequest: false,
+            routeReview: false,
+            autoMerge: false,
+            mainFollowup: false,
+            actionsApproval: false
+          });
+          NODE
