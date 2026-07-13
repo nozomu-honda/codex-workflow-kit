@@ -8,11 +8,18 @@
   },
   "scripts": {
     "test": "node --test",
-    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check scripts/validate-config.mjs",
+    "test:action": "node --test actions/validate-config/test/validate-config-action.test.js",
+    "build:action": "ncc build actions/validate-config/src/index.js -o actions/validate-config/dist --target es2022 --minify --no-source-map-register --no-cache",
+    "check:action-dist": "node scripts/check-action-dist.mjs",
+    "lint": "node --check packages/chatgpt-automation-core/src/config/index.js && node --check packages/chatgpt-automation-core/test/config-validator.test.js && node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check scripts/check-action-dist.mjs && node --check scripts/validate-config.mjs",
+    "lint:action": "node --check actions/validate-config/src/index.js && node --check actions/validate-config/dist/index.js && node --check actions/validate-config/test/validate-config-action.test.js && node --check scripts/check-action-dist.mjs",
     "validate:config": "node scripts/validate-config.mjs templates/chatgpt-automation.yml"
   },
   "dependencies": {
     "ajv": "^8.20.0",
     "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.44.1"
   }
 }

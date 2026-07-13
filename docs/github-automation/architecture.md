@@ -30,6 +30,20 @@ GitHub automationの導入先ごとの差分は、バージョン付き設定で
 validatorは副作用を持ちません。設定欠落、型不一致、危険な上書き、未対応versionがある場合はfail closedになり、write capabilityを有効化しません。
 JSON Schemaは導入先設定の構造契約として提供し、代表的なvalid / invalid fixtureでvalidatorとのparityをテストします。normalized config、warnings、capabilitiesはvalidatorの結果を正とします。
 
+## Shared Action
+
+`actions/validate-config` は、導入先の設定ファイルを読み込み、上記validatorを実行する最小Shared Actionです。
+
+- default config pathは `.github/chatgpt-automation.yml`
+- `dry-run` のdefaultは `true`
+- `dist/index.js` はコミット済み配布物で、共通validatorと `yaml` 依存をbundleする
+- 利用先リポジトリで `npm ci` や `npm install` を要求しない
+- validation失敗時はfail closedになり、すべてのcapabilityを `false` として出力する
+- `capabilities-json` はboolean capabilityだけを含む
+- Secret-like values、config全文、正規化済みconfig全文をログへ出さない
+
+このActionはGitHub API write、label変更、Issue/PRコメント、自動レビュー、自動マージ、Codex起動、Queue Issue操作を行いません。caller workflowとreusable workflowは後続Issueで追加します。
+
 導入先設定で弱体化できない安全条件:
 
 - 共通hard-block defaults

@@ -38,6 +38,8 @@ docs/github-automation/
 
 このIssueでは、自動レビュー・自動マージ本体の移植や公開はまだ行いません。
 
+`actions/validate-config` には、設定ファイルを読み込んでfail-closed validatorを実行する副作用なしのShared Actionを置いています。このActionはGitHub API write、PR/Issueコメント、自動レビュー、自動マージ、Codex起動を行いません。caller workflow / reusable workflowは後続Issueで追加します。
+
 ## 推奨配置
 
 ローカルPCでは、以下のようにプロジェクト横断の共通ファイルとして置く想定です。

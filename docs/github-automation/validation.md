@@ -35,6 +35,34 @@ validatorは設定全文やSecret値をログ出力しません。error / warnin
 
 JSON Schemaは代表fixtureでvalidatorとparity確認します。ただし、normalized config、warnings、capabilitiesを含む機械判定の正本はfail-closed validatorです。
 
+## Shared Action validation
+
+`actions/validate-config` は同じvalidatorを使い、設定読み込みと検証だけを行います。
+
+確認対象:
+
+- sample configで成功する
+- config欠落、不正YAML、未対応version、安全boolean弱体化でfail closedになる
+- invalid時はすべてのcapabilityが `false` になる
+- Secret-like文字列、config全文、正規化済みconfig全文をログへ出さない
+- unknown keyはwarningとして数える
+- `dry-run` defaultは `true`
+- `dry-run=false` でも副作用処理は存在しない
+- `action.yml` のinput/output名と実装が一致する
+
+Action専用確認:
+
+```bash
+npm run build:action
+npm run check:action-dist
+npm run test:action
+npm run lint:action
+```
+
+`npm run check:action-dist` はsourceから再buildした配布物とコミット済み `actions/validate-config/dist/` を比較し、差分がある場合に失敗します。sourceを変更した場合は `npm run build:action` で `dist/index.js` と `dist/package.json` を更新してからコミットします。
+
+配布物単体テストでは、`action.yml` が指す `dist/index.js` を一時ディレクトリへコピーし、外部 `node_modules` なしでvalid / invalid configを処理できることも確認します。
+
 ## Fail closed cases
 
 少なくとも次の場合は `ok: false` になり、すべてのcapabilityが `false` になります。

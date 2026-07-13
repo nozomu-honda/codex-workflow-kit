@@ -1,0 +1,28 @@
+name: Validate ChatGPT automation config
+description: ChatGPT automation設定ファイルを読み込み、副作用なしでfail-closed validatorを実行します。
+
+inputs:
+  config-file:
+    description: 検証するChatGPT automation設定ファイルのパス。
+    required: false
+    default: .github/chatgpt-automation.yml
+  dry-run:
+    description: dry-run指定。このActionはfalseでもwrite capabilityを実行しません。
+    required: false
+    default: 'true'
+
+outputs:
+  ok:
+    description: 設定検証が成功したか。
+  error-count:
+    description: validation error数。
+  warning-count:
+    description: validation warning数。
+  capabilities-json:
+    description: boolean capabilityだけを含むJSON。
+  dry-run:
+    description: 実効dry-run値。
+
+runs:
+  using: node20
+  main: dist/index.js
