@@ -1,0 +1,82 @@
+schemaVersion: 1
+consumers:
+  - id: example
+    repository: owner/example-repo
+    defaultBranch: main
+    configPath: .github/chatgpt-automation.yml
+    callerWorkflowPaths:
+      - .github/workflows/validate-config.yml
+      - .github/workflows/chatgpt-automation-events.yml
+      - .github/workflows/chatgpt-review-routing-events.yml
+      - .github/workflows/reviewed-pr-auto-merge-events.yml
+      - .github/workflows/main-follow-up-events.yml
+    expectedKitRef: "0123456789abcdef0123456789abcdef01234567"
+    desiredCapabilitySet:
+      - config-validation
+      - event-normalization
+      - review-routing-plan
+      - auto-merge-plan
+      - main-follow-up-plan
+    expectedWorkflowNames:
+      - Validate ChatGPT automation config
+      - ChatGPT automation events
+      - ChatGPT review routing events
+      - Reviewed PR auto-merge plan events
+      - Main follow-up plan events
+    allowedTriggers:
+      config-validation:
+        - workflow_dispatch
+      event-normalization:
+        - issue_comment
+        - pull_request_review
+        - pull_request_review_comment
+        - workflow_run
+        - pull_request
+        - push
+      review-routing-plan:
+        - issue_comment
+        - pull_request_review
+        - pull_request_review_comment
+        - workflow_run
+        - pull_request
+        - push
+        - workflow_dispatch
+      auto-merge-plan:
+        - workflow_run
+        - check_suite
+        - check_run
+        - pull_request_review
+        - pull_request_review_comment
+        - pull_request
+        - workflow_dispatch
+      main-follow-up-plan:
+        - push
+        - pull_request
+        - workflow_dispatch
+    allowedPermissions:
+      config-validation:
+        contents: read
+      event-normalization:
+        contents: read
+      review-routing-plan:
+        contents: read
+        pull-requests: read
+        issues: read
+        actions: read
+        checks: read
+        statuses: read
+      auto-merge-plan:
+        contents: read
+        pull-requests: read
+        issues: read
+        actions: read
+        checks: read
+        statuses: read
+      main-follow-up-plan:
+        contents: read
+        pull-requests: read
+        issues: read
+        actions: read
+        checks: read
+        statuses: read
+    manualReviewRequired: false

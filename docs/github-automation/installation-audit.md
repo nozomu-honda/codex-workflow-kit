@@ -4,6 +4,8 @@
 
 このCLIはネットワークアクセス、GitHub API write、自動修正、workflow実行、deploy、mergeを行いません。対象リポジトリroot配下の設定ファイルとcaller workflowだけを読み取り、導入状態が安全側の条件を満たしているかを判定します。
 
+実consumer repositoryをcheckoutせずにGitHub REST APIのGETだけで監査する場合は、[Live consumer audit](live-consumer-audit.md) を使います。live consumer auditもread-onlyで、consumer変更、workflow dispatch、Secret / Variables API、GitHub API writeは行いません。
+
 ## 目的
 
 - 導入先の `.github/chatgpt-automation.yml` が共通validatorでvalidか確認する

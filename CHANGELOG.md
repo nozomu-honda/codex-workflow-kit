@@ -7,6 +7,7 @@
 - Added release readiness planning for `auto-merge-plan` and `main-follow-up-plan`.
 - Added read-only release manifest and consumer inventory examples for fixed-SHA rollout planning.
 - Added fixed ref audit coverage for reusable workflows, caller templates, docs examples, and fixtures.
+- Added read-only live consumer audit planning for fixed SHA, config, trigger, permission, and Secret-like workflow checks.
 
 ### Changed
 
