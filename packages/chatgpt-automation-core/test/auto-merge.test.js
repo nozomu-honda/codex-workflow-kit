@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAutoMergePlan, createAutoMergeDedupeKey, getChangeState, getCiState, getReviewState } from '../src/auto-merge/index.js';
+import { listReviewThreads } from '../../../scripts/plan-auto-merge.mjs';
 import {
   FIXTURE_REPOSITORY,
   FIXTURE_SHAS,
@@ -24,6 +25,21 @@ test('same-repo open PR、current approval、CI successならdry-run merge plan�
   assert.equal(plan.outputs.ci_satisfied, 'true');
   assert.equal(plan.outputs.dry_run, 'true');
   assert.equal(plan.outputs.dedupe_key, `${FIXTURE_REPOSITORY.fullName}#42:${FIXTURE_SHAS.head}:enable-auto-merge:v1`);
+});
+
+test('信頼済みChatGPT actorのcurrent-head markerだけをChatGPT承認にする', () => {
+  assertSkip(createAutoMergePlan(baseInput({
+    issueComments: [chatGptMarker('approved', { actor: 'external-user' })]
+  })), /chatgpt_review_missing/);
+  assertSkip(createAutoMergePlan(baseInput({
+    issueComments: [chatGptMarker('approved', { headSha: FIXTURE_SHAS.before })]
+  })), /chatgpt_review_missing|review_not_current|approval_missing/);
+
+  const trusted = createAutoMergePlan(baseInput({
+    issueComments: [chatGptMarker('approved')]
+  }));
+  assert.equal(trusted.outputs.eligible, 'true');
+  assert.equal(trusted.outputs.review_is_current, 'true');
 });
 
 test('plan-only modeはeligibleでもwrite相当outputを出さない', () => {
@@ -86,6 +102,61 @@ test('bot approval禁止、dismissed review、人間review必須を判定する'
     config: automationConfig({ autoMerge: { requireHumanReview: true } }),
     reviews: []
   })), /human_review_missing/);
+  assertSkip(createAutoMergePlan(baseInput({
+    config: automationConfig({ autoMerge: { requireChatGPTReview: false } }),
+    issueComments: [],
+    reviews: [approvalReview({ actor: 'external-user' })]
+  })), /approval_missing|review_not_current/);
+});
+
+test('reviewerごとの最新current-head reviewだけをapprovalとして数える', () => {
+  const duplicateApprovals = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(duplicateApprovals.humanApprovalCount, 1);
+  assert.equal(duplicateApprovals.approvalCount, 1);
+
+  const differentReviewerDoesNotClearChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'trusted-human', submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(differentReviewerDoesNotClearChanges.changesRequested, true);
+
+  const sameReviewerCurrentApprovalClearsChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(sameReviewerCurrentApprovalClearsChanges.changesRequested, false);
+  assert.equal(sameReviewerCurrentApprovalClearsChanges.humanApprovalCount, 1);
+
+  const staleApproval = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [approvalReview({ actor: 'owner', commit_id: FIXTURE_SHAS.before })]
+  });
+  assert.equal(staleApproval.humanApprovalCount, 0);
+  assert.equal(staleApproval.reviewIsCurrent, false);
 });
 
 test('CI pending / failure / cancelled / skippedはfail closedにする', () => {
@@ -134,6 +205,9 @@ test('duplicate、cooldown、config不正、API read失敗、label不足をskip�
   assertSkip(createAutoMergePlan(baseInput({
     pullRequest: pullRequest({ labels: ['reviewed-by-chatgpt'] })
   })), /auto_merge_label_missing/);
+  assertSkip(createAutoMergePlan(baseInput({
+    pullRequest: pullRequest({ labels: ['auto-merge-after-ci'] })
+  })), /reviewed_by_chatgpt_label_missing/);
 });
 
 test('review state helperはhuman / ChatGPT / stale / unresolvedを分類する', () => {
@@ -150,6 +224,76 @@ test('review state helperはhuman / ChatGPT / stale / unresolvedを分類する'
   assert.equal(state.humanApprovalCount, 1);
   assert.equal(state.chatGptReviewCurrent, true);
   assert.equal(state.unresolvedReviewThreads, 1);
+});
+
+test('101件目以降の未解決threadとrequested team reviewerでblockする', () => {
+  const reviewThreads = [
+    ...Array.from({ length: 100 }, () => ({ isResolved: true })),
+    { isResolved: false }
+  ];
+
+  assertSkip(createAutoMergePlan(baseInput({ reviewThreads })), /unresolved_review_threads/);
+  assertSkip(createAutoMergePlan(baseInput({
+    pullRequest: pullRequest({ requestedTeams: 1 })
+  })), /requested_reviewers_remaining/);
+});
+
+test('GraphQL reviewThreads paginationを全ページ取得し、途中失敗はfail closedへ渡せる', async () => {
+  const calls = [];
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body.variables.cursor ?? null);
+
+    if (calls.length === 1) {
+      return jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: Array.from({ length: 100 }, () => ({ isResolved: true })),
+                pageInfo: { hasNextPage: true, endCursor: 'cursor-100' }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    return jsonResponse({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [{ isResolved: false }],
+              pageInfo: { hasNextPage: false, endCursor: null }
+            }
+          }
+        }
+      }
+    });
+  };
+
+  const threads = await listReviewThreads({
+    fetchImpl,
+    githubApiUrl: 'https://api.github.test',
+    githubToken: 'test-token',
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls, [null, 'cursor-100']);
+  assert.equal(threads.length, 101);
+  assert.equal(threads[100].isResolved, false);
+
+  await assert.rejects(() => listReviewThreads({
+    fetchImpl: async () => jsonResponse({ data: { repository: { pullRequest: { reviewThreads: { nodes: [], pageInfo: { hasNextPage: true, endCursor: '' } } } } } }),
+    githubApiUrl: 'https://api.github.test',
+    githubToken: 'test-token',
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName
+  }), /github_graphql_missing_review_threads_cursor/);
+
+  assertSkip(createAutoMergePlan(baseInput({ apiReadError: 'github_graphql_missing_review_threads_cursor' })), /github_api_read_failed/);
 });
 
 test('CI helperはworkflow run / check run / commit statusを同じheadで見る', () => {
@@ -255,7 +399,7 @@ function automationConfig(overrides = {}) {
     },
     review: {
       decisionMode: 'marker-only',
-      trustedActors: [],
+      trustedActors: ['chatgpt-reviewer'],
       markers: {
         approved: '<!-- chatgpt-review: approved -->',
         changesRequested: '<!-- chatgpt-review: changes_requested -->',
@@ -299,7 +443,7 @@ function automationConfig(overrides = {}) {
       allowFork: false,
       requiredApprovals: 1,
       allowBotApproval: false,
-      trustedReviewers: ['owner'],
+      trustedReviewers: ['owner', 'trusted-human'],
       requiredWorkflows: ['CI'],
       requireResolvedThreads: true,
       allowDraft: false,
@@ -399,6 +543,7 @@ function pullRequest(overrides = {}) {
     merged: overrides.merged ?? false,
     number: 42,
     requested_reviewers: Array.from({ length: overrides.requestedReviewers ?? 0 }, (_, index) => ({ login: `reviewer-${index}` })),
+    requested_teams: Array.from({ length: overrides.requestedTeams ?? 0 }, (_, index) => ({ slug: `team-${index}` })),
     state: overrides.state ?? 'open',
     title: 'Fixture PR',
     user: { login: 'author' }
@@ -411,7 +556,7 @@ function approvalReview(overrides = {}) {
     commit_id: overrides.commit_id ?? FIXTURE_SHAS.head,
     state: overrides.state ?? 'APPROVED',
     submitted_at: overrides.submitted_at ?? '2026-01-01T01:00:00.000Z',
-    user: { login: overrides.actor ?? 'reviewer' }
+    user: { login: overrides.actor ?? 'owner' }
   };
 }
 
@@ -421,6 +566,14 @@ function chatGptMarker(status, overrides = {}) {
     created_at: overrides.created_at ?? '2026-01-01T02:00:00.000Z',
     headSha: overrides.headSha ?? FIXTURE_SHAS.head,
     user: { login: overrides.actor ?? 'chatgpt-reviewer' }
+  };
+}
+
+function jsonResponse(payload, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    json: async () => payload
   };
 }
 

@@ -222,6 +222,7 @@ export function createAutoMergePlan(input = {}) {
     hasLabel(pullRequest, config.labels?.needsCodexFix) && 'needs_codex_fix_label',
     hasLabel(pullRequest, config.labels?.codexFixInProgress) && 'codex_fix_in_progress_label',
     !hasLabel(pullRequest, config.labels?.autoMergeAfterCi) && 'auto_merge_label_missing',
+    !hasLabel(pullRequest, config.labels?.reviewedByChatGpt) && 'reviewed_by_chatgpt_label_missing',
     reviewState.changesRequested && 'changes_requested',
     reviewState.dismissedReview && 'dismissed_review',
     autoMergeConfig.requireChatGPTReview && !reviewState.chatGptReviewCurrent && 'chatgpt_review_missing',
@@ -229,7 +230,7 @@ export function createAutoMergePlan(input = {}) {
     autoMergeConfig.requireCurrentReview && !reviewState.reviewIsCurrent && 'review_not_current',
     reviewState.approvalCount < autoMergeConfig.requiredApprovals && 'approval_missing',
     autoMergeConfig.requireResolvedThreads && reviewState.unresolvedReviewThreads > 0 && 'unresolved_review_threads',
-    pullRequest.requestedReviewers > 0 && 'requested_reviewers_remaining',
+    (pullRequest.requestedReviewers > 0 || pullRequest.requestedTeams > 0) && 'requested_reviewers_remaining',
     !ciState.satisfied && ciState.reason,
     pullRequest.mergeable === null && 'mergeable_unknown',
     pullRequest.mergeable === false && 'merge_conflict',
@@ -278,11 +279,14 @@ export function createAutoMergeDedupeKey({ repository, pullRequestNumber, headSh
 
 export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = {}, headSha = '', issueComments = [], pullRequest = {}, reviewThreads = [], reviews = [] } = {}) {
   const reviewConfig = config.review ?? {};
+  const trustedChatGptActors = new Set(Array.isArray(reviewConfig.trustedActors) ? reviewConfig.trustedActors : []);
+  const trustedHumanReviewers = new Set(Array.isArray(autoMergeConfig.trustedReviewers) ? autoMergeConfig.trustedReviewers : []);
   const sources = [
     ...normalizeIssueComments(issueComments),
     ...normalizeReviews(reviews)
   ];
   const chatGptDecisions = sources
+    .filter((source) => trustedChatGptActors.has(source.actor))
     .map((source) => {
       const decision = detectReviewDecision(source, reviewConfig);
       return decision ? { ...decision, headSha: source.headSha } : null;
@@ -299,16 +303,18 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     }))
     .filter((review) => review.state)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const reviewerStates = latestReviewStatesByActor(reviewEvents, headSha);
   const latestReviewEvent = reviewEvents[0] ?? null;
-  const currentHumanApprovals = reviewEvents.filter((review) =>
-    review.state === 'APPROVED'
-    && (!autoMergeConfig.requireCurrentReview || review.headSha === headSha)
-    && (autoMergeConfig.allowBotApproval || !isBotActor(review.actor))
+  const currentHumanApprovals = [...reviewerStates.values()].filter((state) =>
+    state.current?.state === 'APPROVED'
+    && (!autoMergeConfig.requireCurrentReview || state.current.headSha === headSha)
+    && trustedHumanReviewers.has(state.actor)
+    && (autoMergeConfig.allowBotApproval || !isBotActor(state.actor))
   );
   const chatGptReviewCurrent = latestChatGptDecision?.decision === 'approved'
     && (!autoMergeConfig.requireCurrentReview || latestChatGptDecision.headSha === headSha);
   const changesRequested = latestChatGptDecision?.decision === 'changes_requested'
-    || latestReviewEvent?.state === 'CHANGES_REQUESTED';
+    || [...reviewerStates.values()].some((state) => state.current?.state === 'CHANGES_REQUESTED' || state.latest?.state === 'CHANGES_REQUESTED');
   const approvalCount = currentHumanApprovals.length + (chatGptReviewCurrent ? 1 : 0);
   const staleApproval = reviewEvents.some((review) => review.state === 'APPROVED' && review.headSha && review.headSha !== headSha);
   const unresolvedReviewThreads = (Array.isArray(reviewThreads) ? reviewThreads : [])
@@ -324,7 +330,8 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     reviewIsCurrent: approvalCount > 0 && (!staleApproval || currentHumanApprovals.length > 0 || chatGptReviewCurrent),
     staleApproval,
     unresolvedReviewThreads,
-    requestedReviewers: pullRequest.requestedReviewers ?? 0
+    requestedReviewers: pullRequest.requestedReviewers ?? 0,
+    requestedTeams: pullRequest.requestedTeams ?? 0
   };
 }
 
@@ -422,8 +429,33 @@ function normalizePullRequest(value = {}, normalizedEvent) {
     labels,
     mergeable: normalizeMergeable(value.mergeable),
     mergeStateStatus: cleanString(value.mergeable_state ?? value.mergeStateStatus).toLowerCase() || 'unknown',
-    requestedReviewers: Array.isArray(value.requested_reviewers) ? value.requested_reviewers.length : Number(value.requestedReviewers ?? 0)
+    requestedReviewers: Array.isArray(value.requested_reviewers) ? value.requested_reviewers.length : Number(value.requestedReviewers ?? 0),
+    requestedTeams: Array.isArray(value.requested_teams) ? value.requested_teams.length : Number(value.requestedTeams ?? 0)
   };
+}
+
+function latestReviewStatesByActor(reviewEvents, headSha) {
+  const states = new Map();
+
+  for (const review of reviewEvents) {
+    if (!review.actor) {
+      continue;
+    }
+
+    const current = states.get(review.actor) ?? { actor: review.actor, current: null, latest: null };
+
+    if (!current.latest) {
+      current.latest = review;
+    }
+
+    if (review.headSha === headSha && !current.current) {
+      current.current = review;
+    }
+
+    states.set(review.actor, current);
+  }
+
+  return states;
 }
 
 function normalizeIssueComments(issueComments = []) {

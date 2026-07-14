@@ -131,6 +131,10 @@ scheduleのcronはGitHub Actionsで使う5フィールドcronの安全な数値s
 
 共有キット自身はどのmodeでもGitHub API writeやmergeを行いません。`dryRun` は `true` のみ許可し、`allowFork: true`、`requireSameRepository: false`、`deleteBranchAfterMerge: true` はschemaとvalidatorの両方でinvalidです。
 
+Reviewed PR auto-merge planでは、`labels.autoMergeAfterCi` と `labels.reviewedByChatGpt` の両方がPRに付いていることを必須にします。片方だけではeligibleになりません。`labels.reviewedByChatGpt` の設定名が欠落・空文字・不正型の場合もvalidatorまたはplan判定でfail closedになります。
+
+ChatGPT review markerは `review.trustedActors` に含まれるactorからのものだけを採用します。human approvalは `autoMerge.trustedReviewers` に含まれるreviewer loginの最新current-head reviewだけを数えます。外部actor、unknown actor、未設定reviewer、stale headへのapprovalはapproval数へ入りません。
+
 ## Logical fields and defaults
 
 後続Issueで既存導入先設定からmappingできるよう、主要な論理フィールドとdefaultを記録します。このIssueでは既存 `.chatgpt-review.json` 互換layerは実装しません。

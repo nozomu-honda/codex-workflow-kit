@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { appendFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { createAutoMergePlan, AUTO_MERGE_OUTPUT_NAMES } from '../packages/chatgpt-automation-core/src/auto-merge/index.js';
 import { DEFAULT_SECRET_LIKE_PATTERNS } from '../packages/chatgpt-automation-core/src/config/index.js';
 
@@ -168,19 +169,49 @@ async function listCommitStatuses({ githubApiUrl, githubToken, repository, headS
   return Array.isArray(data?.statuses) ? data.statuses : [];
 }
 
-async function listReviewThreads({ githubApiUrl, githubToken, pullRequestNumber, repository }) {
+export async function listReviewThreads({ fetchImpl = fetch, githubApiUrl, githubToken, pullRequestNumber, repository }) {
   const [owner, name] = repository.split('/');
-  const query = `query($owner:String!, $name:String!, $number:Int!) {
+  const query = `query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
     repository(owner:$owner, name:$name) {
       pullRequest(number:$number) {
-        reviewThreads(first:100) {
+        reviewThreads(first:100, after:$cursor) {
           nodes { isResolved }
+          pageInfo { hasNextPage endCursor }
         }
       }
     }
   }`;
-  const data = await githubGraphql({ githubApiUrl, githubToken, query, variables: { owner, name, number: Number(pullRequestNumber) } });
-  return data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+  const threads = [];
+  let cursor = null;
+
+  if (!owner || !name || !Number.isInteger(Number(pullRequestNumber))) {
+    throw new Error('github_graphql_invalid_review_thread_input');
+  }
+
+  do {
+    const data = await githubGraphql({
+      fetchImpl,
+      githubApiUrl,
+      githubToken,
+      query,
+      variables: { cursor, owner, name, number: Number(pullRequestNumber) }
+    });
+    const connection = data?.repository?.pullRequest?.reviewThreads;
+
+    if (!connection || !Array.isArray(connection.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
+      throw new Error('github_graphql_unexpected_review_threads_response');
+    }
+
+    threads.push(...connection.nodes);
+
+    if (connection.pageInfo.hasNextPage && !connection.pageInfo.endCursor) {
+      throw new Error('github_graphql_missing_review_threads_cursor');
+    }
+
+    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return threads;
 }
 
 async function compareBaseWithHead({ baseRef, githubApiUrl, githubToken, headSha, repository }) {
@@ -212,9 +243,9 @@ async function githubRequest({ githubApiUrl, githubToken, path }) {
   return data;
 }
 
-async function githubGraphql({ githubApiUrl, githubToken, query, variables }) {
+async function githubGraphql({ fetchImpl = fetch, githubApiUrl, githubToken, query, variables }) {
   const apiBase = githubApiUrl.replace(/\/$/, '');
-  const response = await fetch(`${apiBase}/graphql`, {
+  const response = await fetchImpl(`${apiBase}/graphql`, {
     body: JSON.stringify({ query, variables }),
     headers: {
       accept: 'application/vnd.github+json',
@@ -305,7 +336,9 @@ function logPlan(outputs) {
   console.log(`auto-merge-plan ${action}: repository=${outputs.repository} pr=${outputs.pull_request_number || '(none)'} head=${outputs.head_sha || '(none)'} mode=${outputs.merge_mode} method=${outputs.merge_method} dry_run=${outputs.dry_run} reason=${reason || '(none)'}`);
 }
 
-main().catch((error) => {
-  console.error(`auto-merge-plan failed: ${error.message}`);
-  process.exitCode = 1;
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch((error) => {
+    console.error(`auto-merge-plan failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

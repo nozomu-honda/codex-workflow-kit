@@ -148,6 +148,7 @@ function consumerConfig(overrides = {}) {
     },
     review: {
       decisionMode: 'marker-only',
+      trustedActors: ['chatgpt-reviewer'],
       markers: {
         approved: '<!-- chatgpt-review: approved -->',
         changesRequested: '<!-- chatgpt-review: changes_requested -->',
@@ -169,7 +170,7 @@ function consumerConfig(overrides = {}) {
       allowFork: false,
       requiredApprovals: 1,
       allowBotApproval: false,
-      trustedReviewers: ['owner'],
+      trustedReviewers: ['owner', 'reviewer'],
       requiredWorkflows: ['CI'],
       requireResolvedThreads: true,
       allowDraft: false,
