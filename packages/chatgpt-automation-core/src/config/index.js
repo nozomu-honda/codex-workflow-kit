@@ -104,6 +104,34 @@ export const DEFAULT_REVIEW_ROUTING = Object.freeze({
   duplicatePolicy: 'dedupe-key'
 });
 
+export const DEFAULT_AUTO_MERGE = Object.freeze({
+  enabled: false,
+  dryRun: true,
+  mode: 'plan-only',
+  mergeMethod: 'squash',
+  allowedBaseBranches: [],
+  requireSameRepository: true,
+  allowFork: false,
+  requiredApprovals: 1,
+  allowBotApproval: false,
+  trustedReviewers: [],
+  requiredWorkflows: [],
+  requireResolvedThreads: true,
+  allowDraft: false,
+  sensitivePathPatterns: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
+  manualMergePathPatterns: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
+  maxChangedFiles: 100,
+  maxAdditions: 2000,
+  maxDeletions: 2000,
+  requireChatGPTReview: true,
+  requireHumanReview: false,
+  requireCurrentReview: true,
+  duplicatePolicy: 'dedupe-key',
+  cooldownSeconds: 0,
+  deleteBranchAfterMerge: false,
+  useMergeQueue: false
+});
+
 const DEFAULT_CAPABILITIES = Object.freeze({
   autoRequest: false,
   routeReview: false,
@@ -122,6 +150,7 @@ const ROOT_KEYS = [
   'labels',
   'review',
   'reviewRouting',
+  'autoMerge',
   'protectedFiles',
   'secretLike',
   'queues',
@@ -150,6 +179,8 @@ const REVIEW_ROUTING_TRIGGER_TYPES = [
   'pr-updated'
 ];
 const REVIEW_ROUTING_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
+const AUTO_MERGE_MODES = ['plan-only', 'enable-auto-merge', 'merge-queue', 'immediate-merge'];
+const AUTO_MERGE_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
 const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
@@ -210,6 +241,7 @@ export function validateAutomationConfigObject(rawConfig) {
     labels: normalizeLabels(rawConfig.labels, errors, warnings),
     review: normalizeReview(rawConfig.review, errors, warnings),
     reviewRouting: normalizeReviewRouting(rawConfig.reviewRouting, errors, warnings),
+    autoMerge: normalizeAutoMerge(rawConfig.autoMerge, errors, warnings),
     protectedFiles: normalizeProtectedFiles(rawConfig.protectedFiles, errors, warnings),
     secretLike: normalizeSecretLike(rawConfig.secretLike, errors, warnings),
     queues: normalizeQueues(rawConfig.queues, errors, warnings),
@@ -560,6 +592,146 @@ function normalizeReviewRouting(value, errors, warnings) {
   return normalized;
 }
 
+function normalizeAutoMerge(value, errors, warnings) {
+  const normalized = {
+    ...DEFAULT_AUTO_MERGE,
+    allowedBaseBranches: [],
+    trustedReviewers: [],
+    requiredWorkflows: [],
+    sensitivePathPatterns: [...DEFAULT_AUTO_MERGE.sensitivePathPatterns],
+    manualMergePathPatterns: [...DEFAULT_AUTO_MERGE.manualMergePathPatterns]
+  };
+
+  if (value === undefined) {
+    return normalized;
+  }
+
+  if (!isPlainObject(value)) {
+    errors.push(issue('autoMerge', 'OBJECT_REQUIRED', 'Auto-merge config must be an object.'));
+    return normalized;
+  }
+
+  warnUnknownKeys(value, 'autoMerge', [
+    'enabled',
+    'dryRun',
+    'mode',
+    'mergeMethod',
+    'allowedBaseBranches',
+    'requireSameRepository',
+    'allowFork',
+    'requiredApprovals',
+    'allowBotApproval',
+    'trustedReviewers',
+    'requiredWorkflows',
+    'requireResolvedThreads',
+    'allowDraft',
+    'sensitivePathPatterns',
+    'manualMergePathPatterns',
+    'maxChangedFiles',
+    'maxAdditions',
+    'maxDeletions',
+    'requireChatGPTReview',
+    'requireHumanReview',
+    'requireCurrentReview',
+    'duplicatePolicy',
+    'cooldownSeconds',
+    'deleteBranchAfterMerge',
+    'useMergeQueue'
+  ], warnings);
+
+  normalized.enabled = normalizeOptionalBoolean(value.enabled, false, 'autoMerge.enabled', errors);
+
+  if (value.dryRun !== undefined) {
+    if (value.dryRun !== true) {
+      errors.push(issue('autoMerge.dryRun', 'DRY_RUN_REQUIRED', 'Auto-merge planning must remain dry-run in the shared kit.'));
+    }
+    normalized.dryRun = true;
+  }
+
+  if (value.mode !== undefined) {
+    if (!AUTO_MERGE_MODES.includes(value.mode)) {
+      errors.push(issue('autoMerge.mode', 'INVALID_AUTO_MERGE_MODE', 'Auto-merge mode is not supported.'));
+    } else {
+      normalized.mode = value.mode;
+    }
+  }
+
+  if (value.mergeMethod !== undefined) {
+    if (!MERGE_METHODS.includes(value.mergeMethod)) {
+      errors.push(issue('autoMerge.mergeMethod', 'INVALID_MERGE_METHOD', 'Merge method must be one of the supported values.'));
+    } else {
+      normalized.mergeMethod = value.mergeMethod;
+    }
+  }
+
+  if (value.allowDraft !== undefined) {
+    normalized.allowDraft = normalizeOptionalBoolean(value.allowDraft, false, 'autoMerge.allowDraft', errors);
+  }
+
+  if (value.allowFork !== undefined) {
+    if (value.allowFork !== false) {
+      errors.push(issue('autoMerge.allowFork', 'FORK_AUTO_MERGE_FORBIDDEN', 'Auto-merge must not merge fork pull requests.'));
+    }
+    normalized.allowFork = false;
+  }
+
+  if (value.requireSameRepository !== undefined) {
+    if (value.requireSameRepository !== true) {
+      errors.push(issue('autoMerge.requireSameRepository', 'SAME_REPOSITORY_REQUIRED', 'Auto-merge must require same-repository pull requests.'));
+    }
+    normalized.requireSameRepository = true;
+  }
+
+  if (value.deleteBranchAfterMerge !== undefined) {
+    if (value.deleteBranchAfterMerge !== false) {
+      errors.push(issue('autoMerge.deleteBranchAfterMerge', 'DELETE_BRANCH_FORBIDDEN', 'The shared kit must not delete head branches.'));
+    }
+    normalized.deleteBranchAfterMerge = false;
+  }
+
+  for (const key of ['allowBotApproval', 'requireResolvedThreads', 'requireChatGPTReview', 'requireHumanReview', 'requireCurrentReview', 'useMergeQueue']) {
+    if (value[key] !== undefined) {
+      normalized[key] = normalizeOptionalBoolean(value[key], DEFAULT_AUTO_MERGE[key], `autoMerge.${key}`, errors);
+    }
+  }
+
+  if (value.requiredApprovals !== undefined) {
+    normalized.requiredApprovals = normalizePositiveInteger(value.requiredApprovals, 'autoMerge.requiredApprovals', 0, 20, errors);
+  }
+
+  for (const key of ['allowedBaseBranches', 'trustedReviewers', 'requiredWorkflows', 'sensitivePathPatterns', 'manualMergePathPatterns']) {
+    if (value[key] !== undefined) {
+      normalized[key] = normalizeStringArray(value[key], `autoMerge.${key}`, errors);
+    }
+  }
+
+  if (value.maxChangedFiles !== undefined) {
+    normalized.maxChangedFiles = normalizePositiveInteger(value.maxChangedFiles, 'autoMerge.maxChangedFiles', 1, 500, errors);
+  }
+
+  if (value.maxAdditions !== undefined) {
+    normalized.maxAdditions = normalizePositiveInteger(value.maxAdditions, 'autoMerge.maxAdditions', 0, 100000, errors);
+  }
+
+  if (value.maxDeletions !== undefined) {
+    normalized.maxDeletions = normalizePositiveInteger(value.maxDeletions, 'autoMerge.maxDeletions', 0, 100000, errors);
+  }
+
+  if (value.cooldownSeconds !== undefined) {
+    normalized.cooldownSeconds = normalizePositiveInteger(value.cooldownSeconds, 'autoMerge.cooldownSeconds', 0, 604800, errors);
+  }
+
+  if (value.duplicatePolicy !== undefined) {
+    if (!AUTO_MERGE_DUPLICATE_POLICIES.includes(value.duplicatePolicy)) {
+      errors.push(issue('autoMerge.duplicatePolicy', 'INVALID_DUPLICATE_POLICY', 'Auto-merge duplicate policy is not supported.'));
+    } else {
+      normalized.duplicatePolicy = value.duplicatePolicy;
+    }
+  }
+
+  return normalized;
+}
+
 function normalizeProtectedFiles(value, errors, warnings) {
   const normalized = {
     hardBlockDefaults: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
@@ -901,6 +1073,18 @@ function validateCrossFieldRules(config, errors) {
     if (config.review.markers.reviewRequest === config.review.markers.approved || config.review.markers.reviewRequest === config.review.markers.changesRequested) {
       errors.push(issue('review.markers.reviewRequest', 'DUPLICATE_REVIEW_MARKERS', 'Review request marker must be distinct from decision markers.'));
     }
+  }
+
+  if (config.autoMerge.mode === 'merge-queue' && config.autoMerge.useMergeQueue !== true) {
+    errors.push(issue('autoMerge.useMergeQueue', 'MERGE_QUEUE_MODE_REQUIRES_FLAG', 'merge-queue mode must explicitly enable useMergeQueue.'));
+  }
+
+  if (config.autoMerge.mode === 'immediate-merge' && config.autoMerge.requiredApprovals < 1) {
+    errors.push(issue('autoMerge.requiredApprovals', 'IMMEDIATE_MERGE_REQUIRES_APPROVAL', 'immediate-merge mode requires at least one approval.'));
+  }
+
+  if (config.autoMerge.mode !== 'plan-only' && config.autoMerge.dryRun !== true) {
+    errors.push(issue('autoMerge.dryRun', 'DRY_RUN_REQUIRED', 'Write-capable auto-merge modes must still be dry-run in the shared kit.'));
   }
 }
 

@@ -103,6 +103,32 @@ test('成功したworkflow_runを正規化する', () => {
   assert.equal(result.outputs.head_sha, HEAD_SHA);
 });
 
+test('成功したcheck_suiteを正規化する', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'check_suite',
+    eventAction: 'completed',
+    payload: checkSuitePayload({ conclusion: 'success' })
+  }));
+
+  assertEligible(result);
+  assert.equal(result.outputs.workflow_conclusion, 'success');
+  assert.equal(result.outputs.head_sha, HEAD_SHA);
+  assert.equal(result.outputs.pull_request_number, '42');
+});
+
+test('成功したcheck_runを正規化する', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'check_run',
+    eventAction: 'completed',
+    payload: checkRunPayload({ conclusion: 'success' })
+  }));
+
+  assertEligible(result);
+  assert.equal(result.outputs.workflow_name, 'CI');
+  assert.equal(result.outputs.workflow_conclusion, 'success');
+  assert.equal(result.outputs.head_sha, HEAD_SHA);
+});
+
 test('mergedされたpull_request.closedを正規化する', () => {
   const result = normalizeAutomationEvent(baseInput({
     eventName: 'pull_request',
@@ -209,6 +235,22 @@ test('失敗またはキャンセルされたworkflow_runはeligibleにしない
 
     assertIneligible(result, /workflow_run conclusion is not success/);
   }
+});
+
+test('失敗したcheck_suite / check_runはeligibleにしない', () => {
+  const suite = normalizeAutomationEvent(baseInput({
+    eventName: 'check_suite',
+    eventAction: 'completed',
+    payload: checkSuitePayload({ conclusion: 'failure' })
+  }));
+  const run = normalizeAutomationEvent(baseInput({
+    eventName: 'check_run',
+    eventAction: 'completed',
+    payload: checkRunPayload({ conclusion: 'failure' })
+  }));
+
+  assertIneligible(suite, /check_suite conclusion is not success/);
+  assertIneligible(run, /check_run conclusion is not success/);
 });
 
 test('default branch以外へのpushはeligibleにしない', () => {
@@ -379,6 +421,44 @@ function workflowRunPayload(options = {}) {
       head_repository: {
         full_name: options.headRepository ?? REPOSITORY
       },
+      pull_requests: [
+        { number: 42 }
+      ]
+    }
+  };
+}
+
+function checkSuitePayload(options = {}) {
+  return {
+    action: 'completed',
+    repository: repositoryPayload(),
+    sender: senderPayload(),
+    check_suite: {
+      id: 5001,
+      status: 'completed',
+      conclusion: options.conclusion ?? 'success',
+      head_sha: HEAD_SHA,
+      head_repository: {
+        full_name: options.headRepository ?? REPOSITORY
+      },
+      pull_requests: [
+        { number: 42 }
+      ]
+    }
+  };
+}
+
+function checkRunPayload(options = {}) {
+  return {
+    action: 'completed',
+    repository: repositoryPayload(),
+    sender: senderPayload(),
+    check_run: {
+      id: 6001,
+      name: 'CI',
+      status: 'completed',
+      conclusion: options.conclusion ?? 'success',
+      head_sha: HEAD_SHA,
       pull_requests: [
         { number: 42 }
       ]

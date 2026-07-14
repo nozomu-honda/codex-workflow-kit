@@ -1,0 +1,240 @@
+name: Plan reviewed PR auto-merge
+
+on:
+  workflow_call:
+    inputs:
+      event-name:
+        description: GitHub event name.
+        type: string
+        required: true
+      event-action:
+        description: GitHub event action.
+        type: string
+        required: false
+        default: ''
+      event-payload-json:
+        description: GitHub event payload JSON.
+        type: string
+        required: true
+      repository:
+        description: Repository full name.
+        type: string
+        required: true
+      repository-owner:
+        description: Repository owner login.
+        type: string
+        required: true
+      default-branch:
+        description: Repository default branch.
+        type: string
+        required: true
+      actor:
+        description: GitHub actor login.
+        type: string
+        required: true
+      ref-name:
+        description: GitHub ref name.
+        type: string
+        required: false
+        default: ''
+      sha:
+        description: Event SHA.
+        type: string
+        required: false
+        default: ''
+      dry-run:
+        description: Dry-run flag. Defaults to true and never performs write operations.
+        type: boolean
+        required: false
+        default: true
+      repository-config-json:
+        description: Secret-free repository config JSON.
+        type: string
+        required: false
+        default: '{}'
+      existing-dedupe-keys:
+        description: Comma-separated dedupe keys already planned by the caller.
+        type: string
+        required: false
+        default: ''
+      last-planned-at:
+        description: Last auto-merge plan timestamp for cooldown checks.
+        type: string
+        required: false
+        default: ''
+      kit-ref:
+        description: Fixed codex-workflow-kit ref.
+        type: string
+        required: true
+    outputs:
+      should_merge:
+        value: ${{ jobs.auto-merge-plan.outputs.should_merge }}
+      should_enable_auto_merge:
+        value: ${{ jobs.auto-merge-plan.outputs.should_enable_auto_merge }}
+      merge_mode:
+        value: ${{ jobs.auto-merge-plan.outputs.merge_mode }}
+      merge_method:
+        value: ${{ jobs.auto-merge-plan.outputs.merge_method }}
+      merge_reason:
+        value: ${{ jobs.auto-merge-plan.outputs.merge_reason }}
+      skip_reason:
+        value: ${{ jobs.auto-merge-plan.outputs.skip_reason }}
+      repository:
+        value: ${{ jobs.auto-merge-plan.outputs.repository }}
+      pull_request_number:
+        value: ${{ jobs.auto-merge-plan.outputs.pull_request_number }}
+      base_branch:
+        value: ${{ jobs.auto-merge-plan.outputs.base_branch }}
+      head_branch:
+        value: ${{ jobs.auto-merge-plan.outputs.head_branch }}
+      head_sha:
+        value: ${{ jobs.auto-merge-plan.outputs.head_sha }}
+      base_sha:
+        value: ${{ jobs.auto-merge-plan.outputs.base_sha }}
+      is_same_repository:
+        value: ${{ jobs.auto-merge-plan.outputs.is_same_repository }}
+      is_fork:
+        value: ${{ jobs.auto-merge-plan.outputs.is_fork }}
+      is_draft:
+        value: ${{ jobs.auto-merge-plan.outputs.is_draft }}
+      mergeable:
+        value: ${{ jobs.auto-merge-plan.outputs.mergeable }}
+      merge_state_status:
+        value: ${{ jobs.auto-merge-plan.outputs.merge_state_status }}
+      approval_count:
+        value: ${{ jobs.auto-merge-plan.outputs.approval_count }}
+      required_approval_count:
+        value: ${{ jobs.auto-merge-plan.outputs.required_approval_count }}
+      changes_requested:
+        value: ${{ jobs.auto-merge-plan.outputs.changes_requested }}
+      unresolved_review_threads:
+        value: ${{ jobs.auto-merge-plan.outputs.unresolved_review_threads }}
+      review_is_current:
+        value: ${{ jobs.auto-merge-plan.outputs.review_is_current }}
+      ci_required:
+        value: ${{ jobs.auto-merge-plan.outputs.ci_required }}
+      ci_satisfied:
+        value: ${{ jobs.auto-merge-plan.outputs.ci_satisfied }}
+      required_checks:
+        value: ${{ jobs.auto-merge-plan.outputs.required_checks }}
+      sensitive_change:
+        value: ${{ jobs.auto-merge-plan.outputs.sensitive_change }}
+      secret_like_change:
+        value: ${{ jobs.auto-merge-plan.outputs.secret_like_change }}
+      workflow_change:
+        value: ${{ jobs.auto-merge-plan.outputs.workflow_change }}
+      dependency_change:
+        value: ${{ jobs.auto-merge-plan.outputs.dependency_change }}
+      duplicate_suppressed:
+        value: ${{ jobs.auto-merge-plan.outputs.duplicate_suppressed }}
+      dry_run:
+        value: ${{ jobs.auto-merge-plan.outputs.dry_run }}
+      eligible:
+        value: ${{ jobs.auto-merge-plan.outputs.eligible }}
+      dedupe_key:
+        value: ${{ jobs.auto-merge-plan.outputs.dedupe_key }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
+
+jobs:
+  normalize-event:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/normalize-event.yml
+    with:
+      event-name: ${{ inputs.event-name }}
+      event-action: ${{ inputs.event-action }}
+      event-payload-json: ${{ inputs.event-payload-json }}
+      repository: ${{ inputs.repository }}
+      repository-owner: ${{ inputs.repository-owner }}
+      default-branch: ${{ inputs.default-branch }}
+      actor: ${{ inputs.actor }}
+      ref-name: ${{ inputs.ref-name }}
+      sha: ${{ inputs.sha }}
+      dry-run: ${{ inputs.dry-run }}
+      permission-mode: read-only
+      requested-capability: normalize-only
+      repository-config-json: ${{ inputs.repository-config-json }}
+      kit-ref: ${{ inputs.kit-ref }}
+
+  auto-merge-plan:
+    name: Plan auto-merge
+    runs-on: ubuntu-latest
+    needs: normalize-event
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+      checks: read
+      statuses: read
+    outputs:
+      should_merge: ${{ steps.auto-merge-plan.outputs.should_merge }}
+      should_enable_auto_merge: ${{ steps.auto-merge-plan.outputs.should_enable_auto_merge }}
+      merge_mode: ${{ steps.auto-merge-plan.outputs.merge_mode }}
+      merge_method: ${{ steps.auto-merge-plan.outputs.merge_method }}
+      merge_reason: ${{ steps.auto-merge-plan.outputs.merge_reason }}
+      skip_reason: ${{ steps.auto-merge-plan.outputs.skip_reason }}
+      repository: ${{ steps.auto-merge-plan.outputs.repository }}
+      pull_request_number: ${{ steps.auto-merge-plan.outputs.pull_request_number }}
+      base_branch: ${{ steps.auto-merge-plan.outputs.base_branch }}
+      head_branch: ${{ steps.auto-merge-plan.outputs.head_branch }}
+      head_sha: ${{ steps.auto-merge-plan.outputs.head_sha }}
+      base_sha: ${{ steps.auto-merge-plan.outputs.base_sha }}
+      is_same_repository: ${{ steps.auto-merge-plan.outputs.is_same_repository }}
+      is_fork: ${{ steps.auto-merge-plan.outputs.is_fork }}
+      is_draft: ${{ steps.auto-merge-plan.outputs.is_draft }}
+      mergeable: ${{ steps.auto-merge-plan.outputs.mergeable }}
+      merge_state_status: ${{ steps.auto-merge-plan.outputs.merge_state_status }}
+      approval_count: ${{ steps.auto-merge-plan.outputs.approval_count }}
+      required_approval_count: ${{ steps.auto-merge-plan.outputs.required_approval_count }}
+      changes_requested: ${{ steps.auto-merge-plan.outputs.changes_requested }}
+      unresolved_review_threads: ${{ steps.auto-merge-plan.outputs.unresolved_review_threads }}
+      review_is_current: ${{ steps.auto-merge-plan.outputs.review_is_current }}
+      ci_required: ${{ steps.auto-merge-plan.outputs.ci_required }}
+      ci_satisfied: ${{ steps.auto-merge-plan.outputs.ci_satisfied }}
+      required_checks: ${{ steps.auto-merge-plan.outputs.required_checks }}
+      sensitive_change: ${{ steps.auto-merge-plan.outputs.sensitive_change }}
+      secret_like_change: ${{ steps.auto-merge-plan.outputs.secret_like_change }}
+      workflow_change: ${{ steps.auto-merge-plan.outputs.workflow_change }}
+      dependency_change: ${{ steps.auto-merge-plan.outputs.dependency_change }}
+      duplicate_suppressed: ${{ steps.auto-merge-plan.outputs.duplicate_suppressed }}
+      dry_run: ${{ steps.auto-merge-plan.outputs.dry_run }}
+      eligible: ${{ steps.auto-merge-plan.outputs.eligible }}
+      dedupe_key: ${{ steps.auto-merge-plan.outputs.dedupe_key }}
+    steps:
+      - name: Validate kit ref
+        shell: bash
+        run: |
+          if [[ ! "${KIT_REF}" =~ ^[a-f0-9]{40}$ && ! "${KIT_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "kit-ref must be a 40-character SHA or full version tag." >&2
+            exit 1
+          fi
+        env:
+          KIT_REF: ${{ inputs.kit-ref }}
+
+      - name: Checkout shared kit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: nozomu-honda/codex-workflow-kit
+          ref: ${{ inputs.kit-ref }}
+          path: .codex-workflow-kit
+          persist-credentials: false
+
+      - name: Plan auto-merge
+        id: auto-merge-plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NORMALIZED_EVENT_JSON: >-
+            {"event_name":"${{ needs.normalize-event.outputs.event_name }}","event_action":"${{ needs.normalize-event.outputs.event_action }}","repository":"${{ needs.normalize-event.outputs.repository }}","repository_owner":"${{ needs.normalize-event.outputs.repository_owner }}","default_branch":"${{ needs.normalize-event.outputs.default_branch }}","actor":"${{ needs.normalize-event.outputs.actor }}","pull_request_number":"${{ needs.normalize-event.outputs.pull_request_number }}","head_sha":"${{ needs.normalize-event.outputs.head_sha }}","base_sha":"${{ needs.normalize-event.outputs.base_sha }}","head_repository":"${{ needs.normalize-event.outputs.head_repository }}","is_same_repository":"${{ needs.normalize-event.outputs.is_same_repository }}","is_fork":"${{ needs.normalize-event.outputs.is_fork }}","workflow_name":"${{ needs.normalize-event.outputs.workflow_name }}","workflow_conclusion":"${{ needs.normalize-event.outputs.workflow_conclusion }}","eligible":"${{ needs.normalize-event.outputs.eligible }}","ineligible_reason":"${{ needs.normalize-event.outputs.ineligible_reason }}"}
+          EVENT_PAYLOAD_JSON: ${{ inputs.event-payload-json }}
+          REPOSITORY_CONFIG_JSON: ${{ inputs.repository-config-json }}
+          EXISTING_DEDUPE_KEYS: ${{ inputs.existing-dedupe-keys }}
+          LAST_PLANNED_AT: ${{ inputs.last-planned-at }}
+        run: node .codex-workflow-kit/scripts/plan-auto-merge.mjs

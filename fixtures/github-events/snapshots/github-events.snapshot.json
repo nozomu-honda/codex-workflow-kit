@@ -46,6 +46,25 @@
     "headSha": "0000000000000000000000000000000000000003",
     "headRepository": "owner/example-repo"
   },
+  "failedCheckSuite": {
+    "action": "completed",
+    "repository": "owner/example-repo",
+    "actor": "github-actions[bot]",
+    "checkSuiteId": 5001,
+    "workflowName": "GitHub Actions",
+    "workflowConclusion": "failure",
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "owner/example-repo"
+  },
+  "failedCheckRun": {
+    "action": "completed",
+    "repository": "owner/example-repo",
+    "actor": "github-actions[bot]",
+    "checkRunId": 6001,
+    "workflowName": "CI",
+    "workflowConclusion": "failure",
+    "headSha": "0000000000000000000000000000000000000003"
+  },
   "pushDefaultBranch": {
     "repository": "owner/example-repo",
     "actor": "github-actions[bot]",

@@ -53,6 +53,8 @@ export const GITHUB_EVENT_FIXTURE_NAMES = Object.freeze([
   'pull_request_review',
   'pull_request_review_comment',
   'workflow_run',
+  'check_suite',
+  'check_run',
   'push'
 ]);
 
@@ -78,6 +80,10 @@ export function buildGithubEventPayload(eventName, options = {}) {
       return buildPullRequestReviewCommentPayload(options);
     case 'workflow_run':
       return buildWorkflowRunPayload(options);
+    case 'check_suite':
+      return buildCheckSuitePayload(options);
+    case 'check_run':
+      return buildCheckRunPayload(options);
     case 'push':
       return buildPushPayload(options);
     default:
@@ -146,6 +152,34 @@ export function failedWorkflowRun(options = {}) {
   });
 }
 
+export function successfulCheckSuite(options = {}) {
+  return buildCheckSuitePayload({
+    conclusion: 'success',
+    ...options
+  });
+}
+
+export function failedCheckSuite(options = {}) {
+  return buildCheckSuitePayload({
+    conclusion: 'failure',
+    ...options
+  });
+}
+
+export function successfulCheckRun(options = {}) {
+  return buildCheckRunPayload({
+    conclusion: 'success',
+    ...options
+  });
+}
+
+export function failedCheckRun(options = {}) {
+  return buildCheckRunPayload({
+    conclusion: 'failure',
+    ...options
+  });
+}
+
 export function pushDefaultBranch(options = {}) {
   return buildPushPayload({
     ref: `refs/heads/${FIXTURE_REPOSITORY.defaultBranch}`,
@@ -179,6 +213,12 @@ export function invalidPayloadFixture(eventName, reason = 'missingRepository') {
       }
       if (payload.workflow_run) {
         delete payload.workflow_run.head_sha;
+      }
+      if (payload.check_suite) {
+        delete payload.check_suite.head_sha;
+      }
+      if (payload.check_run) {
+        delete payload.check_run.head_sha;
       }
       if (eventName === 'push') {
         delete payload.after;
@@ -315,6 +355,93 @@ export function buildWorkflowRunPayload(options = {}) {
   });
 }
 
+export function buildCheckSuitePayload(options = {}) {
+  const action = options.action ?? 'completed';
+  const actor = resolveActor(options.actor ?? 'githubActionsBot');
+  const repository = resolveRepository(options.repository);
+  const headRepository = resolveHeadRepository(options);
+  const pullRequestNumber = options.pullRequestNumber ?? 42;
+
+  return removeUndefined({
+    action,
+    repository: buildRepository({ repository }),
+    sender: buildSender(actor),
+    check_suite: {
+      id: options.checkSuiteId ?? 5001,
+      status: options.status ?? 'completed',
+      conclusion: options.conclusion ?? 'success',
+      head_sha: options.headSha ?? FIXTURE_SHAS.head,
+      app: {
+        id: options.appId ?? 15368,
+        slug: options.appSlug ?? 'github-actions',
+        name: options.appName ?? 'GitHub Actions'
+      },
+      head_repository: buildRepository({
+        repository: headRepository,
+        fork: headRepository.fullName !== repository.fullName
+      }),
+      pull_requests: options.pullRequests ?? [
+        {
+          number: pullRequestNumber,
+          head: {
+            sha: options.headSha ?? FIXTURE_SHAS.head,
+            repo: buildRepository({
+              repository: headRepository,
+              fork: headRepository.fullName !== repository.fullName
+            })
+          },
+          base: {
+            sha: options.baseSha ?? FIXTURE_SHAS.base,
+            repo: buildRepository({ repository })
+          }
+        }
+      ]
+    }
+  });
+}
+
+export function buildCheckRunPayload(options = {}) {
+  const action = options.action ?? 'completed';
+  const actor = resolveActor(options.actor ?? 'githubActionsBot');
+  const repository = resolveRepository(options.repository);
+  const headRepository = resolveHeadRepository(options);
+  const pullRequestNumber = options.pullRequestNumber ?? 42;
+
+  return removeUndefined({
+    action,
+    repository: buildRepository({ repository }),
+    sender: buildSender(actor),
+    check_run: {
+      id: options.checkRunId ?? 6001,
+      name: options.name ?? options.workflowName ?? 'CI',
+      status: options.status ?? 'completed',
+      conclusion: options.conclusion ?? 'success',
+      head_sha: options.headSha ?? FIXTURE_SHAS.head,
+      app: {
+        id: options.appId ?? 15368,
+        slug: options.appSlug ?? 'github-actions',
+        name: options.appName ?? 'GitHub Actions'
+      },
+      pull_requests: options.pullRequests ?? [
+        {
+          number: pullRequestNumber,
+          head: {
+            sha: options.headSha ?? FIXTURE_SHAS.head,
+            repo: buildRepository({
+              repository: headRepository,
+              fork: headRepository.fullName !== repository.fullName
+            })
+          },
+          base: {
+            sha: options.baseSha ?? FIXTURE_SHAS.base,
+            repo: buildRepository({ repository })
+          }
+        }
+      ]
+    }
+  });
+}
+
 export function buildPushPayload(options = {}) {
   const actor = resolveActor(options.actor ?? 'githubActionsBot');
   const repository = resolveRepository(options.repository);
@@ -371,6 +498,14 @@ export function validateGithubEventPayload(eventName, payload) {
     case 'workflow_run':
       requirePath(payload, ['workflow_run', 'id'], errors, 'WORKFLOW_RUN_ID_MISSING');
       requirePath(payload, ['workflow_run', 'head_sha'], errors, 'WORKFLOW_RUN_HEAD_SHA_MISSING');
+      break;
+    case 'check_suite':
+      requirePath(payload, ['check_suite', 'id'], errors, 'CHECK_SUITE_ID_MISSING');
+      requirePath(payload, ['check_suite', 'head_sha'], errors, 'CHECK_SUITE_HEAD_SHA_MISSING');
+      break;
+    case 'check_run':
+      requirePath(payload, ['check_run', 'id'], errors, 'CHECK_RUN_ID_MISSING');
+      requirePath(payload, ['check_run', 'head_sha'], errors, 'CHECK_RUN_HEAD_SHA_MISSING');
       break;
     case 'push':
       requirePath(payload, ['ref'], errors, 'PUSH_REF_MISSING');

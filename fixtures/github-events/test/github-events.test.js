@@ -12,6 +12,8 @@ import {
   buildPullRequestPayload,
   draftPr,
   failedWorkflowRun,
+  failedCheckRun,
+  failedCheckSuite,
   forkReview,
   githubEventFixture,
   invalidPayloadFixture,
@@ -21,6 +23,8 @@ import {
   sameRepoIssueComment,
   sameRepoReview,
   sameRepoReviewComment,
+  successfulCheckRun,
+  successfulCheckSuite,
   successfulWorkflowRun,
   validateGithubEventPayload
 } from '../index.js';
@@ -48,6 +52,10 @@ test('主要scenario builderがsame repo / fork / merge / draft / CI状態を表
   assert.equal(draftPr().pull_request.draft, true);
   assert.equal(successfulWorkflowRun().workflow_run.conclusion, 'success');
   assert.equal(failedWorkflowRun().workflow_run.conclusion, 'failure');
+  assert.equal(successfulCheckSuite().check_suite.conclusion, 'success');
+  assert.equal(failedCheckSuite().check_suite.conclusion, 'failure');
+  assert.equal(successfulCheckRun().check_run.conclusion, 'success');
+  assert.equal(failedCheckRun().check_run.conclusion, 'failure');
   assert.equal(pushDefaultBranch().ref, 'refs/heads/main');
   assert.equal(pushFeatureBranch().ref, 'refs/heads/feature/example-change');
 });
@@ -88,6 +96,8 @@ test('snapshot fixtureは安全な要約だけを固定する', async () => {
     forkReview: summarizePayload(forkReview()),
     mergedPr: summarizePayload(mergedPr()),
     failedWorkflowRun: summarizePayload(failedWorkflowRun()),
+    failedCheckSuite: summarizePayload(failedCheckSuite()),
+    failedCheckRun: summarizePayload(failedCheckRun()),
     pushDefaultBranch: summarizePayload(pushDefaultBranch()),
     issueComment: summarizePayload(sameRepoIssueComment()),
     reviewComment: summarizePayload(sameRepoReviewComment())
@@ -102,6 +112,10 @@ test('fixture payloadは実Repository、実URL、実メール、実SHA、secret-
     draftPr(),
     failedWorkflowRun(),
     successfulWorkflowRun(),
+    failedCheckSuite(),
+    successfulCheckSuite(),
+    failedCheckRun(),
+    successfulCheckRun(),
     pushDefaultBranch(),
     pushFeatureBranch(),
     buildIssueCommentPayload({ actor: 'chatgptBot' })
@@ -169,6 +183,19 @@ function summarizePayload(payload) {
     summary.workflowConclusion = payload.workflow_run.conclusion;
     summary.headSha = payload.workflow_run.head_sha;
     summary.headRepository = payload.workflow_run.head_repository?.full_name;
+  }
+  if (payload.check_suite) {
+    summary.checkSuiteId = payload.check_suite.id;
+    summary.workflowName = payload.check_suite.app?.name;
+    summary.workflowConclusion = payload.check_suite.conclusion;
+    summary.headSha = payload.check_suite.head_sha;
+    summary.headRepository = payload.check_suite.head_repository?.full_name;
+  }
+  if (payload.check_run) {
+    summary.checkRunId = payload.check_run.id;
+    summary.workflowName = payload.check_run.name;
+    summary.workflowConclusion = payload.check_run.conclusion;
+    summary.headSha = payload.check_run.head_sha;
   }
   if (payload.ref) {
     summary.ref = payload.ref;

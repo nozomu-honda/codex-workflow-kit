@@ -102,15 +102,36 @@ export function detectReviewDecision(source = {}, reviewConfig = {}) {
 
   const reviewBody = markers.ignoreInFencedCodeBlocks ? stripFencedCodeBlocks(body) : body;
 
-  if (markers.approved && reviewBody.includes(markers.approved)) {
-    return createDecision(source, 'approved', 'marker');
+  const hasApprovedMarker = Boolean(markers.approved && reviewBody.includes(markers.approved));
+  const hasChangesRequestedMarker = Boolean(markers.changesRequested && reviewBody.includes(markers.changesRequested));
+  const headingStatus = reviewBody.match(/##\s*ChatGPT Review[\s\S]*?status:\s*(approved|changes_requested)/i);
+  const headingDecision = headingStatus?.[1]?.toLowerCase() ?? '';
+  const trustedActor = reviewConfig.decisionMode === 'trusted-actors' && reviewConfig.trustedActors?.includes(actor);
+  const trustedReviewDecision = trustedActor && ['APPROVED', 'CHANGES_REQUESTED'].includes(source.reviewState)
+    ? source.reviewState.toLowerCase()
+    : '';
+  const detectedDecisions = [
+    hasApprovedMarker && 'approved',
+    hasChangesRequestedMarker && 'changes_requested',
+    headingDecision,
+    trustedReviewDecision
+  ].filter(Boolean);
+  const hasApprovedDecision = detectedDecisions.includes('approved');
+  const hasChangesRequestedDecision = detectedDecisions.includes('changes_requested');
+
+  if (hasApprovedDecision && hasChangesRequestedDecision) {
+    return createDecision(source, 'changes_requested', 'ambiguous_review_decision');
   }
 
-  if (markers.changesRequested && reviewBody.includes(markers.changesRequested)) {
+  if (hasChangesRequestedMarker) {
     return createDecision(source, 'changes_requested', 'marker');
   }
 
-  if (reviewConfig.decisionMode !== 'trusted-actors' || !reviewConfig.trustedActors?.includes(actor)) {
+  if (hasApprovedMarker) {
+    return createDecision(source, 'approved', 'marker');
+  }
+
+  if (!trustedActor) {
     return null;
   }
 
@@ -122,7 +143,6 @@ export function detectReviewDecision(source = {}, reviewConfig = {}) {
     return createDecision(source, 'changes_requested', 'trusted-review-state');
   }
 
-  const headingStatus = reviewBody.match(/##\s*ChatGPT Review[\s\S]*?status:\s*(approved|changes_requested)/i);
   if (headingStatus) {
     return createDecision(source, headingStatus[1].toLowerCase(), 'trusted-status-heading');
   }

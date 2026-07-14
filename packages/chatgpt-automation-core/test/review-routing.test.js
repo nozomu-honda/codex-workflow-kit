@@ -105,6 +105,110 @@ test('latest changes_requestedがapprovedより新しければ最新判定とし
   assert.equal(latest.decision, 'changes_requested');
 });
 
+test('同一source内の競合review decisionはchanges_requestedとしてfail closedする', () => {
+  const reviewConfig = automationConfig().review;
+  const trustedConfig = {
+    ...reviewConfig,
+    decisionMode: 'trusted-actors',
+    trustedActors: ['trusted-reviewer']
+  };
+
+  for (const body of [
+    [
+      '<!-- chatgpt-review: approved -->',
+      '<!-- chatgpt-review: changes_requested -->'
+    ].join('\n'),
+    [
+      '<!-- chatgpt-review: changes_requested -->',
+      '<!-- chatgpt-review: approved -->'
+    ].join('\n'),
+    [
+      '<!-- chatgpt-review: approved -->',
+      '',
+      '通常文を挟む',
+      '',
+      '<!-- chatgpt-review: changes_requested -->'
+    ].join('\n')
+  ]) {
+    const decision = detectReviewDecision({
+      actor: 'reviewer',
+      body,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    }, reviewConfig);
+    assert.equal(decision.decision, 'changes_requested');
+    assert.equal(decision.reason, 'ambiguous_review_decision');
+  }
+
+  assert.equal(detectReviewDecision({
+    actor: 'reviewer',
+    body: [
+      '```md',
+      '<!-- chatgpt-review: approved -->',
+      '<!-- chatgpt-review: changes_requested -->',
+      '```'
+    ].join('\n'),
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }, reviewConfig), null);
+
+  assert.equal(detectReviewDecision({
+    actor: 'reviewer',
+    body: [
+      '```md',
+      '<!-- chatgpt-review: approved -->',
+      '```',
+      '<!-- chatgpt-review: approved -->',
+      '<!-- chatgpt-review: changes_requested -->'
+    ].join('\n'),
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }, reviewConfig)?.decision, 'changes_requested');
+
+  assert.equal(detectReviewDecision({
+    actor: 'trusted-reviewer',
+    body: '<!-- chatgpt-review: changes_requested -->',
+    reviewState: 'APPROVED',
+    submittedAt: '2026-01-01T00:00:00.000Z'
+  }, trustedConfig)?.decision, 'changes_requested');
+
+  assert.equal(detectReviewDecision({
+    actor: 'trusted-reviewer',
+    body: '<!-- chatgpt-review: approved -->',
+    reviewState: 'CHANGES_REQUESTED',
+    submittedAt: '2026-01-01T00:00:00.000Z'
+  }, trustedConfig)?.decision, 'changes_requested');
+
+  assert.equal(detectReviewDecision({
+    actor: 'trusted-reviewer',
+    body: [
+      '<!-- chatgpt-review: approved -->',
+      '## ChatGPT Review',
+      'status: changes_requested'
+    ].join('\n'),
+    submittedAt: '2026-01-01T00:00:00.000Z'
+  }, trustedConfig)?.decision, 'changes_requested');
+
+  assert.equal(detectReviewDecision({
+    actor: 'trusted-reviewer',
+    body: [
+      '<!-- chatgpt-review: changes_requested -->',
+      '## ChatGPT Review',
+      'status: approved'
+    ].join('\n'),
+    submittedAt: '2026-01-01T00:00:00.000Z'
+  }, trustedConfig)?.decision, 'changes_requested');
+
+  assert.equal(detectReviewDecision({
+    actor: 'reviewer',
+    body: '<!-- chatgpt-review: approved -->',
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }, reviewConfig)?.decision, 'approved');
+
+  assert.equal(detectReviewDecision({
+    actor: 'reviewer',
+    body: '<!-- chatgpt-review: changes_requested -->',
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }, reviewConfig)?.decision, 'changes_requested');
+});
+
 test('trusted review commandはrouting対象になる', () => {
   const plan = createReviewRoutingPlan(baseInput({
     normalizedEvent: normalizedEvent({
