@@ -1,0 +1,78 @@
+{
+  "sameRepoReview": {
+    "action": "submitted",
+    "repository": "owner/example-repo",
+    "actor": "fixture-user",
+    "pullRequestNumber": 42,
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "owner/example-repo",
+    "baseSha": "0000000000000000000000000000000000000002",
+    "merged": false,
+    "draft": false,
+    "reviewState": "approved",
+    "fork": false
+  },
+  "forkReview": {
+    "action": "submitted",
+    "repository": "owner/example-repo",
+    "actor": "fixture-user",
+    "pullRequestNumber": 42,
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "fork-owner/example-repo",
+    "baseSha": "0000000000000000000000000000000000000002",
+    "merged": false,
+    "draft": false,
+    "reviewState": "approved",
+    "fork": true
+  },
+  "mergedPr": {
+    "action": "closed",
+    "repository": "owner/example-repo",
+    "actor": "fixture-user",
+    "pullRequestNumber": 42,
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "owner/example-repo",
+    "baseSha": "0000000000000000000000000000000000000002",
+    "merged": true,
+    "draft": false
+  },
+  "failedWorkflowRun": {
+    "action": "completed",
+    "repository": "owner/example-repo",
+    "actor": "github-actions[bot]",
+    "workflowRunId": 4001,
+    "workflowName": "CI",
+    "workflowConclusion": "failure",
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "owner/example-repo"
+  },
+  "pushDefaultBranch": {
+    "repository": "owner/example-repo",
+    "actor": "github-actions[bot]",
+    "ref": "refs/heads/main",
+    "before": "0000000000000000000000000000000000000001",
+    "after": "0000000000000000000000000000000000000005",
+    "deleted": false,
+    "forced": false
+  },
+  "issueComment": {
+    "action": "created",
+    "repository": "owner/example-repo",
+    "actor": "fixture-user",
+    "issueNumber": 42,
+    "commentId": 1001,
+    "isPullRequest": false
+  },
+  "reviewComment": {
+    "action": "created",
+    "repository": "owner/example-repo",
+    "actor": "fixture-user",
+    "pullRequestNumber": 42,
+    "commentId": 3001,
+    "headSha": "0000000000000000000000000000000000000003",
+    "headRepository": "owner/example-repo",
+    "baseSha": "0000000000000000000000000000000000000002",
+    "merged": false,
+    "draft": false
+  }
+}
