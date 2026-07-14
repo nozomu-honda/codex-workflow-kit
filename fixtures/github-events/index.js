@@ -138,6 +138,62 @@ export function draftPr(options = {}) {
   });
 }
 
+export function openSameRepoPr(options = {}) {
+  return buildOpenPullRequestContext(options);
+}
+
+export function forkPr(options = {}) {
+  return buildOpenPullRequestContext({
+    fork: true,
+    ...options
+  });
+}
+
+export function behindPr(options = {}) {
+  return buildOpenPullRequestContext({
+    compare: { status: 'behind', behind_by: 1, ahead_by: 1, merge_base_commit: { sha: FIXTURE_SHAS.base } },
+    ...options
+  });
+}
+
+export function upToDatePr(options = {}) {
+  return buildOpenPullRequestContext({
+    compare: { status: 'ahead', behind_by: 0, ahead_by: 1, merge_base_commit: { sha: FIXTURE_SHAS.base } },
+    ...options
+  });
+}
+
+export function divergedPr(options = {}) {
+  return buildOpenPullRequestContext({
+    compare: { status: 'diverged', behind_by: 1, ahead_by: 1, merge_base_commit: { sha: FIXTURE_SHAS.base } },
+    ...options
+  });
+}
+
+export function conflictPr(options = {}) {
+  return buildOpenPullRequestContext({
+    compare: { status: 'diverged', behind_by: 1, ahead_by: 1, merge_base_commit: { sha: FIXTURE_SHAS.base } },
+    mergeable: false,
+    mergeStateStatus: 'dirty',
+    ...options
+  });
+}
+
+export function deletedHeadBranchPr(options = {}) {
+  return buildOpenPullRequestContext({
+    headBranchExists: false,
+    ...options
+  });
+}
+
+export function unknownMergeStatePr(options = {}) {
+  return buildOpenPullRequestContext({
+    mergeable: null,
+    mergeStateStatus: 'unknown',
+    ...options
+  });
+}
+
 export function successfulWorkflowRun(options = {}) {
   return buildWorkflowRunPayload({
     conclusion: 'success',
@@ -192,6 +248,39 @@ export function pushFeatureBranch(options = {}) {
     ref: 'refs/heads/feature/example-change',
     ...options
   });
+}
+
+export function protectedPathFile(options = {}) {
+  return buildChangedFile('.github/workflows/ci.yml', '+name: CI', options);
+}
+
+export function workflowChangeFile(options = {}) {
+  return buildChangedFile('.github/workflows/main-follow-up.yml', '+name: Main follow-up', options);
+}
+
+export function dependencyChangeFile(options = {}) {
+  return buildChangedFile('package.json', '+{\"scripts\":{\"test\":\"node --test\"}}', options);
+}
+
+export function generatedDistFile(options = {}) {
+  return buildChangedFile('actions/example/dist/index.js', '+generated', options);
+}
+
+export function binaryFile(options = {}) {
+  return {
+    additions: 0,
+    changes: 1,
+    deletions: 0,
+    filename: options.filename ?? 'docs/image.png'
+  };
+}
+
+export function submoduleFile(options = {}) {
+  return buildChangedFile('.gitmodules', '+Subproject commit 0000000000000000000000000000000000000007', options);
+}
+
+export function secretLikeFile(options = {}) {
+  return buildChangedFile('docs/example.md', '+Authorization: Bearer abc.def.ghi', options);
 }
 
 export function invalidPayloadFixture(eventName, reason = 'missingRepository') {
@@ -575,6 +664,39 @@ function buildPullRequest(options = {}) {
     },
     user: buildSender(resolveActor(options.actor))
   });
+}
+
+function buildOpenPullRequestContext(options = {}) {
+  const payload = buildPullRequestPayload({
+    action: 'synchronize',
+    ...options
+  });
+  const pullRequest = payload.pull_request;
+
+  return removeUndefined({
+    ...pullRequest,
+    attemptCount: options.attemptCount,
+    changedFiles: options.changedFiles ?? [buildChangedFile('docs/change.md', '+ok')],
+    compare: options.compare ?? { status: 'ahead', behind_by: 0, ahead_by: 1, merge_base_commit: { sha: FIXTURE_SHAS.base } },
+    headBranchExists: options.headBranchExists ?? true,
+    isFork: options.fork,
+    isSameRepository: !options.fork,
+    labels: (options.labels ?? ['auto-merge-after-ci']).map((name) => ({ name })),
+    lastAttemptedAt: options.lastAttemptedAt,
+    mergeable: Object.hasOwn(options, 'mergeable') ? options.mergeable : true,
+    mergeStateStatus: options.mergeStateStatus ?? 'clean',
+    updateFailed: options.updateFailed
+  });
+}
+
+function buildChangedFile(filename, patch = '+ok', options = {}) {
+  return {
+    additions: options.additions ?? 1,
+    changes: options.changes ?? 1,
+    deletions: options.deletions ?? 0,
+    filename,
+    patch
+  };
 }
 
 function buildRepository({ repository = FIXTURE_REPOSITORY, fork = false } = {}) {

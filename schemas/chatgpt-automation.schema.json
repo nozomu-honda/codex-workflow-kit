@@ -206,6 +206,57 @@
         }
       ]
     },
+    "mainFollowUp": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "dryRun": { "const": true },
+        "allowedBaseBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requiredLabels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "blockedLabels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "allowDraft": { "type": "boolean", "default": false },
+        "requireSameRepository": { "const": true },
+        "allowFork": { "const": false },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "cooldownSeconds": { "type": "integer", "minimum": 0, "maximum": 604800 },
+        "maxOpenPullRequests": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "maxChangedFiles": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "maxAdditions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "maxDeletions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "sensitivePathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "protectedPathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "workflowPathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "dependencyPathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "generatedPathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "duplicatePolicy": { "enum": ["dedupe-key", "allow-rerun"] },
+        "codexFollowUpEnabled": { "type": "boolean", "default": false }
+      }
+    },
     "protectedFiles": {
       "type": "object",
       "additionalProperties": true,

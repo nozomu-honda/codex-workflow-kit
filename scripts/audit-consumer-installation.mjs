@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import {
+  AUDIT_WORKFLOW_KINDS,
   DEFAULT_AUDIT_CONFIG_FILE,
   DEFAULT_AUDIT_WORKFLOW_FILE,
+  DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
   auditConsumerInstallation,
   formatAuditResult
 } from '../packages/chatgpt-automation-core/src/installation-audit/index.js';
@@ -14,6 +16,8 @@ Options:
   --root <path>          Consumer repository root. Defaults to current directory.
   --config <path>        Config path relative to root. Defaults to ${DEFAULT_AUDIT_CONFIG_FILE}.
   --workflow <path>      Caller workflow path relative to root. Defaults to ${DEFAULT_AUDIT_WORKFLOW_FILE}.
+  --workflow-kind <kind> Caller workflow kind: ${AUDIT_WORKFLOW_KINDS.join(', ')}.
+                         main-follow-up defaults --workflow to ${DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE}.
   --expected-ref <sha>   Require the reusable workflow ref to match this 40-character commit SHA.
   --strict              Treat warnings as audit failures.
   --json                Print stable JSON result.
@@ -40,6 +44,7 @@ export async function runAuditConsumerInstallationCli(argv = process.argv.slice(
       rootDir: parsed.root,
       configPath: parsed.config,
       workflowPath: parsed.workflow,
+      workflowKind: parsed.workflowKind,
       expectedRef: parsed.expectedRef,
       strict: parsed.strict
     });
@@ -62,7 +67,8 @@ export function parseArgs(argv) {
     ok: true,
     root: process.cwd(),
     config: DEFAULT_AUDIT_CONFIG_FILE,
-    workflow: DEFAULT_AUDIT_WORKFLOW_FILE,
+    workflow: undefined,
+    workflowKind: 'validate-config',
     expectedRef: undefined,
     strict: false,
     json: false,
@@ -87,7 +93,7 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (arg === '--root' || arg === '--config' || arg === '--workflow' || arg === '--expected-ref') {
+    if (arg === '--root' || arg === '--config' || arg === '--workflow' || arg === '--workflow-kind' || arg === '--expected-ref') {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
         return {
@@ -103,6 +109,14 @@ export function parseArgs(argv) {
         options.config = value;
       } else if (arg === '--workflow') {
         options.workflow = value;
+      } else if (arg === '--workflow-kind') {
+        if (!AUDIT_WORKFLOW_KINDS.includes(value)) {
+          return {
+            ok: false,
+            message: `--workflow-kind must be one of: ${AUDIT_WORKFLOW_KINDS.join(', ')}.`
+          };
+        }
+        options.workflowKind = value;
       } else {
         options.expectedRef = value;
       }

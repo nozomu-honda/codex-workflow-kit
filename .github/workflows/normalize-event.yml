@@ -53,7 +53,7 @@ name: Normalize GitHub automation event
         required: false
         default: read-only
       requested-capability:
-        description: Capability requested by the caller. Issue #23 supports normalize-only only.
+        description: Capability requested by the caller. Supported read-only values are normalize-only and main-follow-up-plan.
         type: string
         required: false
         default: normalize-only

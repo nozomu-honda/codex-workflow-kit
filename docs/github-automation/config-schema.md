@@ -45,6 +45,7 @@ validatorは次の安全defaultを常に保持します。
 - fork / cross-repository PRをCodex自動修正対象にしないsame-repository境界
 - ChatGPT review routingのdry-run default、fork禁止、same-repository必須
 - Reviewed PR auto-merge planのdry-run default、fork禁止、same-repository必須、branch削除禁止
+- Main follow-up planのdry-run default、fork禁止、same-repository必須、危険変更のmanual review化
 
 導入先設定は、これらを削除または弱体化できません。弱体化を試みる設定はvalidation errorになります。
 
@@ -135,6 +136,19 @@ Reviewed PR auto-merge planでは、`labels.autoMergeAfterCi` と `labels.review
 
 ChatGPT review markerは `review.trustedActors` に含まれるactorからのものだけを採用します。human approvalは `autoMerge.trustedReviewers` に含まれるreviewer loginの最新current-head reviewだけを数えます。外部actor、unknown actor、未設定reviewer、stale headへのapprovalはapproval数へ入りません。
 
+## Main follow-up
+
+`mainFollowUp` はdefault branch追従planの設定です。共通キットはplan生成だけを行い、PR branch update API、Codex起動、Queue Issue更新、コメント投稿、label操作は行いません。
+
+- `enabled` はdefault `false`
+- `dryRun` は `true` のみ許可
+- `allowFork` は `false` のみ許可
+- `requireSameRepository` は `true` のみ許可
+- `duplicatePolicy` は `dedupe-key` または `allow-rerun`
+- `codexFollowUpEnabled` はCodex follow-up候補を出すかどうかだけを表し、実起動はしない
+
+workflow、dependency、generated dist、protected path、sensitive path、binary/submodule、secret-like added lineはmanual review requiredへ倒します。
+
 ## Logical fields and defaults
 
 後続Issueで既存導入先設定からmappingできるよう、主要な論理フィールドとdefaultを記録します。このIssueでは既存 `.chatgpt-review.json` 互換layerは実装しません。
@@ -201,6 +215,20 @@ ChatGPT review markerは `review.trustedActors` に含まれるactorからのも
 | `autoMerge.cooldownSeconds` | `0` |
 | `autoMerge.deleteBranchAfterMerge` | `false` |
 | `autoMerge.useMergeQueue` | `false` |
+| `mainFollowUp.enabled` | `false` |
+| `mainFollowUp.dryRun` | `true` |
+| `mainFollowUp.requiredLabels` | `auto-merge-after-ci` |
+| `mainFollowUp.allowDraft` | `false` |
+| `mainFollowUp.requireSameRepository` | `true` |
+| `mainFollowUp.allowFork` | `false` |
+| `mainFollowUp.maxAttempts` | `2` |
+| `mainFollowUp.cooldownSeconds` | `0` |
+| `mainFollowUp.maxOpenPullRequests` | `100` |
+| `mainFollowUp.maxChangedFiles` | `100` |
+| `mainFollowUp.maxAdditions` | `2000` |
+| `mainFollowUp.maxDeletions` | `2000` |
+| `mainFollowUp.duplicatePolicy` | `dedupe-key` |
+| `mainFollowUp.codexFollowUpEnabled` | `false` |
 | `codex.reviewFix.maxAttempts` | `2` |
 | `codex.reviewFix.sameRepoOnly` | `true` |
 | `codex.reviewFix.allowDraft` | `false` |
@@ -225,6 +253,7 @@ npm run lint
 npm run validate:config
 npm run test:review-routing
 npm run test:auto-merge
+npm run test:main-follow-up
 git diff --check
 ```
 

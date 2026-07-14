@@ -25,6 +25,7 @@ npm run audit:template
 npm run test:events
 npm run test:review-routing
 npm run test:auto-merge
+npm run test:main-follow-up
 npm run test:e2e:consumer
 npm run lint:e2e
 npm run ci
@@ -150,6 +151,17 @@ Auto-merge consumer E2Eでは、`templates/workflows/reviewed-pr-auto-merge-even
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
 
+Main follow-up consumer E2Eでは、`templates/workflows/main-follow-up-events.yml` から一時consumer workflowを作り、次を確認します。
+
+- reusable workflow refと `kit-ref` が同じ固定SHAへ置換される
+- caller側はread-only permissionsのjob-level `uses` だけを持つ
+- repository固有main follow-up config、dedupe key、attempt count、last attempted timestampはVariable由来JSONとしてcaller側に残せる
+- safeなbehind PRは `behind-update-candidate` になる
+- conflict / update failedは設定上許可された場合だけCodex follow-up候補になる
+- fork相当payloadとsecret-like変更は自動更新候補にもCodex候補にもならない
+- dry-runではwrite処理が発生しない
+- Secret、`pull_request_target`、inline write処理を含まない
+
 E2E専用確認:
 
 ```bash
@@ -243,6 +255,27 @@ Auto-merge専用確認:
 ```bash
 npm run test:auto-merge
 npm run lint:auto-merge
+```
+
+`.github/workflows/main-follow-up-plan.yml` は、Main follow-up plan reusable workflowとして静的検証します。
+
+確認対象:
+
+- `workflow_call` だけを入口にする
+- Secret inputがない
+- workflow / job permissionsがread-onlyだけ
+- Issue #23の `.github/workflows/normalize-event.yml` を `main-follow-up-plan` capabilityで先に呼ぶ
+- outputsが `packages/chatgpt-automation-core/src/main-follow-up/` のmain follow-up output名と一致する
+- `kit-ref` は40桁commit SHAまたは `v1.2.3` 形式の完全なversion tagだけを許可する
+- `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- `scripts/plan-main-follow-up.mjs` だけを実行する
+- `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+
+Main follow-up専用確認:
+
+```bash
+npm run test:main-follow-up
+npm run lint:main-follow-up
 ```
 
 GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
@@ -344,6 +377,19 @@ npm run lint:template
 - `event-payload-json` に `toJson(github.event)` を渡す
 - `dry-run: true`
 - repository固有config、dedupe key、cooldown情報はSecretを含まないVariablesとして渡す
+- reusable workflow refと `kit-ref` は同じ固定refへ置換する
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
+
+`templates/workflows/main-follow-up-events.yml` はMain follow-up plan用caller workflow templateとして静的検証します。
+
+確認対象:
+
+- 対象イベントが `push`、`pull_request.closed`、`workflow_dispatch`
+- `push.branches` をhardcodeせず、planner側でdefault branchだけを処理する
+- jobは1つだけで `.github/workflows/main-follow-up-plan.yml` をjob-level `uses` で呼ぶ
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- repository固有config、dedupe key、attempt count、last attempted timestampはSecretを含まないVariablesとして渡す
 - reusable workflow refと `kit-ref` は同じ固定refへ置換する
 - Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
 

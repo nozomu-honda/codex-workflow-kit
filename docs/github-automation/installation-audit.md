@@ -48,6 +48,15 @@ node scripts/audit-consumer-installation.mjs \
   --expected-ref 0123456789abcdef0123456789abcdef01234567
 ```
 
+Main follow-up caller workflowを監査する場合:
+
+```bash
+node scripts/audit-consumer-installation.mjs \
+  --root ../consumer-repo \
+  --workflow-kind main-follow-up \
+  --expected-ref 0123456789abcdef0123456789abcdef01234567
+```
+
 将来、監査に非致命warningを追加した場合も失敗扱いにする場合:
 
 ```bash
@@ -68,7 +77,8 @@ node scripts/audit-consumer-installation.mjs --help
 | --- | --- | --- |
 | `--root <path>` | current directory | 監査対象リポジトリroot |
 | `--config <path>` | `.github/chatgpt-automation.yml` | root相対のconfig path |
-| `--workflow <path>` | `.github/workflows/validate-config.yml` | root相対のcaller workflow path |
+| `--workflow <path>` | workflow kindごとのdefault | root相対のcaller workflow path |
+| `--workflow-kind <kind>` | `validate-config` | `validate-config` または `main-follow-up` |
 | `--expected-ref <sha>` | unset | reusable workflow refが指定SHAと一致することを要求 |
 | `--strict` | false | 非致命warningがある場合もaudit failureとして扱う |
 | `--json` | false | stable JSON resultを出力 |
@@ -151,6 +161,8 @@ config監査は `packages/chatgpt-automation-core/src/config/index.js` の共通
 
 caller workflowは構造的にYAML parseして確認します。
 
+### validate-config caller
+
 要求すること:
 
 - workflow fileを読める
@@ -167,6 +179,28 @@ caller workflowは構造的にYAML parseして確認します。
 - 想定外job、想定外input、workflow outputを持たない
 
 本番監査では `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` placeholder、branch、tag、短縮SHAを許可しません。
+
+### main-follow-up caller
+
+`--workflow-kind main-follow-up` を指定した場合は、main追従plan用caller workflowを監査します。
+
+要求すること:
+
+- workflow fileを読める
+- triggerは `push`、`pull_request.closed`、`workflow_dispatch` のみ
+- `push.branches` をhardcodeしない
+- `pull_request_target` を持たない
+- workflow / job permissionsは read-only の `contents`、`pull-requests`、`issues`、`actions`、`checks`、`statuses`
+- jobは `main-follow-up-plan` 1つだけ
+- job-level `uses` で `nozomu-honda/codex-workflow-kit/.github/workflows/main-follow-up-plan.yml@<40桁SHA>` を呼ぶ
+- refと `with.kit-ref` は40桁commit SHAのみ
+- `--expected-ref` 指定時は完全一致
+- `with.dry-run` がboolean `true`
+- `with.repository-config-json`、`with.existing-dedupe-keys`、`with.attempt-counts-json`、`with.last-attempted-at-json` はSecret値を含まないVariables由来
+- `secrets`、`secrets: inherit`、`runs-on`、`steps`、`run`、`shell` を持たない
+- 想定外job、想定外input、workflow outputを持たない
+
+この監査も本番監査ではplaceholder、branch、tag、短縮SHAを許可しません。
 
 ## Error code一覧
 
@@ -188,6 +222,7 @@ caller workflowは構造的にYAML parseして確認します。
 - `WORKFLOW_DISPATCH_INPUTS_UNEXPECTED`
 - `WORKFLOW_TRIGGER_UNEXPECTED`
 - `PULL_REQUEST_TARGET_FORBIDDEN`
+- `MAIN_FOLLOW_UP_TRIGGERS_OK`
 - `WORKFLOW_PERMISSIONS_INVALID`
 - `JOBS_OBJECT_REQUIRED`
 - `UNEXPECTED_JOB`
@@ -206,6 +241,8 @@ caller workflowは構造的にYAML parseして確認します。
 - `WORKFLOW_CONFIG_FILE_MISMATCH`
 - `WORKFLOW_DRY_RUN_NOT_TRUE`
 - `WORKFLOW_INPUT_UNEXPECTED`
+- `WORKFLOW_KIT_REF_PINNED`
+- `WORKFLOW_KIND_INVALID`
 - `WORKFLOW_SECRETS_FORBIDDEN`
 - `WORKFLOW_SECRETS_INHERIT_FORBIDDEN`
 - `WORKFLOW_RUNS_ON_FORBIDDEN`

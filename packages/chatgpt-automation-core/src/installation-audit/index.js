@@ -5,10 +5,12 @@ import { validateAutomationConfig } from '../config/index.js';
 
 export const DEFAULT_AUDIT_CONFIG_FILE = '.github/chatgpt-automation.yml';
 export const DEFAULT_AUDIT_WORKFLOW_FILE = '.github/workflows/validate-config.yml';
-export const EXPECTED_REUSABLE_WORKFLOW = Object.freeze({
+export const DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE = '.github/workflows/main-follow-up-events.yml';
+export const AUDIT_WORKFLOW_KINDS = Object.freeze(['validate-config', 'main-follow-up']);
+
+const REPOSITORY = Object.freeze({
   owner: 'nozomu-honda',
-  repository: 'codex-workflow-kit',
-  path: '.github/workflows/validate-config.yml'
+  repository: 'codex-workflow-kit'
 });
 
 const FALSE_CAPABILITIES = Object.freeze({
@@ -19,10 +21,57 @@ const FALSE_CAPABILITIES = Object.freeze({
   actionsApproval: false
 });
 
-const ALLOWED_ROOT_KEYS = ['name', 'on', 'permissions', 'jobs'];
-const ALLOWED_JOB_KEYS = ['name', 'permissions', 'uses', 'with'];
-const ALLOWED_WITH_KEYS = ['config-file', 'dry-run'];
-const REQUIRED_JOB_NAME = 'validate-config';
+const WORKFLOW_SPECS = Object.freeze({
+  'validate-config': Object.freeze({
+    allowedJobKeys: ['name', 'permissions', 'uses', 'with'],
+    allowedRootKeys: ['name', 'on', 'permissions', 'jobs'],
+    allowedWithKeys: ['config-file', 'dry-run'],
+    defaultWorkflowFile: DEFAULT_AUDIT_WORKFLOW_FILE,
+    expectedPermissions: { contents: 'read' },
+    expectedReusableWorkflow: {
+      ...REPOSITORY,
+      path: '.github/workflows/validate-config.yml'
+    },
+    jobName: 'validate-config',
+    kind: 'validate-config'
+  }),
+  'main-follow-up': Object.freeze({
+    allowedJobKeys: ['permissions', 'uses', 'with'],
+    allowedRootKeys: ['name', 'on', 'permissions', 'jobs'],
+    allowedWithKeys: [
+      'actor',
+      'attempt-counts-json',
+      'default-branch',
+      'dry-run',
+      'event-action',
+      'event-name',
+      'event-payload-json',
+      'existing-dedupe-keys',
+      'kit-ref',
+      'last-attempted-at-json',
+      'ref-name',
+      'repository',
+      'repository-config-json',
+      'repository-owner',
+      'sha'
+    ],
+    defaultWorkflowFile: DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
+    expectedPermissions: {
+      contents: 'read',
+      'pull-requests': 'read',
+      issues: 'read',
+      actions: 'read',
+      checks: 'read',
+      statuses: 'read'
+    },
+    expectedReusableWorkflow: {
+      ...REPOSITORY,
+      path: '.github/workflows/main-follow-up-plan.yml'
+    },
+    jobName: 'main-follow-up-plan',
+    kind: 'main-follow-up'
+  })
+});
 const SHA40_PATTERN = /^[a-f0-9]{40}$/i;
 const SHORT_SHA_PATTERN = /^[a-f0-9]{7,39}$/i;
 const PLACEHOLDER_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
@@ -49,13 +98,20 @@ export async function auditConsumerInstallation(options = {}) {
   const errors = [];
   const warnings = [];
   const checks = [];
+  const workflowSpec = getWorkflowSpec(options.workflowKind);
   const configPath = resolveRepositoryPath(rootDir, options.configPath ?? DEFAULT_AUDIT_CONFIG_FILE);
-  const workflowPath = resolveRepositoryPath(rootDir, options.workflowPath ?? DEFAULT_AUDIT_WORKFLOW_FILE);
+  const workflowPath = resolveRepositoryPath(rootDir, options.workflowPath ?? workflowSpec.spec.defaultWorkflowFile);
   const files = {
     config: configPath.relativePath,
     workflow: workflowPath.relativePath
   };
   let capabilities = { ...FALSE_CAPABILITIES };
+
+  if (!workflowSpec.ok) {
+    addError(errors, checks, 'WORKFLOW_KIND_INVALID', 'Workflow kind must be validate-config or main-follow-up.', {
+      path: 'workflowKind'
+    });
+  }
 
   if (!configPath.ok) {
     addError(errors, checks, 'CONFIG_PATH_INVALID', 'Config path must stay inside the repository root.', {
@@ -82,6 +138,7 @@ export async function auditConsumerInstallation(options = {}) {
       workflowPath,
       expectedConfigPath: configPath.relativePath,
       expectedRef: options.expectedRef,
+      workflowSpec,
       checks
     });
     errors.push(...workflowAudit.errors);
@@ -231,9 +288,10 @@ async function auditConfig({ readFile, configPath, checks }) {
   };
 }
 
-async function auditWorkflow({ readFile, workflowPath, expectedConfigPath, expectedRef, checks }) {
+async function auditWorkflow({ readFile, workflowPath, expectedConfigPath, expectedRef, workflowSpec, checks }) {
   const errors = [];
   const warnings = [];
+  const spec = workflowSpec.spec;
 
   addCheck(checks, 'WORKFLOW_PATH_RESOLVED', 'Workflow path stays inside the repository root.', 'pass', {
     file: workflowPath.relativePath
@@ -277,7 +335,7 @@ async function auditWorkflow({ readFile, workflowPath, expectedConfigPath, expec
   }
 
   for (const key of Object.keys(workflow)) {
-    if (!ALLOWED_ROOT_KEYS.includes(key)) {
+    if (!spec.allowedRootKeys.includes(key)) {
       addError(errors, checks, rootKeyCode(key), 'Workflow contains an unexpected top-level key.', {
         file: workflowPath.relativePath,
         path: key
@@ -285,22 +343,23 @@ async function auditWorkflow({ readFile, workflowPath, expectedConfigPath, expec
     }
   }
 
-  validateWorkflowTriggers(workflow.on, errors, checks, workflowPath.relativePath);
-  validateExactReadPermissions(workflow.permissions, 'WORKFLOW_PERMISSIONS_INVALID', 'Workflow permissions must be exactly contents: read.', errors, checks, workflowPath.relativePath, 'permissions');
+  validateWorkflowTriggers(workflow.on, spec, errors, checks, workflowPath.relativePath);
+  validateExactReadPermissions(workflow.permissions, spec.expectedPermissions, 'WORKFLOW_PERMISSIONS_INVALID', 'Workflow permissions must match the expected read-only set.', errors, checks, workflowPath.relativePath, 'permissions');
   validateJobs(workflow.jobs, {
     errors,
     checks,
     workflowFile: workflowPath.relativePath,
     expectedConfigPath,
-    expectedRef
+    expectedRef,
+    spec
   });
 
   return { errors, warnings };
 }
 
-function validateWorkflowTriggers(onValue, errors, checks, workflowFile) {
+function validateWorkflowTriggers(onValue, spec, errors, checks, workflowFile) {
   if (!isPlainObject(onValue)) {
-    addError(errors, checks, 'WORKFLOW_TRIGGER_INVALID', 'Workflow must define only workflow_dispatch as an object trigger.', {
+    addError(errors, checks, 'WORKFLOW_TRIGGER_INVALID', 'Workflow must define its expected triggers as an object.', {
       file: workflowFile,
       path: 'on'
     });
@@ -314,6 +373,11 @@ function validateWorkflowTriggers(onValue, errors, checks, workflowFile) {
       file: workflowFile,
       path: 'on'
     });
+    return;
+  }
+
+  if (spec.kind === 'main-follow-up') {
+    validateMainFollowUpTriggers(onValue, errors, checks, workflowFile);
     return;
   }
 
@@ -343,8 +407,77 @@ function validateWorkflowTriggers(onValue, errors, checks, workflowFile) {
   }
 }
 
+function validateMainFollowUpTriggers(onValue, errors, checks, workflowFile) {
+  const triggers = Object.keys(onValue);
+  const expected = ['pull_request', 'push', 'workflow_dispatch'];
+
+  for (const trigger of triggers) {
+    if (!expected.includes(trigger)) {
+      const code = trigger === 'pull_request_target'
+        ? 'PULL_REQUEST_TARGET_FORBIDDEN'
+        : 'WORKFLOW_TRIGGER_UNEXPECTED';
+      addError(errors, checks, code, 'Main follow-up caller must not define unexpected triggers.', {
+        file: workflowFile,
+        path: `on.${trigger}`
+      });
+    }
+  }
+
+  for (const trigger of expected) {
+    if (!triggers.includes(trigger)) {
+      addError(errors, checks, 'WORKFLOW_TRIGGER_INVALID', 'Main follow-up caller must define push, pull_request.closed, and workflow_dispatch triggers.', {
+        file: workflowFile,
+        path: `on.${trigger}`
+      });
+    }
+  }
+
+  const pullRequest = onValue.pull_request;
+  if (!isPlainObject(pullRequest) || !Array.isArray(pullRequest.types) || pullRequest.types.length !== 1 || pullRequest.types[0] !== 'closed') {
+    addError(errors, checks, 'WORKFLOW_TRIGGER_UNEXPECTED', 'Main follow-up caller must only use pull_request.closed.', {
+      file: workflowFile,
+      path: 'on.pull_request.types'
+    });
+  }
+
+  if (onValue.push !== null && onValue.push !== undefined && (!isPlainObject(onValue.push) || Object.keys(onValue.push).length > 0)) {
+    addError(errors, checks, 'WORKFLOW_TRIGGER_UNEXPECTED', 'Main follow-up push trigger must not hardcode branches; the planner filters the default branch.', {
+      file: workflowFile,
+      path: 'on.push'
+    });
+  }
+
+  const dispatch = onValue.workflow_dispatch;
+  const inputs = isPlainObject(dispatch) ? dispatch.inputs : undefined;
+  if (dispatch !== null && dispatch !== undefined && !isPlainObject(dispatch)) {
+    addError(errors, checks, 'WORKFLOW_TRIGGER_INVALID', 'workflow_dispatch must be an object or empty value.', {
+      file: workflowFile,
+      path: 'on.workflow_dispatch'
+    });
+  } else if (inputs !== undefined) {
+    const inputKeys = isPlainObject(inputs) ? Object.keys(inputs) : [];
+    const baseBranch = inputs?.base_branch;
+    const validBaseBranch = isPlainObject(baseBranch)
+      && baseBranch.type === 'string'
+      && (baseBranch.required === false || baseBranch.required === undefined);
+
+    if (inputKeys.length !== 1 || inputKeys[0] !== 'base_branch' || !validBaseBranch) {
+      addError(errors, checks, 'WORKFLOW_DISPATCH_INPUTS_UNEXPECTED', 'workflow_dispatch may only define optional base_branch string input.', {
+        file: workflowFile,
+        path: 'on.workflow_dispatch.inputs'
+      });
+    }
+  }
+
+  if (errors.length === 0 || !errors.some((error) => error.file === workflowFile && String(error.path ?? '').startsWith('on'))) {
+    addCheck(checks, 'MAIN_FOLLOW_UP_TRIGGERS_OK', 'Main follow-up caller triggers are limited to push, pull_request.closed, and workflow_dispatch.', 'pass', {
+      file: workflowFile
+    });
+  }
+}
+
 function validateJobs(jobs, context) {
-  const { errors, checks, workflowFile, expectedConfigPath, expectedRef } = context;
+  const { errors, checks, workflowFile, expectedConfigPath, expectedRef, spec } = context;
 
   if (!isPlainObject(jobs)) {
     addError(errors, checks, 'JOBS_OBJECT_REQUIRED', 'Workflow jobs must be an object.', {
@@ -355,42 +488,42 @@ function validateJobs(jobs, context) {
   }
 
   const jobKeys = Object.keys(jobs);
-  if (jobKeys.length !== 1 || jobKeys[0] !== REQUIRED_JOB_NAME) {
-    addError(errors, checks, 'UNEXPECTED_JOB', 'Workflow must define exactly one validate-config job.', {
+  if (jobKeys.length !== 1 || jobKeys[0] !== spec.jobName) {
+    addError(errors, checks, 'UNEXPECTED_JOB', `Workflow must define exactly one ${spec.jobName} job.`, {
       file: workflowFile,
       path: 'jobs'
     });
     return;
   }
 
-  const job = jobs[REQUIRED_JOB_NAME];
+  const job = jobs[spec.jobName];
   if (!isPlainObject(job)) {
-    addError(errors, checks, 'JOB_OBJECT_REQUIRED', 'validate-config job must be an object.', {
+    addError(errors, checks, 'JOB_OBJECT_REQUIRED', `${spec.jobName} job must be an object.`, {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}`
+      path: `jobs.${spec.jobName}`
     });
     return;
   }
 
   for (const key of Object.keys(job)) {
-    if (!ALLOWED_JOB_KEYS.includes(key)) {
-      addError(errors, checks, jobKeyCode(key, job[key]), 'validate-config job contains an unexpected key.', {
+    if (!spec.allowedJobKeys.includes(key)) {
+      addError(errors, checks, jobKeyCode(key, job[key]), `${spec.jobName} job contains an unexpected key.`, {
         file: workflowFile,
-        path: `jobs.${REQUIRED_JOB_NAME}.${key}`
+        path: `jobs.${spec.jobName}.${key}`
       });
     }
   }
 
-  validateExactReadPermissions(job.permissions, 'JOB_PERMISSIONS_INVALID', 'Job permissions must be exactly contents: read.', errors, checks, workflowFile, `jobs.${REQUIRED_JOB_NAME}.permissions`);
-  validateReusableWorkflowUses(job.uses, expectedRef, errors, checks, workflowFile);
-  validateWorkflowInputs(job.with, expectedConfigPath, errors, checks, workflowFile);
+  validateExactReadPermissions(job.permissions, spec.expectedPermissions, 'JOB_PERMISSIONS_INVALID', 'Job permissions must match the expected read-only set.', errors, checks, workflowFile, `jobs.${spec.jobName}.permissions`);
+  validateReusableWorkflowUses(job.uses, expectedRef, errors, checks, workflowFile, spec);
+  validateWorkflowInputs(job.with, expectedConfigPath, expectedRef, errors, checks, workflowFile, spec);
 }
 
-function validateReusableWorkflowUses(value, expectedRef, errors, checks, workflowFile) {
+function validateReusableWorkflowUses(value, expectedRef, errors, checks, workflowFile, spec) {
   if (typeof value !== 'string') {
-    addError(errors, checks, 'REUSABLE_WORKFLOW_USES_REQUIRED', 'validate-config job must call the reusable workflow with job-level uses.', {
+    addError(errors, checks, 'REUSABLE_WORKFLOW_USES_REQUIRED', `${spec.jobName} job must call the reusable workflow with job-level uses.`, {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
     return;
   }
@@ -399,15 +532,15 @@ function validateReusableWorkflowUses(value, expectedRef, errors, checks, workfl
   if (!parsed.ok) {
     addError(errors, checks, 'REUSABLE_WORKFLOW_USES_INVALID', 'Reusable workflow uses value must include owner, repository, path, and ref.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
     return;
   }
 
-  if (parsed.owner !== EXPECTED_REUSABLE_WORKFLOW.owner || parsed.repository !== EXPECTED_REUSABLE_WORKFLOW.repository) {
+  if (parsed.owner !== spec.expectedReusableWorkflow.owner || parsed.repository !== spec.expectedReusableWorkflow.repository) {
     addError(errors, checks, 'REUSABLE_WORKFLOW_REPOSITORY_MISMATCH', 'Reusable workflow repository must match the expected shared repository.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
   } else {
     addCheck(checks, 'REUSABLE_WORKFLOW_REPOSITORY_OK', 'Reusable workflow repository matches.', 'pass', {
@@ -415,10 +548,10 @@ function validateReusableWorkflowUses(value, expectedRef, errors, checks, workfl
     });
   }
 
-  if (parsed.workflowPath !== EXPECTED_REUSABLE_WORKFLOW.path) {
-    addError(errors, checks, 'REUSABLE_WORKFLOW_PATH_MISMATCH', 'Reusable workflow path must match the validate-config reusable workflow.', {
+  if (parsed.workflowPath !== spec.expectedReusableWorkflow.path) {
+    addError(errors, checks, 'REUSABLE_WORKFLOW_PATH_MISMATCH', 'Reusable workflow path must match the expected reusable workflow.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
   } else {
     addCheck(checks, 'REUSABLE_WORKFLOW_PATH_OK', 'Reusable workflow path matches.', 'pass', {
@@ -426,14 +559,14 @@ function validateReusableWorkflowUses(value, expectedRef, errors, checks, workfl
     });
   }
 
-  validateReusableWorkflowRef(parsed.ref, expectedRef, errors, checks, workflowFile);
+  validateReusableWorkflowRef(parsed.ref, expectedRef, errors, checks, workflowFile, spec);
 }
 
-function validateReusableWorkflowRef(ref, expectedRef, errors, checks, workflowFile) {
+function validateReusableWorkflowRef(ref, expectedRef, errors, checks, workflowFile, spec) {
   if (ref === PLACEHOLDER_REF) {
     addError(errors, checks, 'REUSABLE_WORKFLOW_REF_PLACEHOLDER', 'Reusable workflow ref placeholder must be replaced before production use.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
     return;
   }
@@ -446,7 +579,7 @@ function validateReusableWorkflowRef(ref, expectedRef, errors, checks, workflowF
         : 'REUSABLE_WORKFLOW_REF_MUTABLE';
     addError(errors, checks, code, 'Reusable workflow ref must be a 40-character commit SHA.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
     return;
   }
@@ -454,7 +587,7 @@ function validateReusableWorkflowRef(ref, expectedRef, errors, checks, workflowF
   if (expectedRef !== undefined && ref.toLowerCase() !== String(expectedRef).toLowerCase()) {
     addError(errors, checks, 'REUSABLE_WORKFLOW_REF_MISMATCH', 'Reusable workflow ref does not match the expected commit SHA.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.uses`
+      path: `jobs.${spec.jobName}.uses`
     });
     return;
   }
@@ -464,28 +597,33 @@ function validateReusableWorkflowRef(ref, expectedRef, errors, checks, workflowF
   });
 }
 
-function validateWorkflowInputs(withValue, expectedConfigPath, errors, checks, workflowFile) {
+function validateWorkflowInputs(withValue, expectedConfigPath, expectedRef, errors, checks, workflowFile, spec) {
   if (!isPlainObject(withValue)) {
-    addError(errors, checks, 'WORKFLOW_WITH_REQUIRED', 'validate-config job must pass config-file and dry-run inputs.', {
+    addError(errors, checks, 'WORKFLOW_WITH_REQUIRED', `${spec.jobName} job must pass the expected dry-run inputs.`, {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.with`
+      path: `jobs.${spec.jobName}.with`
     });
     return;
   }
 
   for (const key of Object.keys(withValue)) {
-    if (!ALLOWED_WITH_KEYS.includes(key)) {
-      addError(errors, checks, 'WORKFLOW_INPUT_UNEXPECTED', 'validate-config job contains an unexpected input.', {
+    if (!spec.allowedWithKeys.includes(key)) {
+      addError(errors, checks, 'WORKFLOW_INPUT_UNEXPECTED', `${spec.jobName} job contains an unexpected input.`, {
         file: workflowFile,
-        path: `jobs.${REQUIRED_JOB_NAME}.with.${key}`
+        path: `jobs.${spec.jobName}.with.${key}`
       });
     }
+  }
+
+  if (spec.kind === 'main-follow-up') {
+    validateMainFollowUpInputs(withValue, expectedRef, errors, checks, workflowFile, spec);
+    return;
   }
 
   if (normalizeRepositoryPath(withValue['config-file']) !== expectedConfigPath) {
     addError(errors, checks, 'WORKFLOW_CONFIG_FILE_MISMATCH', 'Workflow config-file input must match the audited config path.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.with.config-file`
+      path: `jobs.${spec.jobName}.with.config-file`
     });
   } else {
     addCheck(checks, 'WORKFLOW_CONFIG_FILE_OK', 'Workflow config-file input matches the audited config path.', 'pass', {
@@ -496,7 +634,7 @@ function validateWorkflowInputs(withValue, expectedConfigPath, errors, checks, w
   if (withValue['dry-run'] !== true) {
     addError(errors, checks, 'WORKFLOW_DRY_RUN_NOT_TRUE', 'Workflow dry-run input must be boolean true.', {
       file: workflowFile,
-      path: `jobs.${REQUIRED_JOB_NAME}.with.dry-run`
+      path: `jobs.${spec.jobName}.with.dry-run`
     });
   } else {
     addCheck(checks, 'WORKFLOW_DRY_RUN_TRUE', 'Workflow dry-run input is true.', 'pass', {
@@ -505,8 +643,68 @@ function validateWorkflowInputs(withValue, expectedConfigPath, errors, checks, w
   }
 }
 
-function validateExactReadPermissions(permissions, code, message, errors, checks, workflowFile, path) {
-  if (isPlainObject(permissions) && Object.keys(permissions).length === 1 && permissions.contents === 'read') {
+function validateMainFollowUpInputs(withValue, expectedRef, errors, checks, workflowFile, spec) {
+  const expectedInputs = {
+    'event-name': '${{ github.event_name }}',
+    'event-action': "${{ github.event.action || '' }}",
+    'event-payload-json': '${{ toJson(github.event) }}',
+    repository: '${{ github.repository }}',
+    'repository-owner': '${{ github.repository_owner }}',
+    'default-branch': '${{ github.event.repository.default_branch }}',
+    actor: '${{ github.actor }}',
+    'ref-name': '${{ github.ref_name }}',
+    sha: '${{ github.sha }}',
+    'repository-config-json': "${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_CONFIG_JSON || '{}' }}",
+    'existing-dedupe-keys': "${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_DEDUPE_KEYS || '' }}",
+    'attempt-counts-json': "${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_ATTEMPT_COUNTS_JSON || '{}' }}",
+    'last-attempted-at-json': "${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_LAST_ATTEMPTED_AT_JSON || '{}' }}"
+  };
+
+  for (const [name, expected] of Object.entries(expectedInputs)) {
+    if (withValue[name] !== expected) {
+      addError(errors, checks, 'WORKFLOW_INPUT_UNEXPECTED', 'Main follow-up caller input must match the read-only template contract.', {
+        file: workflowFile,
+        path: `jobs.${spec.jobName}.with.${name}`
+      });
+    }
+  }
+
+  if (withValue['dry-run'] !== true) {
+    addError(errors, checks, 'WORKFLOW_DRY_RUN_NOT_TRUE', 'Workflow dry-run input must be boolean true.', {
+      file: workflowFile,
+      path: `jobs.${spec.jobName}.with.dry-run`
+    });
+  } else {
+    addCheck(checks, 'WORKFLOW_DRY_RUN_TRUE', 'Workflow dry-run input is true.', 'pass', {
+      file: workflowFile
+    });
+  }
+
+  const kitRef = typeof withValue['kit-ref'] === 'string' ? withValue['kit-ref'] : '';
+  if (kitRef === PLACEHOLDER_REF) {
+    addError(errors, checks, 'REUSABLE_WORKFLOW_REF_PLACEHOLDER', 'kit-ref placeholder must be replaced before production use.', {
+      file: workflowFile,
+      path: `jobs.${spec.jobName}.with.kit-ref`
+    });
+  } else if (!SHA40_PATTERN.test(kitRef)) {
+    addError(errors, checks, 'REUSABLE_WORKFLOW_REF_MUTABLE', 'kit-ref must be a 40-character commit SHA.', {
+      file: workflowFile,
+      path: `jobs.${spec.jobName}.with.kit-ref`
+    });
+  } else if (expectedRef !== undefined && kitRef.toLowerCase() !== String(expectedRef).toLowerCase()) {
+    addError(errors, checks, 'REUSABLE_WORKFLOW_REF_MISMATCH', 'kit-ref does not match the expected commit SHA.', {
+      file: workflowFile,
+      path: `jobs.${spec.jobName}.with.kit-ref`
+    });
+  } else {
+    addCheck(checks, 'WORKFLOW_KIT_REF_PINNED', 'kit-ref is pinned to a 40-character commit SHA.', 'pass', {
+      file: workflowFile
+    });
+  }
+}
+
+function validateExactReadPermissions(permissions, expectedPermissions, code, message, errors, checks, workflowFile, path) {
+  if (sameObject(permissions, expectedPermissions)) {
     addCheck(checks, code.replace('_INVALID', '_OK'), message.replace('must be exactly', 'are exactly'), 'pass', {
       file: workflowFile
     });
@@ -517,6 +715,37 @@ function validateExactReadPermissions(permissions, code, message, errors, checks
     file: workflowFile,
     path
   });
+}
+
+function getWorkflowSpec(kind) {
+  const normalized = typeof kind === 'string' && kind.trim() !== ''
+    ? kind.trim()
+    : 'validate-config';
+  const spec = WORKFLOW_SPECS[normalized];
+
+  if (!spec) {
+    return {
+      ok: false,
+      spec: WORKFLOW_SPECS['validate-config']
+    };
+  }
+
+  return {
+    ok: true,
+    spec
+  };
+}
+
+function sameObject(actual, expected) {
+  if (!isPlainObject(actual)) {
+    return false;
+  }
+
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = Object.keys(expected).sort();
+
+  return actualKeys.length === expectedKeys.length
+    && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
 }
 
 function parseWorkflowYaml(source) {

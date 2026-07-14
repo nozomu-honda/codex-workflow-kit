@@ -132,6 +132,36 @@ export const DEFAULT_AUTO_MERGE = Object.freeze({
   useMergeQueue: false
 });
 
+export const DEFAULT_MAIN_FOLLOW_UP = Object.freeze({
+  enabled: false,
+  dryRun: true,
+  allowedBaseBranches: [],
+  requiredLabels: [DEFAULT_LABELS.autoMergeAfterCi],
+  blockedLabels: [
+    DEFAULT_LABELS.doNotMerge,
+    DEFAULT_LABELS.needsCodexFix,
+    DEFAULT_LABELS.codexFixInProgress,
+    DEFAULT_LABELS.doNotAutoCodexMainFollowup,
+    DEFAULT_LABELS.codexMainFollowupInProgress
+  ],
+  allowDraft: false,
+  requireSameRepository: true,
+  allowFork: false,
+  maxAttempts: 2,
+  cooldownSeconds: 0,
+  maxOpenPullRequests: 100,
+  maxChangedFiles: 100,
+  maxAdditions: 2000,
+  maxDeletions: 2000,
+  sensitivePathPatterns: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
+  protectedPathPatterns: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
+  workflowPathPatterns: ['.github/workflows/**', '.github/actions/**'],
+  dependencyPathPatterns: ['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'],
+  generatedPathPatterns: ['actions/**/dist/**', '**/dist/**'],
+  duplicatePolicy: 'dedupe-key',
+  codexFollowUpEnabled: false
+});
+
 const DEFAULT_CAPABILITIES = Object.freeze({
   autoRequest: false,
   routeReview: false,
@@ -151,6 +181,7 @@ const ROOT_KEYS = [
   'review',
   'reviewRouting',
   'autoMerge',
+  'mainFollowUp',
   'protectedFiles',
   'secretLike',
   'queues',
@@ -181,6 +212,7 @@ const REVIEW_ROUTING_TRIGGER_TYPES = [
 const REVIEW_ROUTING_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
 const AUTO_MERGE_MODES = ['plan-only', 'enable-auto-merge', 'merge-queue', 'immediate-merge'];
 const AUTO_MERGE_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
+const MAIN_FOLLOW_UP_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
 const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
@@ -242,6 +274,7 @@ export function validateAutomationConfigObject(rawConfig) {
     review: normalizeReview(rawConfig.review, errors, warnings),
     reviewRouting: normalizeReviewRouting(rawConfig.reviewRouting, errors, warnings),
     autoMerge: normalizeAutoMerge(rawConfig.autoMerge, errors, warnings),
+    mainFollowUp: normalizeMainFollowUp(rawConfig.mainFollowUp, errors, warnings),
     protectedFiles: normalizeProtectedFiles(rawConfig.protectedFiles, errors, warnings),
     secretLike: normalizeSecretLike(rawConfig.secretLike, errors, warnings),
     queues: normalizeQueues(rawConfig.queues, errors, warnings),
@@ -724,6 +757,133 @@ function normalizeAutoMerge(value, errors, warnings) {
   if (value.duplicatePolicy !== undefined) {
     if (!AUTO_MERGE_DUPLICATE_POLICIES.includes(value.duplicatePolicy)) {
       errors.push(issue('autoMerge.duplicatePolicy', 'INVALID_DUPLICATE_POLICY', 'Auto-merge duplicate policy is not supported.'));
+    } else {
+      normalized.duplicatePolicy = value.duplicatePolicy;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeMainFollowUp(value, errors, warnings) {
+  const normalized = {
+    ...DEFAULT_MAIN_FOLLOW_UP,
+    allowedBaseBranches: [],
+    requiredLabels: [...DEFAULT_MAIN_FOLLOW_UP.requiredLabels],
+    blockedLabels: [...DEFAULT_MAIN_FOLLOW_UP.blockedLabels],
+    sensitivePathPatterns: [...DEFAULT_MAIN_FOLLOW_UP.sensitivePathPatterns],
+    protectedPathPatterns: [...DEFAULT_MAIN_FOLLOW_UP.protectedPathPatterns],
+    workflowPathPatterns: [...DEFAULT_MAIN_FOLLOW_UP.workflowPathPatterns],
+    dependencyPathPatterns: [...DEFAULT_MAIN_FOLLOW_UP.dependencyPathPatterns],
+    generatedPathPatterns: [...DEFAULT_MAIN_FOLLOW_UP.generatedPathPatterns]
+  };
+
+  if (value === undefined) {
+    return normalized;
+  }
+
+  if (!isPlainObject(value)) {
+    errors.push(issue('mainFollowUp', 'OBJECT_REQUIRED', 'Main follow-up config must be an object.'));
+    return normalized;
+  }
+
+  warnUnknownKeys(value, 'mainFollowUp', [
+    'enabled',
+    'dryRun',
+    'allowedBaseBranches',
+    'requiredLabels',
+    'blockedLabels',
+    'allowDraft',
+    'requireSameRepository',
+    'allowFork',
+    'maxAttempts',
+    'cooldownSeconds',
+    'maxOpenPullRequests',
+    'maxChangedFiles',
+    'maxAdditions',
+    'maxDeletions',
+    'sensitivePathPatterns',
+    'protectedPathPatterns',
+    'workflowPathPatterns',
+    'dependencyPathPatterns',
+    'generatedPathPatterns',
+    'duplicatePolicy',
+    'codexFollowUpEnabled'
+  ], warnings);
+
+  normalized.enabled = normalizeOptionalBoolean(value.enabled, false, 'mainFollowUp.enabled', errors);
+
+  if (value.dryRun !== undefined) {
+    if (value.dryRun !== true) {
+      errors.push(issue('mainFollowUp.dryRun', 'DRY_RUN_REQUIRED', 'Main follow-up planning must remain dry-run in the shared kit.'));
+    }
+    normalized.dryRun = true;
+  }
+
+  if (value.allowDraft !== undefined) {
+    normalized.allowDraft = normalizeOptionalBoolean(value.allowDraft, false, 'mainFollowUp.allowDraft', errors);
+  }
+
+  if (value.allowFork !== undefined) {
+    if (value.allowFork !== false) {
+      errors.push(issue('mainFollowUp.allowFork', 'FORK_MAIN_FOLLOW_UP_FORBIDDEN', 'Main follow-up must not process fork pull requests.'));
+    }
+    normalized.allowFork = false;
+  }
+
+  if (value.requireSameRepository !== undefined) {
+    if (value.requireSameRepository !== true) {
+      errors.push(issue('mainFollowUp.requireSameRepository', 'SAME_REPOSITORY_REQUIRED', 'Main follow-up must require same-repository pull requests.'));
+    }
+    normalized.requireSameRepository = true;
+  }
+
+  if (value.codexFollowUpEnabled !== undefined) {
+    normalized.codexFollowUpEnabled = normalizeOptionalBoolean(value.codexFollowUpEnabled, false, 'mainFollowUp.codexFollowUpEnabled', errors);
+  }
+
+  for (const key of [
+    'allowedBaseBranches',
+    'requiredLabels',
+    'blockedLabels',
+    'sensitivePathPatterns',
+    'protectedPathPatterns',
+    'workflowPathPatterns',
+    'dependencyPathPatterns',
+    'generatedPathPatterns'
+  ]) {
+    if (value[key] !== undefined) {
+      normalized[key] = normalizeStringArray(value[key], `mainFollowUp.${key}`, errors);
+    }
+  }
+
+  if (value.maxAttempts !== undefined) {
+    normalized.maxAttempts = normalizePositiveInteger(value.maxAttempts, 'mainFollowUp.maxAttempts', 1, 10, errors);
+  }
+
+  if (value.cooldownSeconds !== undefined) {
+    normalized.cooldownSeconds = normalizePositiveInteger(value.cooldownSeconds, 'mainFollowUp.cooldownSeconds', 0, 604800, errors);
+  }
+
+  if (value.maxOpenPullRequests !== undefined) {
+    normalized.maxOpenPullRequests = normalizePositiveInteger(value.maxOpenPullRequests, 'mainFollowUp.maxOpenPullRequests', 1, 500, errors);
+  }
+
+  if (value.maxChangedFiles !== undefined) {
+    normalized.maxChangedFiles = normalizePositiveInteger(value.maxChangedFiles, 'mainFollowUp.maxChangedFiles', 1, 500, errors);
+  }
+
+  if (value.maxAdditions !== undefined) {
+    normalized.maxAdditions = normalizePositiveInteger(value.maxAdditions, 'mainFollowUp.maxAdditions', 0, 100000, errors);
+  }
+
+  if (value.maxDeletions !== undefined) {
+    normalized.maxDeletions = normalizePositiveInteger(value.maxDeletions, 'mainFollowUp.maxDeletions', 0, 100000, errors);
+  }
+
+  if (value.duplicatePolicy !== undefined) {
+    if (!MAIN_FOLLOW_UP_DUPLICATE_POLICIES.includes(value.duplicatePolicy)) {
+      errors.push(issue('mainFollowUp.duplicatePolicy', 'INVALID_DUPLICATE_POLICY', 'Main follow-up duplicate policy is not supported.'));
     } else {
       normalized.duplicatePolicy = value.duplicatePolicy;
     }

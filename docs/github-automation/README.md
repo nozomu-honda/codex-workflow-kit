@@ -14,6 +14,7 @@
 - [Event normalization](event-normalization.md)
 - [ChatGPT review routing](review-routing.md)
 - [Reviewed PR auto-merge plan](auto-merge.md)
+- [Main follow-up plan](main-follow-up.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
 - [Follow-up Issues](follow-up-issues.md)
@@ -25,6 +26,7 @@
 - 実イベントは薄いcaller workflowから共通reusable workflowへ渡し、共通形式へ正規化してから後続処理に渡す
 - ChatGPT review routingはrouting plan生成までを共通化し、write処理は後続Issueへ分離する
 - Reviewed PR auto-mergeはmerge候補plan生成までを共通化し、GitHub API writeや実mergeは後続Issueへ分離する
+- Main follow-upはdefault branch追従のplan生成までを共通化し、PR branch update、Codex起動、Queue Issue更新は後続Issueへ分離する
 - `pull_request_target` は使わない
 - fork / external PRへSecretを渡さない
 - 設定欠落や不正値は安全側に倒す

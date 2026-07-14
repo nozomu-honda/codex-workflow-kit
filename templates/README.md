@@ -131,3 +131,33 @@
 5. 初回はdry-runのまま、`eligible`、`should_enable_auto_merge`、`should_merge`、`skip_reason`、`dedupe_key` を確認する。
 
 このテンプレートはauto-merge planの生成だけを行います。auto-merge有効化、merge queue投入、merge API呼び出し、コメント投稿、label操作、branch削除は後続Issueで追加します。
+
+### `workflows/main-follow-up-events.yml`
+
+導入先でdefault branch追従後のopen PR分類を共通reusable workflowで作るための、読み取り専用caller workflowテンプレートです。
+
+コピー先:
+
+```text
+.github/workflows/main-follow-up-events.yml
+```
+
+このテンプレートの特徴:
+
+- triggerは `push`、`pull_request.closed`、`workflow_dispatch`
+- `push.branches` はhardcodeせず、planner側がdefault branchだけを処理する
+- jobは `.github/workflows/main-follow-up-plan.yml` をjob-level `uses` で呼ぶだけ
+- permissionsはread-onlyの `contents`、`pull-requests`、`issues`、`actions`、`checks`、`statuses`
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
+
+導入手順:
+
+1. `templates/workflows/main-follow-up-events.yml` を導入先の `.github/workflows/main-follow-up-events.yml` へコピーする。
+2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ40桁commit SHAへ置換する。
+3. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_CONFIG_JSON` にSecret値を含まないJSONを設定する。
+4. 重複抑制やattempt/cooldownを外部で管理する場合は、Secretを含まないVariableでdedupe key、attempt count、last attempted timestampを渡す。
+5. 初回はdry-runのまま、`plans_json`、`update_candidate_count`、`codex_follow_up_candidate_count`、`manual_review_count` を確認する。
+
+このテンプレートはmain-follow-up planの生成だけを行います。PR branch update API、Codex起動、Queue Issue更新、コメント投稿、label操作は後続Issueで追加します。

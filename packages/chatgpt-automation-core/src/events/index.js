@@ -108,7 +108,7 @@ export function normalizeAutomationEvent(input = {}) {
   if (permissionMode !== 'read-only') {
     errors.push('permission mode is not read-only');
   }
-  if (requestedCapability !== 'normalize-only') {
+  if (!['normalize-only', 'main-follow-up-plan'].includes(requestedCapability)) {
     errors.push('write capability is not implemented');
   }
   if (repository && cleanRepository(payload?.repository?.full_name) && cleanRepository(payload.repository.full_name) !== repository) {
@@ -151,7 +151,7 @@ export function normalizeAutomationEvent(input = {}) {
     case 'check_run':
       return normalizeCheckRun({ payload, eventAction, repository, baseOutputs });
     case 'workflow_dispatch':
-      return normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha: input.sha });
+      return normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha: input.sha, requestedCapability });
     default:
       return finalize(baseOutputs, ['unsupported event']);
   }
@@ -342,7 +342,7 @@ function normalizePush({ payload, repository, defaultBranch, baseOutputs, fallba
   return finalize(outputs, errors);
 }
 
-function normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha }) {
+function normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha, requestedCapability }) {
   const pullRequestNumber = numberToOutput(Number.parseInt(cleanString(payload?.inputs?.pull_request_number ?? payload?.inputs?.pr_number), 10));
   const outputs = {
     ...baseOutputs,
@@ -354,7 +354,7 @@ function normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackS
   };
   const errors = [];
 
-  if (!pullRequestNumber) {
+  if (!pullRequestNumber && requestedCapability !== 'main-follow-up-plan') {
     errors.push('missing manual pull request number');
   }
 
