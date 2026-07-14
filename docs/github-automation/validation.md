@@ -25,6 +25,8 @@ npm run audit:template
 npm run test:events
 npm run test:review-routing
 npm run test:auto-merge
+npm run test:auto-merge-regressions
+npm run replay:auto-merge-regressions
 npm run test:main-follow-up
 npm run test:protection-audit
 npm run test:e2e:consumer
@@ -220,6 +222,29 @@ Auto-merge consumer E2Eでは、`templates/workflows/reviewed-pr-auto-merge-even
 - fork相当payload、unknown actor、dangerous file変更は `eligible=false`
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
+
+Auto-merge regression replayでは、`fixtures/auto-merge-regressions/` のsanitized scenarioを既存auto-merge planとGitHub write command境界へ通します。詳細は [Auto-merge regression replay](auto-merge-regressions.md) を参照します。
+
+確認対象:
+
+- PR #130相当のreview evidenceなしscenarioが `commandCreated=false` / `adapterCalled=false` で停止する
+- stale review、stale marker、`changes_requested`、未解決thread、requested reviewerを検出する
+- CI pending / failure / required check missing / check head SHA mismatchを検出する
+- consumer audit / protection audit / Ruleset / bypass actor / force push / branch deletionの不足を検出する
+- dangerous diff、workflow permission increase、`pull_request_target`、secret-like追加、binary、submoduleを検出する
+- duplicate key、cooldown、attempt limit、command expired、future timestampを検出する
+- safe candidateでも `DisabledGitHubWriteAdapter` が `write_disabled` / `executed=false` で止める
+- fixtureに実repository、実URL、実メール、実token、Secret-like値がない
+- replay中にnetwork / GitHub API write / Secret参照が発生しない
+- snapshot差分がある場合はnon-zeroになる
+
+Auto-merge regression専用確認:
+
+```bash
+npm run test:auto-merge-regressions
+npm run lint:auto-merge-regressions
+npm run replay:auto-merge-regressions
+```
 
 Main follow-up consumer E2Eでは、`templates/workflows/main-follow-up-events.yml` から一時consumer workflowを作り、次を確認します。
 

@@ -1,0 +1,639 @@
+{
+  "scenarioResults": [
+    {
+      "id": "attempt-limit-exceeded",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "attempt_limit_exceeded",
+          "eligible_enable_auto_merge"
+        ]
+      }
+    },
+    {
+      "id": "base-sha-changed",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "stale_head"
+        ]
+      }
+    },
+    {
+      "id": "binary-file",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "binary_change_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "branch-deletion-allowed",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "deletion_allowed",
+          "protection_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "bypass-actor-unknown",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_failed",
+          "unexpected_bypass_actor"
+        ]
+      }
+    },
+    {
+      "id": "changes-requested",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "changes_requested"
+        ]
+      }
+    },
+    {
+      "id": "check-head-sha-mismatch",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_ci_pending"
+        ]
+      }
+    },
+    {
+      "id": "ci-failure",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_ci_failed"
+        ]
+      }
+    },
+    {
+      "id": "ci-pending",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_ci_pending"
+        ]
+      }
+    },
+    {
+      "id": "closed-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "pr_not_open"
+        ]
+      }
+    },
+    {
+      "id": "command-expired",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "command_expired",
+          "eligible_enable_auto_merge"
+        ]
+      }
+    },
+    {
+      "id": "conflict-dirty",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "merge_conflict"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-sha-mismatch",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "audited_sha_mismatch",
+          "consumer_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "cooldown-active",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "cooldown_active"
+        ]
+      }
+    },
+    {
+      "id": "current-head-valid-review",
+      "category": "review",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "eligible_enable_auto_merge",
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "dangerous-file",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "workflow_change_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "dependency-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dependency_change_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "draft-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "draft_pr"
+        ]
+      }
+    },
+    {
+      "id": "duplicate-check-name",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "duplicate_check_name",
+          "protection_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "duplicate-idempotency-key",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "duplicate_suppressed"
+        ]
+      }
+    },
+    {
+      "id": "external-repository",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "not_same_repository"
+        ]
+      }
+    },
+    {
+      "id": "force-push-allowed",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "force_push_allowed",
+          "protection_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "fork-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "not_same_repository"
+        ]
+      }
+    },
+    {
+      "id": "future-timestamp",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "command_from_future",
+          "eligible_enable_auto_merge"
+        ]
+      }
+    },
+    {
+      "id": "generated-dist-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "generated_dist_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "head-sha-changed",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "head_sha_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "mergeability-unknown",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "mergeable_unknown"
+        ]
+      }
+    },
+    {
+      "id": "no-review-evidence",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "chatgpt_review_missing",
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "no-review-evidence-regression",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_missing",
+          "reviewed_by_chatgpt_label_missing"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_failed"
+        ]
+      }
+    },
+    {
+      "id": "pull-request-target",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "workflow_change_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "requested-reviewer-remaining",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "requested_reviewers_remaining"
+        ]
+      }
+    },
+    {
+      "id": "required-check-missing",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_ci_pending"
+        ]
+      }
+    },
+    {
+      "id": "review-evidence-gate-missing",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_ci_pending"
+        ]
+      }
+    },
+    {
+      "id": "ruleset-missing",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_failed",
+          "ruleset_missing"
+        ]
+      }
+    },
+    {
+      "id": "safe-candidate-write-disabled",
+      "category": "success",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "eligible_enable_auto_merge",
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence",
+      "category": "review",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "eligible_enable_auto_merge",
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "secret-like-addition",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "secret_like_added_line"
+        ]
+      }
+    },
+    {
+      "id": "stale-chatgpt-marker",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "chatgpt_review_missing"
+        ]
+      }
+    },
+    {
+      "id": "stale-human-approval",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_not_current"
+        ]
+      }
+    },
+    {
+      "id": "submodule-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "submodule_change_requires_manual_merge"
+        ]
+      }
+    },
+    {
+      "id": "unresolved-review-thread",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unresolved_review_threads"
+        ]
+      }
+    },
+    {
+      "id": "workflow-permission-increase",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "workflow_change_requires_manual_merge"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "passed": 44,
+    "total": 44
+  }
+}
