@@ -9,9 +9,11 @@ capabilities:
   - review-routing-plan
   - auto-merge-plan
   - main-follow-up-plan
+  - repository-protection-audit
 changedCapabilities:
   - auto-merge-plan
   - main-follow-up-plan
+  - repository-protection-audit
 breakingChanges: []
 migrationRequired: false
 actionArtifacts:
@@ -32,6 +34,7 @@ callerTemplates:
   - templates/workflows/main-follow-up-events.yml
 schemas:
   - schemas/chatgpt-automation.schema.json
+  - schemas/protection-policy.schema.json
   - schemas/release-manifest.schema.json
 rollbackCommitSha: "1111111111111111111111111111111111111111"
 validationCommands:

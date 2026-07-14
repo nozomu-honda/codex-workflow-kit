@@ -11,6 +11,7 @@
 - [Config schema](config-schema.md)
 - [Installation](installation.md)
 - [Installation audit CLI](installation-audit.md)
+- [Repository protection audit](protection-audit.md)
 - [Event normalization](event-normalization.md)
 - [ChatGPT review routing](review-routing.md)
 - [Reviewed PR auto-merge plan](auto-merge.md)
@@ -26,6 +27,7 @@
 - 実イベントは薄いcaller workflowから共通reusable workflowへ渡し、共通形式へ正規化してから後続処理に渡す
 - ChatGPT review routingはrouting plan生成までを共通化し、write処理は後続Issueへ分離する
 - Reviewed PR auto-mergeはmerge候補plan生成までを共通化し、GitHub API writeや実mergeは後続Issueへ分離する
+- Repository protection auditはconsumer repositoryのBranch protection / Ruleset / required checks / required reviews / bypassをread-onlyで監査し、設定変更は行わない
 - Main follow-upはdefault branch追従のplan生成までを共通化し、PR branch update、Codex起動、Queue Issue更新は後続Issueへ分離する
 - `pull_request_target` は使わない
 - fork / external PRへSecretを渡さない

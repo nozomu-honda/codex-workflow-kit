@@ -26,6 +26,7 @@ npm run test:events
 npm run test:review-routing
 npm run test:auto-merge
 npm run test:main-follow-up
+npm run test:protection-audit
 npm run test:e2e:consumer
 npm run lint:e2e
 npm run ci
@@ -66,6 +67,41 @@ npm run test:audit
 npm run lint:audit
 npm run audit:template
 ```
+
+## Repository protection audit validation
+
+`scripts/audit-repository-protection.mjs` は、consumer repositoryのBranch protection / Ruleset / required checks / required reviews / bypass / merge settingsをGitHub API readだけで監査します。詳細は [Repository protection audit](protection-audit.md) を参照します。
+
+確認対象:
+
+- safe protection fixtureで `ready=true`
+- Branch protectionなし、Rulesetなし、CIなし、Review evidence gateなしを検出する
+- approval 0、stale approval dismissalなし、conversation resolutionなしを検出する
+- force push許可、deletion許可、unexpected bypass actorを検出する
+- inactive ruleset、branch pattern不一致、duplicate check名を検出する
+- merge queue有効時にmanual review warningを出す
+- API 403 / 404、pagination未完了、監査中の設定変更をfail closedにする
+- policy schemaとexample policyが一致する
+- CLIがGETだけを使い、tokenやAuthorizationを出力しない
+- workflowが `workflow_dispatch` only、`contents: read` only、Secretなしである
+
+Repository protection audit専用確認:
+
+```bash
+npm run test:protection-audit
+npm run lint:protection-audit
+```
+
+live consumerをread-onlyで確認する場合:
+
+```bash
+GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
+  --repository nozomu-honda/oshi-management-app \
+  --policy release/protection-policy.example.yml \
+  --json
+```
+
+このlive確認はGitHub API readだけを行い、Ruleset / Branch protection / Secret / Variables / labels / comments / deploy / releaseを変更しません。
 
 導入先を直接監査する場合:
 

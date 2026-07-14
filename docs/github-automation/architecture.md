@@ -69,6 +69,19 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 
 詳細は [release-readiness.md](release-readiness.md) を参照します。
 
+## Repository protection audit
+
+`packages/chatgpt-automation-core/src/protection-audit/` と `scripts/audit-repository-protection.mjs` は、consumer repositoryのdefault branchに対するBranch protection / Ruleset / required checks / required reviews / bypass / merge settingsをread-onlyで監査するlayerです。
+
+- GitHub APIはGETだけを使う
+- Branch protectionやRulesetを変更しない
+- required checkやCheck Runを作成しない
+- Secret、token、Authorization、API response全文、不要なactor内部IDをreportへ出さない
+- Branch protectionとRulesetをeffective policyとして合成する
+- API failure、pagination未完了、TOCTOU検知、状態不明はfail closedまたはmanual reviewにする
+
+詳細は [protection-audit.md](protection-audit.md) を参照します。
+
 ## Reusable workflow
 
 `.github/workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。

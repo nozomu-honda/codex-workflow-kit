@@ -38,11 +38,13 @@ function manifest(overrides = {}) {
       'event-normalization',
       'review-routing-plan',
       'auto-merge-plan',
-      'main-follow-up-plan'
+      'main-follow-up-plan',
+      'repository-protection-audit'
     ],
     changedCapabilities: [
       'auto-merge-plan',
-      'main-follow-up-plan'
+      'main-follow-up-plan',
+      'repository-protection-audit'
     ],
     breakingChanges: [],
     migrationRequired: false,
@@ -83,7 +85,7 @@ function changelog(extra = '') {
 
 ### Added
 
-- Added release readiness planning for auto-merge-plan and main-follow-up-plan.
+- Added release readiness planning for auto-merge-plan, main-follow-up-plan, and repository-protection-audit.
 
 ### Changed
 

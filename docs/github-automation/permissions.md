@@ -122,3 +122,19 @@ Release readiness workflowは `contents: read` のみを使います。
 - `pull_request_target`
 
 consumer更新計画に強いtokenやSecretは不要です。実consumer更新PRを作る処理はIssue #27の対象外です。
+
+## Repository protection audit
+
+Repository protection auditはconsumer repository settingsをread-onlyで確認します。
+
+- workflow triggerは `workflow_dispatch` のみ
+- workflow / job permissionsは `contents: read`
+- CLIはGitHub APIのGETだけを使う
+- `pull_request_target` は使わない
+- Secret inputは定義しない
+- `secrets: inherit` は使わない
+- Branch protection / Ruleset / required check / Check Runを変更しない
+- PR / Issue / comment / label操作を行わない
+- token値、Authorization header、Cookie、OAuth情報、API response全文をログやreportへ出さない
+
+標準 `github.token` でBranch protectionやRulesetを読めない場合はfail closedにします。追加のread権限やfine-grained tokenが必要な場合も、この共通キットはtoken作成・Secret登録を行いません。

@@ -33,6 +33,17 @@ npm run validate:config
 node scripts/audit-consumer-installation.mjs --root ../consumer-repo
 ```
 
+導入先のGitHub UI側設定、Branch protection、Ruleset、required checks、required reviews、bypass条件をread-onlyで監査する場合は、[Repository protection audit](protection-audit.md) を使います。
+
+```bash
+GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
+  --repository owner/example-repo \
+  --policy release/protection-policy.example.yml \
+  --json
+```
+
+不足設定が見つかっても、このCLIはGitHub設定を変更しません。
+
 ## Validate config caller workflow
 
 初回は設定検証専用caller workflowを手動実行します。
@@ -239,6 +250,7 @@ node scripts/audit-consumer-installation.mjs \
 6. caller workflow templateを導入先へ追加する
 7. dry-runで判定だけを確認する
 8. 小さいdocs-only PRでend-to-end確認する
+9. `scripts/audit-repository-protection.mjs` でdefault branch保護設定をread-only監査する
 
 ## 互換性
 

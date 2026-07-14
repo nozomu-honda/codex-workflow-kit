@@ -32,7 +32,8 @@ const IMPLEMENTED_CAPABILITIES = Object.freeze([
   'event-normalization',
   'review-routing-plan',
   'auto-merge-plan',
-  'main-follow-up-plan'
+  'main-follow-up-plan',
+  'repository-protection-audit'
 ]);
 
 export async function runPlanReleaseCli(argv = process.argv.slice(2), io = {}) {

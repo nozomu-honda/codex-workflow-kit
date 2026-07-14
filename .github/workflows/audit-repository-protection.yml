@@ -1,0 +1,50 @@
+name: Repository protection audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Repository to audit as owner/repo. Defaults to this repository.
+        required: false
+        type: string
+      policy-file:
+        description: Expected policy file in this repository.
+        required: false
+        default: release/protection-policy.example.yml
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-protection-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-repository-protection:
+    name: Repository protection read-only audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run repository protection audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/audit-repository-protection.mjs \
+            --repository "${{ inputs.repository || github.repository }}" \
+            --policy "${{ inputs['policy-file'] || 'release/protection-policy.example.yml' }}" \
+            --json
