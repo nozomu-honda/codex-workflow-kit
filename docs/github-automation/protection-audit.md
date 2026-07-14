@@ -247,6 +247,17 @@ GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
 - admin bypassに自動化が依存していない
 - merge queueが有効な場合はwrite側設計がqueue対応している
 
+## dry-run executor連携
+
+Issue #41のauto-merge dry-run executorは、Repository protection audit reportを事前条件として要求します。
+
+- `ready=true` であること
+- report versionがv1であること
+- repository、default branch、audited SHAがcurrent baseと一致すること
+- API failure、pagination未完了、TOCTOU検知、blocker、manual review requiredがないこと
+
+手動Ruleset確認の自己申告booleanだけでは通しません。schema検証済みreportを入力し、不足設定があれば `protection_audit_not_ready` でblockします。executorもRulesetやBranch protectionを変更しません。
+
 ## Validation
 
 ```bash

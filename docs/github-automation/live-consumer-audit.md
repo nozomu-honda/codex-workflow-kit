@@ -213,6 +213,18 @@ JSON reportはdeterministicで、絶対path、token、Cookie、Authorization、S
 - `default_branch_changed_during_audit`
 - `binary_or_submodule_manual_review`
 
+## dry-run executor連携
+
+Issue #41のauto-merge dry-run executorは、live consumer audit reportを事前条件として要求します。
+
+- `reportVersion: live-consumer-audit.v1`
+- `ready=true`
+- repositoryと必要なtarget head SHAがcurrent PRと一致すること
+- API read failure、pagination未完了、blocker、manual review requiredがないこと
+- Secret-like構成やwrite permission拡大がないこと
+
+consumer audit reportが不足、不正、stale、またはreadyでない場合は `consumer_audit_not_ready` でblockします。executorはconsumer repositoryを変更せず、PR、Issue、comment、label、branch、Secret、Variable、workflow dispatchも行いません。
+
 ## Validation
 
 offline fixture:

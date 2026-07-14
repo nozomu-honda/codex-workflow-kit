@@ -1,0 +1,198 @@
+name: Auto-merge dry-run executor
+
+on:
+  workflow_call:
+    inputs:
+      auto-merge-plan-json:
+        description: Auto-merge plan JSON.
+        required: true
+        type: string
+      review-evidence-json:
+        description: Current-head review evidence report JSON.
+        required: true
+        type: string
+      consumer-audit-json:
+        description: Live consumer audit report JSON.
+        required: true
+        type: string
+      protection-audit-json:
+        description: Repository protection audit report JSON.
+        required: true
+        type: string
+      pull-request-json:
+        description: Pull request snapshot JSON.
+        required: true
+        type: string
+      checks-json:
+        description: Check snapshot JSON.
+        required: true
+        type: string
+      changed-files-json:
+        description: Changed files snapshot JSON.
+        required: true
+        type: string
+      execution-context-json:
+        description: Execution context JSON.
+        required: true
+        type: string
+      kit-ref:
+        description: Reviewed 40-character codex-workflow-kit commit SHA.
+        required: true
+        type: string
+    outputs:
+      eligible:
+        description: Whether all preconditions passed before the disabled adapter refusal.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.eligible }}
+      command-created:
+        description: Whether a sanitized write command candidate was created.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.command-created }}
+      adapter-accepted:
+        description: Whether the adapter accepted the command. Disabled adapter should keep this false.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.adapter-accepted }}
+      executed:
+        description: Whether any write was executed. This workflow keeps it false.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.executed }}
+      reason-codes-json:
+        description: Stable reason code list.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.reason-codes-json }}
+      result-json:
+        description: Sanitized deterministic dry-run decision JSON.
+        value: ${{ jobs.auto-merge-dry-run-executor.outputs.result-json }}
+  workflow_dispatch:
+    inputs:
+      auto-merge-plan-json:
+        description: Auto-merge plan JSON.
+        required: true
+        type: string
+      review-evidence-json:
+        description: Current-head review evidence report JSON.
+        required: true
+        type: string
+      consumer-audit-json:
+        description: Live consumer audit report JSON.
+        required: true
+        type: string
+      protection-audit-json:
+        description: Repository protection audit report JSON.
+        required: true
+        type: string
+      pull-request-json:
+        description: Pull request snapshot JSON.
+        required: true
+        type: string
+      checks-json:
+        description: Check snapshot JSON.
+        required: true
+        type: string
+      changed-files-json:
+        description: Changed files snapshot JSON.
+        required: true
+        type: string
+      execution-context-json:
+        description: Execution context JSON.
+        required: true
+        type: string
+      kit-ref:
+        description: Reviewed 40-character codex-workflow-kit commit SHA. Defaults to this workflow revision when empty.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+  checks: read
+  statuses: read
+
+concurrency:
+  group: auto-merge-dry-run-executor-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge-dry-run-executor:
+    name: Auto-merge dry-run executor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+      statuses: read
+    outputs:
+      eligible: ${{ steps.result.outputs.eligible }}
+      command-created: ${{ steps.result.outputs.command_created }}
+      adapter-accepted: ${{ steps.result.outputs.adapter_accepted }}
+      executed: ${{ steps.result.outputs.executed }}
+      reason-codes-json: ${{ steps.result.outputs.reason_codes_json }}
+      result-json: ${{ steps.result.outputs.result_json }}
+    steps:
+      - name: Validate kit ref
+        env:
+          KIT_REF: ${{ inputs.kit-ref || github.sha }}
+        run: |
+          if ! printf '%s' "$KIT_REF" | grep -Eq '^[a-f0-9]{40}$'; then
+            echo "kit-ref must be a reviewed 40-character lowercase commit SHA." >&2
+            exit 1
+          fi
+
+      - name: Checkout shared kit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: nozomu-honda/codex-workflow-kit
+          ref: ${{ inputs.kit-ref || github.sha }}
+          path: .codex-workflow-kit
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: .codex-workflow-kit/package-lock.json
+
+      - name: Install dependencies
+        working-directory: .codex-workflow-kit
+        run: npm ci
+
+      - name: Execute auto-merge dry-run
+        env:
+          AUTO_MERGE_PLAN_JSON: ${{ inputs.auto-merge-plan-json }}
+          CHANGED_FILES_JSON: ${{ inputs.changed-files-json }}
+          CHECKS_JSON: ${{ inputs.checks-json }}
+          CONSUMER_AUDIT_JSON: ${{ inputs.consumer-audit-json }}
+          EXECUTION_CONTEXT_JSON: ${{ inputs.execution-context-json }}
+          PROTECTION_AUDIT_JSON: ${{ inputs.protection-audit-json }}
+          PULL_REQUEST_JSON: ${{ inputs.pull-request-json }}
+          REVIEW_EVIDENCE_JSON: ${{ inputs.review-evidence-json }}
+        working-directory: .codex-workflow-kit
+        run: |
+          node scripts/execute-auto-merge-dry-run.mjs \
+            --auto-merge-plan-json "$AUTO_MERGE_PLAN_JSON" \
+            --review-evidence-json "$REVIEW_EVIDENCE_JSON" \
+            --consumer-audit-json "$CONSUMER_AUDIT_JSON" \
+            --protection-audit-json "$PROTECTION_AUDIT_JSON" \
+            --pull-request-json "$PULL_REQUEST_JSON" \
+            --checks-json "$CHECKS_JSON" \
+            --changed-files-json "$CHANGED_FILES_JSON" \
+            --execution-context-json "$EXECUTION_CONTEXT_JSON" \
+            --json > "$RUNNER_TEMP/auto-merge-dry-run-result.json"
+
+      - name: Publish sanitized outputs
+        id: result
+        run: |
+          node <<'NODE'
+          const { appendFileSync, readFileSync } = require('node:fs');
+          const result = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/auto-merge-dry-run-result.json`, 'utf8'));
+          const lines = [
+            `eligible=${result.eligible ? 'true' : 'false'}`,
+            `command_created=${result.commandCreated ? 'true' : 'false'}`,
+            `adapter_accepted=${result.adapterAccepted ? 'true' : 'false'}`,
+            `executed=${result.executed ? 'true' : 'false'}`,
+            `reason_codes_json=${JSON.stringify(result.reasonCodes ?? [])}`,
+            'result_json<<JSON',
+            JSON.stringify(result),
+            'JSON'
+          ];
+          appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+          NODE
