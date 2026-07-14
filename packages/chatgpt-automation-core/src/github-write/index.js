@@ -12,6 +12,9 @@ export const WRITE_OPERATION_ORDER = Object.freeze([
 
 export const WRITE_REASON_CODES = Object.freeze({
   attemptLimitExceeded: 'attempt_limit_exceeded',
+  clockUnavailable: 'clock_unavailable',
+  commandExpired: 'command_expired',
+  commandFromFuture: 'command_from_future',
   cooldownActive: 'cooldown_active',
   duplicateOperation: 'duplicate_operation',
   expectedBaseShaMissing: 'expected_base_sha_missing',
@@ -30,17 +33,12 @@ const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:/#-]{16,320}$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9._:/#-]{8,320}$/;
-const DEFAULT_REQUESTED_AT = '1970-01-01T00:00:00.000Z';
-const DEFAULT_ACTOR_CONTEXT = Object.freeze({
-  actor: 'local-plan',
-  isFork: false,
-  isTrusted: true,
-  source: 'plan'
-});
+const DEFAULT_COMMAND_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_COMMAND_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 export class DisabledGitHubWriteAdapter {
-  execute(command) {
-    const validation = validateWriteCommand(command);
+  execute(command, options = {}) {
+    const validation = validateWriteCommand(command, options);
     return createWriteExecutionResult(command, {
       blockers: validation.blockers,
       reasonCode: validation.ok ? WRITE_REASON_CODES.writeDisabled : firstBlockerReason(validation.blockers)
@@ -65,8 +63,11 @@ export class FakeGitHubWriteAdapter {
     this.lastAttemptByFingerprint = new Map();
   }
 
-  execute(command) {
-    const validation = validateWriteCommand(command);
+  execute(command, options = {}) {
+    const validation = validateWriteCommand(command, {
+      now: this.now,
+      ...options
+    });
     if (!validation.ok) {
       return createWriteExecutionResult(command, {
         blockers: validation.blockers,
@@ -131,10 +132,10 @@ export function createWriteCommand(input = {}) {
   const expectedHeadSha = cleanSha(input.expectedHeadSha ?? input.expected_head_sha);
   const expectedBaseSha = cleanSha(input.expectedBaseSha ?? input.expected_base_sha);
   const rawRequestedAt = input.requestedAt ?? input.requested_at;
-  const requestedAt = rawRequestedAt === undefined ? DEFAULT_REQUESTED_AT : cleanString(rawRequestedAt);
+  const requestedAt = rawRequestedAt === undefined ? '' : cleanString(rawRequestedAt);
   const dryRun = input.dryRun !== false;
   const reasonCode = cleanString(input.reasonCode ?? input.reason_code) || 'plan_candidate';
-  const actorContext = normalizeActorContext(input.actorContext);
+  const actorContext = input.actorContext === undefined ? undefined : normalizeActorContext(input.actorContext);
   const planSnapshot = normalizePlanSnapshot(input.planSnapshot ?? input.plan_snapshot);
   const base = {
     actorContext,
@@ -178,10 +179,11 @@ export function createWriteCommandCandidateFromAutoMergePlan(plan, options = {})
   ) {
     return { command: null, reasonCode: WRITE_REASON_CODES.planSnapshotMismatch };
   }
+  const actorContext = options.actorContext === undefined ? undefined : normalizeActorContext(options.actorContext);
 
   return {
     command: createWriteCommand({
-      actorContext: options.actorContext,
+      actorContext,
       dryRun: options.dryRun,
       expectedBaseSha: outputs.base_sha,
       expectedHeadSha: outputs.head_sha,
@@ -203,6 +205,7 @@ export function createWriteCommandCandidateFromAutoMergePlan(plan, options = {})
       repository: outputs.repository,
       requestedAt: options.requestedAt
     }),
+    validationContext: createValidationContext({ actorContext, now: options.now }),
     reasonCode: ''
   };
 }
@@ -216,10 +219,11 @@ export function createWriteCommandCandidateFromMainFollowUpEntry(entry, options 
   if (entry?.action !== 'behind-update-candidate' || entry?.should_update_branch !== true) {
     return { command: null, reasonCode: cleanString(entry?.skip_reason || entry?.reason) || 'plan_not_eligible' };
   }
+  const actorContext = options.actorContext === undefined ? undefined : normalizeActorContext(options.actorContext);
 
   return {
     command: createWriteCommand({
-      actorContext: options.actorContext,
+      actorContext,
       dryRun: options.dryRun,
       expectedBaseSha: entry.base_sha,
       expectedHeadSha: entry.head_sha,
@@ -240,6 +244,7 @@ export function createWriteCommandCandidateFromMainFollowUpEntry(entry, options 
       repository: entry.repository,
       requestedAt: options.requestedAt
     }),
+    validationContext: createValidationContext({ actorContext, now: options.now }),
     reasonCode: ''
   };
 }
@@ -300,7 +305,14 @@ export function createWriteOperationId(input = {}) {
   return key ? `${key}:command` : '';
 }
 
-export function validateWriteCommand(command = {}) {
+export function createValidationContext({ actorContext, now } = {}) {
+  return {
+    now,
+    trustedActorContext: actorContext === undefined ? undefined : normalizeActorContext(actorContext)
+  };
+}
+
+export function validateWriteCommand(command = {}, options = {}) {
   const blockers = [];
 
   if (!command || typeof command !== 'object' || Array.isArray(command)) {
@@ -357,11 +369,22 @@ export function validateWriteCommand(command = {}) {
   if (command.dryRun !== true) {
     blockers.push(blocker('dry_run_required'));
   }
-  if (!normalizeTimestamp(command.requestedAt ?? command.requested_at)) {
+  const requestedAt = normalizeTimestamp(command.requestedAt ?? command.requested_at);
+  if (!requestedAt) {
     blockers.push(blocker('invalid_requested_at'));
+  } else {
+    const freshnessBlocker = validateCommandFreshness({
+      futureSkewMs: options.futureSkewMs,
+      maxAgeMs: options.maxAgeMs,
+      now: options.now,
+      requestedAt
+    });
+    if (freshnessBlocker) {
+      blockers.push(freshnessBlocker);
+    }
   }
 
-  const actorBlocker = validateActorContext(command.actorContext);
+  const actorBlocker = validateActorContext(command.actorContext, options.trustedActorContext);
   if (actorBlocker) {
     blockers.push(actorBlocker);
   }
@@ -403,12 +426,24 @@ function createAuditRecord(result, command = {}) {
   };
 }
 
-function validateActorContext(actorContext) {
-  if (!actorContext || typeof actorContext !== 'object' || Array.isArray(actorContext)) {
+function validateActorContext(actorContext, trustedActorContext) {
+  if (!hasCompleteActorContext(actorContext) || !hasCompleteActorContext(trustedActorContext)) {
     return blocker('missing_safety_guard');
   }
   const normalized = normalizeActorContext(actorContext);
-  if (!normalized.actor || normalized.source !== 'plan' || normalized.isTrusted !== true || normalized.isFork === true) {
+  const trusted = normalizeActorContext(trustedActorContext);
+  if (
+    !normalized.actor
+    || !normalized.source
+    || normalized.isTrusted !== true
+    || normalized.isFork === true
+    || trusted.isTrusted !== true
+    || trusted.isFork === true
+    || normalized.actor !== trusted.actor
+    || normalized.source !== trusted.source
+    || normalized.isTrusted !== trusted.isTrusted
+    || normalized.isFork !== trusted.isFork
+  ) {
     return blocker('missing_safety_guard');
   }
   return null;
@@ -455,21 +490,27 @@ function validatePlanSnapshot({ expectedBaseSha, expectedHeadSha, operation, pla
     return null;
   }
 
-  if (snapshot.source === 'generic') {
-    return null;
-  }
-
-  return blocker('unknown_state');
+  return blocker(snapshot.source ? WRITE_REASON_CODES.planSnapshotMismatch : 'unknown_state');
 }
 
 function normalizeActorContext(value = {}) {
-  const source = cleanString(value?.source) || DEFAULT_ACTOR_CONTEXT.source;
-  return {
-    actor: cleanString(value?.actor) || DEFAULT_ACTOR_CONTEXT.actor,
-    isFork: value?.isFork === true,
-    isTrusted: value?.isTrusted !== undefined ? value.isTrusted === true : DEFAULT_ACTOR_CONTEXT.isTrusted,
-    source
-  };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const normalized = {};
+  if (Object.prototype.hasOwnProperty.call(value, 'actor')) {
+    normalized.actor = cleanString(value.actor);
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'source')) {
+    normalized.source = cleanString(value.source);
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'isTrusted')) {
+    normalized.isTrusted = value.isTrusted === true;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'isFork')) {
+    normalized.isFork = value.isFork === true;
+  }
+  return normalized;
 }
 
 function normalizePlanSnapshot(value = {}) {
@@ -489,8 +530,57 @@ function normalizePlanSnapshot(value = {}) {
     should_enable_auto_merge: value.should_enable_auto_merge === true || value.shouldEnableAutoMerge === true,
     should_merge: value.should_merge === true || value.shouldMerge === true,
     should_update_branch: value.should_update_branch === true || value.shouldUpdateBranch === true,
-    source: cleanString(value.source) || 'generic'
+    source: cleanString(value.source)
   };
+}
+
+function validateCommandFreshness({ futureSkewMs, maxAgeMs, now, requestedAt }) {
+  const nowMs = resolveNowMs(now);
+  if (!Number.isFinite(nowMs)) {
+    return blocker(WRITE_REASON_CODES.clockUnavailable);
+  }
+
+  const requestedAtMs = Date.parse(requestedAt);
+  const allowedFutureSkewMs = Number.isInteger(futureSkewMs) && futureSkewMs >= 0
+    ? futureSkewMs
+    : DEFAULT_COMMAND_FUTURE_SKEW_MS;
+  const allowedMaxAgeMs = Number.isInteger(maxAgeMs) && maxAgeMs >= 0
+    ? maxAgeMs
+    : DEFAULT_COMMAND_MAX_AGE_MS;
+
+  if (requestedAtMs - nowMs > allowedFutureSkewMs) {
+    return blocker(WRITE_REASON_CODES.commandFromFuture);
+  }
+  if (nowMs - requestedAtMs > allowedMaxAgeMs) {
+    return blocker(WRITE_REASON_CODES.commandExpired);
+  }
+  return null;
+}
+
+function resolveNowMs(now) {
+  try {
+    if (typeof now === 'function') {
+      return toTime(now());
+    }
+    if (now !== undefined) {
+      return toTime(now);
+    }
+  } catch {
+    return Number.NaN;
+  }
+  return Number.NaN;
+}
+
+function hasCompleteActorContext(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.prototype.hasOwnProperty.call(value, 'actor')
+    && Object.prototype.hasOwnProperty.call(value, 'source')
+    && Object.prototype.hasOwnProperty.call(value, 'isTrusted')
+    && Object.prototype.hasOwnProperty.call(value, 'isFork')
+  );
 }
 
 function inferAutoMergeOperation(outputs) {

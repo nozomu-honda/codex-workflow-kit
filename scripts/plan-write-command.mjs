@@ -16,20 +16,23 @@ async function main() {
   const planType = args['plan-type'] || inferPlanType(plan);
   const operation = args.operation || '';
   const requestedAt = args['requested-at'] || DEFAULT_REQUESTED_AT;
-  const actorContext = {
+  const actorContext = args['allow-fixture-trust'] === 'true' ? {
     actor: args.actor || 'local-plan',
     isFork: false,
     isTrusted: true,
     source: 'plan'
-  };
+  } : undefined;
+  const now = args.now || '';
   const adapter = new DisabledGitHubWriteAdapter();
-  const candidates = createCandidates({ actorContext, operation, plan, planType, requestedAt });
+  const candidates = createCandidates({ actorContext, now, operation, plan, planType, requestedAt });
   const commands = candidates.map((candidate) => candidate.command).filter(Boolean);
-  const results = commands.map((command) => ({
-    command,
-    execution: adapter.execute(command),
-    validation: validateWriteCommand(command)
-  }));
+  const results = candidates
+    .filter((candidate) => candidate.command)
+    .map((candidate) => ({
+      command: candidate.command,
+      execution: adapter.execute(candidate.command, candidate.validationContext),
+      validation: validateWriteCommand(candidate.command, candidate.validationContext)
+    }));
 
   const output = {
     command_count: commands.length,
@@ -43,11 +46,12 @@ async function main() {
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
-export function createCandidates({ actorContext, operation, plan, planType, requestedAt }) {
+export function createCandidates({ actorContext, now, operation, plan, planType, requestedAt }) {
   if (planType === 'auto-merge') {
     return [
       createWriteCommandCandidateFromAutoMergePlan(plan, {
         actorContext,
+        now,
         operation,
         requestedAt
       })
@@ -57,6 +61,7 @@ export function createCandidates({ actorContext, operation, plan, planType, requ
   if (planType === 'main-follow-up') {
     return createWriteCommandCandidatesFromMainFollowUpPlan(plan, {
       actorContext,
+      now,
       operation,
       requestedAt
     });

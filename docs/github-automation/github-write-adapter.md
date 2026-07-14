@@ -59,9 +59,11 @@ validatorは次のような状態を拒否します。
 - `dryRun=false`
 - operation ID / idempotency key欠落
 - 不正timestamp
+- command生成時刻が未来すぎる、または古すぎる
 - plan snapshotとcommandのrepository / PR番号 / head SHA / base SHA不一致
 - actor guard欠落
 - fork由来actor context
+- command payloadとworkflow境界で確認したtrusted actor contextの不一致
 - plan state不明
 
 代表的なstable reason code:
@@ -78,6 +80,22 @@ validatorは次のような状態を拒否します。
 - `attempt_limit_exceeded`
 - `cooldown_active`
 - `plan_snapshot_mismatch`
+- `missing_safety_guard`
+- `command_from_future`
+- `command_expired`
+
+`actorContext` はcommand payload内の自己申告だけでは信頼しません。converterまたはworkflow境界で確認したtrusted actor contextをvalidatorへ別途渡し、actor、source、trusted判定、fork判定が一致した場合だけvalidにします。`createWriteCommand()` を単独で呼んでもtrusted actorは補完されず、validatorは `missing_safety_guard` でfail closedします。
+
+`requestedAt` はISO形式だけでなく鮮度も検証します。既定ではvalidatorへ現在時刻を注入できない場合はfail closedになり、現在時刻から5分を超えて未来、または24時間を超えて過去のcommandを拒否します。これにより永続storeが失われた場合でも古いcommandを再受理しないようにします。
+
+plan snapshotの `source` は `auto-merge` と `main-follow-up` だけを許可します。`generic` sourceは使用せず、operation対応も次に限定します。
+
+| source | 許可operation |
+| --- | --- |
+| `auto-merge` | `enable-auto-merge`, `merge-pull-request` |
+| `main-follow-up` | `update-pull-request-branch` |
+
+`add-comment`、`remove-label`、`update-queue-record` など、converter未実装のoperationは現段階ではvalid commandになりません。
 
 ## adapters
 
@@ -154,6 +172,8 @@ audit recordは最小限の許可fieldだけを出力します。
 
 変換後も既定adapterはwriteしません。
 
+converterはplanとworkflow境界で得たactor trust contextを受け取り、commandとvalidation contextを組で返します。validatorはこのvalidation contextがないcommandをvalid扱いしません。
+
 ## CLI
 
 `scripts/plan-write-command.mjs` はplan JSONを読み、command候補とdisabled adapter結果をdeterministic JSONで出力します。
@@ -165,10 +185,12 @@ node scripts/plan-write-command.mjs \
   --plan auto-merge-plan.json \
   --plan-type auto-merge \
   --operation enable-auto-merge \
-  --requested-at 2026-01-01T00:00:00.000Z
+  --requested-at 2026-01-01T00:00:00.000Z \
+  --now 2026-01-01T00:00:00.000Z \
+  --allow-fixture-trust
 ```
 
-このCLIはGitHub API、network、token、Secretを使いません。
+このCLIはGitHub API、network、token、Secretを使いません。通常実行ではtrusted actor commandを生成できず、fixture検証でだけ `--allow-fixture-trust` を指定できます。実workflowではCLIのfixture trustではなく、converterまたはworkflow境界が確認したactor trust contextを使います。
 
 ## validation
 
