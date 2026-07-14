@@ -70,6 +70,34 @@ PRごとの `action` は次のいずれかです。
 
 これらはCodex follow-up候補にもPR branch update候補にも進めません。
 
+## GitHub API read snapshot
+
+planner scriptはPR一覧レスポンスをmergeability判定の正本にしません。open PR一覧は対象PR番号の列挙にだけ使い、各PRについて必ず次を個別取得します。
+
+```text
+GET /repos/{owner}/{repo}/pulls/{pull_number}
+```
+
+個別PR詳細レスポンスから `state`、`draft`、`merged`、`mergeable`、`mergeable_state`、base/head ref、base/head SHA、base/head repository、fork情報、labels、authorを正規化します。PR一覧レスポンスと個別詳細が不一致の場合は個別詳細を正本にします。個別詳細取得時に `mergeable: null` が返る場合は、固定回数だけ短い再取得を行います。現在の方針は最大3 retry、待機は250ms / 500ms / 500msです。最大retry後も `mergeable: null` の場合は `mergeable_unknown` としてmanual review requiredに倒します。
+
+retry中またはscan中にhead SHA、head ref、head repository、base SHA、base ref、base repositoryが変化した場合はfail closedです。stateがclosedまたはmergedへ変化したPRは対象外にし、途中でsnapshotが変わった場合は `pull_request_head_changed_during_scan` または `pull_request_base_changed_during_scan` をreasonにします。
+
+scan全体ではtarget base SHAを1つだけ使います。
+
+- `push`: event payloadの `after` と正規化済み `head_sha` が一致し、scan開始時のdefault branch current SHAとも一致する場合だけ使います。
+- `pull_request.closed` merged: `pull_request.merge_commit_sha` がscan開始時のdefault branch current SHAと一致する場合だけ使います。不一致の場合は `base_sha_changed_during_scan` でfail closedです。
+- `workflow_dispatch`: scan開始時にdefault branch refをread-only APIで取得し、そのSHAをtarget base SHAにします。任意の `base_sha` inputがある場合はcurrent SHAとの一致を要求します。
+
+plannerはscan開始時と終了直前にdefault branch refを取得します。SHAが変わった場合は `base_sha_changed_during_scan` でglobal fail closedにします。compare APIもbranch名ではなく固定SHAを使います。
+
+```text
+GET /repos/{owner}/{repo}/compare/{target_base_sha}...{head_sha}
+```
+
+global outputの `base_sha`、各planの `base_sha`、dedupe key内のbase SHAはすべて同じtarget base SHAです。
+
+REST paginationはfail closedです。`Link` headerの `rel="next"` はGitHub API host、同一pathname、fragmentなし、username/passwordなしの場合だけ追跡します。同じpathの再訪、A -> B -> A循環、100ページ超過、外部host、不正URL、`rel="next"` があるのにURL抽出不能なLink header、配列ではないpage responseはstable error codeで失敗し、global planは `github_api_read_failed:*` になります。
+
 ## Outputs
 
 Reusable workflow `.github/workflows/main-follow-up-plan.yml` は次のoutputsを返します。

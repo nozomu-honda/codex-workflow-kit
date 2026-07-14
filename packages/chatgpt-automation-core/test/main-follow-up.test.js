@@ -58,14 +58,15 @@ test('default branch push後にopen PRをdeterministicに分類する', () => {
 test('merged pull_request.closedとworkflow_dispatchをmain follow-up triggerとして扱う', () => {
   const merged = createMainFollowUpPlan(baseInput({
     eventPayload: mergedPr({ baseRef: 'main' }),
-    normalizedEvent: normalizedEvent({ event_name: 'pull_request', event_action: 'closed' })
+    normalizedEvent: normalizedEvent({ event_name: 'pull_request', event_action: 'closed', head_sha: FIXTURE_SHAS.merge }),
+    targetBaseSha: FIXTURE_SHAS.merge
   }));
   assert.equal(merged.outputs.eligible, 'true');
   assert.equal(merged.outputs.trigger_type, 'merged-pull-request');
 
   const manual = createMainFollowUpPlan(baseInput({
     eventPayload: { inputs: { base_branch: 'main' } },
-    normalizedEvent: normalizedEvent({ event_name: 'workflow_dispatch', event_action: '', eligible: 'false', ineligible_reason: 'missing manual pull request number' })
+    normalizedEvent: normalizedEvent({ event_name: 'workflow_dispatch', event_action: '', eligible: 'false', head_sha: '', ineligible_reason: 'missing manual pull request number' })
   }));
   assert.equal(manual.outputs.eligible, 'true');
   assert.equal(manual.outputs.trigger_type, 'manual-dispatch');
@@ -200,6 +201,41 @@ test('config invalid、disabled、base不一致、open PR上限超過はglobal s
   })), /open_pull_requests_limit_exceeded/);
 });
 
+test('target base SHA不一致やscan race reasonはfail closedになる', () => {
+  assertSkip(createMainFollowUpPlan(baseInput({
+    eventPayload: pushDefaultBranch({ after: FIXTURE_SHAS.after }),
+    normalizedEvent: normalizedEvent({ head_sha: FIXTURE_SHAS.base }),
+    targetBaseSha: ''
+  })), /base_sha_mismatch/);
+
+  assertSkip(createMainFollowUpPlan(baseInput({
+    scanError: 'base_sha_changed_during_scan'
+  })), /base_sha_changed_during_scan/);
+
+  const entry = parsePlans(createMainFollowUpPlan(baseInput({
+    openPullRequests: [{
+      ...behindPr({ baseSha: FIXTURE_SHAS.after }),
+      snapshotError: 'pull_request_head_changed_during_scan'
+    }]
+  })))[0];
+  assert.equal(entry.action, 'manual-review-required');
+  assert.equal(entry.skip_reason, 'pull_request_head_changed_during_scan');
+});
+
+test('plan、global output、dedupe keyはtarget base SHAを共有する', () => {
+  const plan = createMainFollowUpPlan(baseInput({
+    eventPayload: pushDefaultBranch({ after: FIXTURE_SHAS.after }),
+    normalizedEvent: normalizedEvent({ head_sha: FIXTURE_SHAS.after }),
+    openPullRequests: [behindPr({ baseSha: FIXTURE_SHAS.after })],
+    targetBaseSha: FIXTURE_SHAS.after
+  }));
+  const entry = parsePlans(plan)[0];
+
+  assert.equal(plan.outputs.base_sha, FIXTURE_SHAS.after);
+  assert.equal(entry.base_sha, FIXTURE_SHAS.after);
+  assert.equal(entry.dedupe_key.includes(`:${FIXTURE_SHAS.after}:main-follow-up`), true);
+});
+
 test('change helperは危険変更を分類しtoken実値を出さない', () => {
   const state = getMainFollowUpChangeState({
     changedFiles: [
@@ -223,11 +259,12 @@ test('change helperは危険変更を分類しtoken実値を出さない', () =>
 function baseInput(overrides = {}) {
   return {
     config: automationConfig(),
-    eventPayload: pushDefaultBranch(),
+    eventPayload: pushDefaultBranch({ after: FIXTURE_SHAS.base }),
     existingDedupeKeys: [],
     normalizedEvent: normalizedEvent(),
     now: '2026-01-01T00:00:00.000Z',
     openPullRequests: [behindPr()],
+    targetBaseSha: FIXTURE_SHAS.base,
     ...overrides
   };
 }
@@ -320,7 +357,7 @@ function normalizedEvent(overrides = {}) {
     eligible: 'true',
     event_action: '',
     event_name: 'push',
-    head_sha: FIXTURE_SHAS.after,
+    head_sha: FIXTURE_SHAS.base,
     repository: FIXTURE_REPOSITORY.fullName,
     ...overrides
   };

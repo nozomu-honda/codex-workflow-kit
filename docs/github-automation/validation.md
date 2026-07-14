@@ -162,6 +162,17 @@ Main follow-up consumer E2Eでは、`templates/workflows/main-follow-up-events.y
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
 
+Main follow-up planner regressionでは、次も確認します。
+
+- PR一覧レスポンスではなく個別PR詳細の `mergeable` / `mergeable_state` を正本にする
+- `mergeable: null` は有限retryし、最大retry後もnullならmanual review requiredにする
+- push eventの `after` と正規化済みhead SHAの不一致をfail closedにする
+- scan開始時と終了直前のdefault branch SHAが異なる場合はfail closedにする
+- compare APIはbranch名ではなく固定target base SHAを使う
+- global output、各plan、dedupe keyが同じtarget base SHAを使う
+- PR詳細取得中のhead/base snapshot変化をfail closedにする
+- REST paginationの循環、ページ上限超過、外部host、不正Link headerをfail closedにする
+
 E2E専用確認:
 
 ```bash

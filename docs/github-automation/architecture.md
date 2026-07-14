@@ -116,7 +116,8 @@ Issue #25ではauto-merge plan生成までを共通化し、実際のwrite処理
 
 - inputsはevent payload、repository情報、導入先config JSON、dedupe key、attempt count、last attempted timestamp、`kit-ref`
 - `.github/workflows/normalize-event.yml` を `main-follow-up-plan` capabilityで先に呼び、正規化eventが不適格ならfail closedにする
-- GitHub API readでopen PR、changed files、compare結果、head branch存在確認を補完する
+- GitHub API readでopen PR一覧、個別PR詳細、changed files、固定target base SHAでのcompare結果、head branch存在確認を補完する
+- PR一覧レスポンスのmergeabilityは正本にせず、個別PR詳細とscan開始/終了時のdefault branch SHA snapshotを正本にする
 - outputsは `plans_json`、`update_candidate_count`、`codex_follow_up_candidate_count`、`manual_review_count`、`skip_reason` など
 - workflow / job permissionsは `contents: read`、`pull-requests: read`、`issues: read`、`actions: read`、`checks: read`、`statuses: read`
 - Secret input、`secrets: inherit`、write permissionは使わない

@@ -111,11 +111,12 @@ async function writeRepoFile(root, relativePath, content) {
 function consumerInput(overrides = {}) {
   return {
     config: consumerConfig(),
-    eventPayload: pushDefaultBranch(),
+    eventPayload: pushDefaultBranch({ after: FIXTURE_SHAS.base }),
     existingDedupeKeys: [],
     normalizedEvent: normalizedEvent(),
     now: '2026-01-01T00:00:00.000Z',
     openPullRequests: [behindPr()],
+    targetBaseSha: FIXTURE_SHAS.base,
     ...overrides
   };
 }
@@ -163,7 +164,7 @@ function normalizedEvent(overrides = {}) {
     eligible: 'true',
     event_action: '',
     event_name: 'push',
-    head_sha: FIXTURE_SHAS.after,
+    head_sha: FIXTURE_SHAS.base,
     repository: FIXTURE_REPOSITORY.fullName,
     ...overrides
   };

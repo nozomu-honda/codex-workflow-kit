@@ -78,6 +78,12 @@ export function createMainFollowUpPlan(input = {}) {
   const defaultBranch = cleanString(normalizedEvent.default_branch || config.baseBranch);
   const repository = cleanRepository(normalizedEvent.repository);
   const targetBaseBranch = getTargetBaseBranch({ defaultBranch, eventPayload, normalizedEvent });
+  const targetBase = resolveTargetBase({
+    eventPayload,
+    normalizedEvent,
+    targetBaseSha: input.targetBaseSha
+  });
+  const targetBaseSha = targetBase.baseSha;
   const triggerType = getTriggerType(normalizedEvent.event_name);
   const openPullRequests = Array.isArray(input.openPullRequests) ? input.openPullRequests : [];
   const existingDedupeKeys = Array.isArray(input.existingDedupeKeys) ? input.existingDedupeKeys : [];
@@ -85,16 +91,18 @@ export function createMainFollowUpPlan(input = {}) {
     ...EMPTY_OUTPUTS,
     repository,
     default_branch: defaultBranch,
-    base_sha: getBaseSha({ eventPayload, normalizedEvent }),
+    base_sha: targetBaseSha,
     trigger_type: triggerType,
     dry_run: mainConfig.dryRun ? 'true' : 'false'
   };
   const globalSkipReason = firstSkipReason([
     !configResult.ok && 'config_invalid',
+    input.scanError && cleanString(input.scanError),
     input.apiReadError && `github_api_read_failed:${input.apiReadError}`,
     !mainConfig.enabled && 'main_follow_up_disabled',
     !SUPPORTED_TRIGGER_EVENTS.has(normalizedEvent.event_name) && `unsupported_event:${normalizedEvent.event_name || 'unknown'}`,
     normalizedEvent.event_name !== 'workflow_dispatch' && normalizedEvent.eligible !== 'true' && `normalized_event_ineligible:${normalizedEvent.ineligible_reason || 'unknown'}`,
+    targetBase.error,
     !repository && 'repository_missing',
     !defaultBranch && 'default_branch_missing',
     !targetBaseBranch && 'base_branch_missing',
@@ -116,7 +124,8 @@ export function createMainFollowUpPlan(input = {}) {
     now: input.now,
     openPullRequests,
     repository,
-    targetBaseBranch
+    targetBaseBranch,
+    targetBaseSha
   });
   const counts = summarizePlans(plans);
 
@@ -169,7 +178,7 @@ export function getMainFollowUpChangeState({ changedFiles = [], config = DEFAULT
   };
 }
 
-function buildPlans({ config, defaultBranch, existingDedupeKeys, mainConfig, now, openPullRequests, repository, targetBaseBranch }) {
+function buildPlans({ config, defaultBranch, existingDedupeKeys, mainConfig, now, openPullRequests, repository, targetBaseBranch, targetBaseSha }) {
   const uniquePullRequests = new Map();
 
   for (const pullRequest of openPullRequests) {
@@ -189,11 +198,12 @@ function buildPlans({ config, defaultBranch, existingDedupeKeys, mainConfig, now
       now,
       pullRequest,
       repository,
-      targetBaseBranch
+      targetBaseBranch,
+      targetBaseSha
     }));
 }
 
-function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pullRequest, repository, targetBaseBranch }) {
+function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pullRequest, repository, targetBaseBranch, targetBaseSha }) {
   const changedFiles = Array.isArray(pullRequest.changedFiles) ? pullRequest.changedFiles : [];
   const compare = normalizeComparison(pullRequest.compare ?? pullRequest.comparison);
   const changeState = getMainFollowUpChangeState({
@@ -202,7 +212,7 @@ function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pull
     secretLikePatterns: config.secretLike?.hardBlockPatterns ?? DEFAULT_SECRET_LIKE_PATTERNS
   });
   const dedupeKey = createMainFollowUpDedupeKey({
-    baseSha: pullRequest.baseSha,
+    baseSha: targetBaseSha,
     configVersion: config.version ?? 1,
     headSha: pullRequest.headSha,
     pullRequestNumber: pullRequest.number,
@@ -220,7 +230,7 @@ function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pull
     pull_request_number: pullRequest.number,
     base_branch: pullRequest.baseRef,
     head_branch: pullRequest.headRef,
-    base_sha: pullRequest.baseSha,
+    base_sha: targetBaseSha,
     head_sha: pullRequest.headSha,
     merge_base_sha: compare.mergeBaseSha,
     compare_status: compare.status,
@@ -242,6 +252,7 @@ function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pull
     mainConfig.requireSameRepository && !pullRequest.isSameRepository && 'not_same_repository',
     pullRequest.isFork && 'fork_not_allowed',
     pullRequest.baseRef !== targetBaseBranch && `base_branch_not_allowed:${pullRequest.baseRef || 'unknown'}`,
+    !targetBaseSha && 'base_sha_missing',
     !pullRequest.headSha && 'head_sha_missing',
     !pullRequest.headRef && 'head_branch_missing',
     pullRequest.headBranchExists === false && 'head_branch_missing',
@@ -262,6 +273,8 @@ function classifyPullRequest({ config, existingDedupeKeys, mainConfig, now, pull
   }
 
   const manualReason = firstSkipReason([
+    pullRequest.snapshotError,
+    pullRequest.baseSha && pullRequest.baseSha !== targetBaseSha && 'pull_request_base_changed_during_scan',
     changeState.secretLikeChange && 'secret_like_added_line',
     changeState.workflowChange && 'workflow_change',
     changeState.dependencyChange && 'dependency_change',
@@ -374,6 +387,7 @@ function normalizePullRequest(value = {}, repository, defaultBranch) {
     mergeStateStatus: cleanString(value.mergeable_state ?? value.mergeStateStatus).toLowerCase() || 'unknown',
     mergeable: normalizeMergeable(value.mergeable),
     number: numberToOutput(value.number),
+    snapshotError: cleanString(value.snapshotError),
     state: cleanString(value.state) || 'open',
     updateFailed: value.updateFailed === true
   };
@@ -396,6 +410,36 @@ function getTargetBaseBranch({ defaultBranch, eventPayload, normalizedEvent }) {
     return cleanString(eventPayload?.inputs?.base_branch) || defaultBranch;
   }
   return defaultBranch;
+}
+
+function resolveTargetBase({ eventPayload, normalizedEvent, targetBaseSha }) {
+  const explicitTarget = cleanSha(targetBaseSha);
+  const triggerBase = getBaseSha({ eventPayload, normalizedEvent });
+
+  if (normalizedEvent.event_name === 'push') {
+    const eventAfter = cleanSha(eventPayload?.after);
+    const normalizedHead = cleanSha(normalizedEvent.head_sha);
+    if (eventAfter && normalizedHead && eventAfter !== normalizedHead) {
+      return { baseSha: '', error: 'base_sha_mismatch' };
+    }
+  }
+
+  if (normalizedEvent.event_name === 'workflow_dispatch') {
+    const requestedBaseSha = cleanSha(eventPayload?.inputs?.base_sha);
+    if (explicitTarget && requestedBaseSha && explicitTarget !== requestedBaseSha) {
+      return { baseSha: explicitTarget, error: 'base_sha_mismatch' };
+    }
+  }
+
+  if (explicitTarget && triggerBase && normalizedEvent.event_name !== 'workflow_dispatch' && explicitTarget !== triggerBase) {
+    return { baseSha: explicitTarget, error: 'base_sha_mismatch' };
+  }
+
+  const baseSha = explicitTarget || triggerBase;
+  return {
+    baseSha,
+    error: baseSha ? '' : 'base_sha_missing'
+  };
 }
 
 function getBaseSha({ eventPayload, normalizedEvent }) {

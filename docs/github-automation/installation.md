@@ -214,7 +214,9 @@ templates/workflows/main-follow-up-events.yml
 
 caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のmain follow-up設定、dedupe key、attempt count、last attempted timestampはSecret値を含まないVariablesとして渡します。
 
-共通reusable workflow `.github/workflows/main-follow-up-plan.yml` は、Issue #23の正規化outputsを読み、open PR、changed files、compare、head branch存在確認をGitHub API readで補完して、`plans_json` / `update_candidate_count` / `codex_follow_up_candidate_count` / `manual_review_count` を返します。write処理は行いません。
+共通reusable workflow `.github/workflows/main-follow-up-plan.yml` は、Issue #23の正規化outputsを読み、open PR一覧、個別PR詳細、changed files、固定target base SHAでのcompare、head branch存在確認をGitHub API readで補完して、`plans_json` / `update_candidate_count` / `codex_follow_up_candidate_count` / `manual_review_count` を返します。write処理は行いません。
+
+PR一覧レスポンスのmergeabilityは正本にせず、各PRの `GET /pulls/{pull_number}` を正本にします。scan開始時と終了直前でdefault branch SHAが変わった場合や、PR詳細取得中にhead/base snapshotが変わった場合はfail closedです。
 
 導入後はmain-follow-up用の監査も実行できます。
 
