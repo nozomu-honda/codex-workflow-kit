@@ -1,0 +1,189 @@
+name: Plan main follow-up
+
+on:
+  workflow_call:
+    inputs:
+      event-name:
+        description: GitHub event name.
+        type: string
+        required: true
+      event-action:
+        description: GitHub event action.
+        type: string
+        required: false
+        default: ''
+      event-payload-json:
+        description: GitHub event payload JSON.
+        type: string
+        required: true
+      repository:
+        description: Repository full name.
+        type: string
+        required: true
+      repository-owner:
+        description: Repository owner login.
+        type: string
+        required: true
+      default-branch:
+        description: Repository default branch.
+        type: string
+        required: true
+      actor:
+        description: GitHub actor login.
+        type: string
+        required: true
+      ref-name:
+        description: GitHub ref name.
+        type: string
+        required: false
+        default: ''
+      sha:
+        description: Event SHA.
+        type: string
+        required: false
+        default: ''
+      dry-run:
+        description: Dry-run flag. Defaults to true and never performs write operations.
+        type: boolean
+        required: false
+        default: true
+      repository-config-json:
+        description: Secret-free repository config JSON.
+        type: string
+        required: false
+        default: '{}'
+      existing-dedupe-keys:
+        description: Comma-separated main-follow-up dedupe keys already planned by the caller.
+        type: string
+        required: false
+        default: ''
+      attempt-counts-json:
+        description: JSON object keyed by pull request number with prior follow-up attempt counts.
+        type: string
+        required: false
+        default: '{}'
+      last-attempted-at-json:
+        description: JSON object keyed by pull request number with last follow-up timestamps.
+        type: string
+        required: false
+        default: '{}'
+      kit-ref:
+        description: Fixed codex-workflow-kit ref.
+        type: string
+        required: true
+    outputs:
+      eligible:
+        value: ${{ jobs.main-follow-up-plan.outputs.eligible }}
+      repository:
+        value: ${{ jobs.main-follow-up-plan.outputs.repository }}
+      default_branch:
+        value: ${{ jobs.main-follow-up-plan.outputs.default_branch }}
+      base_sha:
+        value: ${{ jobs.main-follow-up-plan.outputs.base_sha }}
+      trigger_type:
+        value: ${{ jobs.main-follow-up-plan.outputs.trigger_type }}
+      scanned_pull_request_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.scanned_pull_request_count }}
+      up_to_date_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.up_to_date_count }}
+      update_candidate_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.update_candidate_count }}
+      codex_follow_up_candidate_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.codex_follow_up_candidate_count }}
+      manual_review_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.manual_review_count }}
+      skipped_count:
+        value: ${{ jobs.main-follow-up-plan.outputs.skipped_count }}
+      plans_json:
+        value: ${{ jobs.main-follow-up-plan.outputs.plans_json }}
+      skip_reason:
+        value: ${{ jobs.main-follow-up-plan.outputs.skip_reason }}
+      dry_run:
+        value: ${{ jobs.main-follow-up-plan.outputs.dry_run }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
+
+jobs:
+  normalize-event:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/normalize-event.yml
+    with:
+      event-name: ${{ inputs.event-name }}
+      event-action: ${{ inputs.event-action }}
+      event-payload-json: ${{ inputs.event-payload-json }}
+      repository: ${{ inputs.repository }}
+      repository-owner: ${{ inputs.repository-owner }}
+      default-branch: ${{ inputs.default-branch }}
+      actor: ${{ inputs.actor }}
+      ref-name: ${{ inputs.ref-name }}
+      sha: ${{ inputs.sha }}
+      dry-run: ${{ inputs.dry-run }}
+      permission-mode: read-only
+      requested-capability: main-follow-up-plan
+      repository-config-json: ${{ inputs.repository-config-json }}
+      kit-ref: ${{ inputs.kit-ref }}
+
+  main-follow-up-plan:
+    name: Plan main follow-up
+    runs-on: ubuntu-latest
+    needs: normalize-event
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: read
+      checks: read
+      statuses: read
+    outputs:
+      eligible: ${{ steps.main-follow-up-plan.outputs.eligible }}
+      repository: ${{ steps.main-follow-up-plan.outputs.repository }}
+      default_branch: ${{ steps.main-follow-up-plan.outputs.default_branch }}
+      base_sha: ${{ steps.main-follow-up-plan.outputs.base_sha }}
+      trigger_type: ${{ steps.main-follow-up-plan.outputs.trigger_type }}
+      scanned_pull_request_count: ${{ steps.main-follow-up-plan.outputs.scanned_pull_request_count }}
+      up_to_date_count: ${{ steps.main-follow-up-plan.outputs.up_to_date_count }}
+      update_candidate_count: ${{ steps.main-follow-up-plan.outputs.update_candidate_count }}
+      codex_follow_up_candidate_count: ${{ steps.main-follow-up-plan.outputs.codex_follow_up_candidate_count }}
+      manual_review_count: ${{ steps.main-follow-up-plan.outputs.manual_review_count }}
+      skipped_count: ${{ steps.main-follow-up-plan.outputs.skipped_count }}
+      plans_json: ${{ steps.main-follow-up-plan.outputs.plans_json }}
+      skip_reason: ${{ steps.main-follow-up-plan.outputs.skip_reason }}
+      dry_run: ${{ steps.main-follow-up-plan.outputs.dry_run }}
+    steps:
+      - name: Validate kit ref
+        shell: bash
+        run: |
+          if [[ ! "${KIT_REF}" =~ ^[a-f0-9]{40}$ && ! "${KIT_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "kit-ref must be a 40-character SHA or full version tag." >&2
+            exit 1
+          fi
+        env:
+          KIT_REF: ${{ inputs.kit-ref }}
+
+      - name: Checkout shared kit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: nozomu-honda/codex-workflow-kit
+          ref: ${{ inputs.kit-ref }}
+          path: .codex-workflow-kit
+          persist-credentials: false
+
+      - name: Plan main follow-up
+        id: main-follow-up-plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NORMALIZED_EVENT_JSON: >-
+            {"event_name":"${{ needs.normalize-event.outputs.event_name }}","event_action":"${{ needs.normalize-event.outputs.event_action }}","repository":"${{ needs.normalize-event.outputs.repository }}","repository_owner":"${{ needs.normalize-event.outputs.repository_owner }}","default_branch":"${{ needs.normalize-event.outputs.default_branch }}","actor":"${{ needs.normalize-event.outputs.actor }}","pull_request_number":"${{ needs.normalize-event.outputs.pull_request_number }}","head_sha":"${{ needs.normalize-event.outputs.head_sha }}","base_sha":"${{ needs.normalize-event.outputs.base_sha }}","head_repository":"${{ needs.normalize-event.outputs.head_repository }}","is_same_repository":"${{ needs.normalize-event.outputs.is_same_repository }}","is_fork":"${{ needs.normalize-event.outputs.is_fork }}","workflow_name":"${{ needs.normalize-event.outputs.workflow_name }}","workflow_conclusion":"${{ needs.normalize-event.outputs.workflow_conclusion }}","eligible":"${{ needs.normalize-event.outputs.eligible }}","ineligible_reason":"${{ needs.normalize-event.outputs.ineligible_reason }}"}
+          EVENT_PAYLOAD_JSON: ${{ inputs.event-payload-json }}
+          REPOSITORY_CONFIG_JSON: ${{ inputs.repository-config-json }}
+          EXISTING_DEDUPE_KEYS: ${{ inputs.existing-dedupe-keys }}
+          ATTEMPT_COUNTS_JSON: ${{ inputs.attempt-counts-json }}
+          LAST_ATTEMPTED_AT_JSON: ${{ inputs.last-attempted-at-json }}
+        run: node .codex-workflow-kit/scripts/plan-main-follow-up.mjs

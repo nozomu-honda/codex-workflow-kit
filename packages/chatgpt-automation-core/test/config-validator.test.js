@@ -96,6 +96,7 @@ function validConfig(overrides = {}) {
       cooldownSeconds: 0,
       duplicatePolicy: 'dedupe-key'
     },
+    mainFollowUp: validMainFollowUp(),
     protectedFiles: {
       hardBlockPatterns: ['docs/private/**'],
       warningOnlyPatterns: ['docs/drafts/**']
@@ -194,6 +195,33 @@ function validAutoMerge(overrides = {}) {
   };
 }
 
+function validMainFollowUp(overrides = {}) {
+  return {
+    enabled: false,
+    dryRun: true,
+    allowedBaseBranches: ['master'],
+    requiredLabels: ['auto-merge-after-ci'],
+    blockedLabels: ['do-not-merge', 'needs-codex-fix', 'codex-fix-in-progress', 'do-not-auto-codex-main-followup', 'codex-main-followup-in-progress'],
+    allowDraft: false,
+    requireSameRepository: true,
+    allowFork: false,
+    maxAttempts: 2,
+    cooldownSeconds: 0,
+    maxOpenPullRequests: 100,
+    maxChangedFiles: 100,
+    maxAdditions: 2000,
+    maxDeletions: 2000,
+    sensitivePathPatterns: ['.github/**', 'scripts/**'],
+    protectedPathPatterns: ['.github/**', 'scripts/**'],
+    workflowPathPatterns: ['.github/workflows/**', '.github/actions/**'],
+    dependencyPathPatterns: ['package.json', 'package-lock.json'],
+    generatedPathPatterns: ['actions/**/dist/**', '**/dist/**'],
+    duplicatePolicy: 'dedupe-key',
+    codexFollowUpEnabled: false,
+    ...overrides
+  };
+}
+
 test('loads the sample config and normalizes safe defaults', async () => {
   const source = await readFile(new URL('../../../templates/chatgpt-automation.yml', import.meta.url), 'utf8');
   const result = validateAutomationConfig(source);
@@ -211,6 +239,10 @@ test('loads the sample config and normalizes safe defaults', async () => {
   assert.equal(result.config.reviewRouting.dryRun, true);
   assert.equal(result.config.reviewRouting.allowFork, false);
   assert.equal(result.config.reviewRouting.requireSameRepository, true);
+  assert.equal(result.config.mainFollowUp.dryRun, true);
+  assert.equal(result.config.mainFollowUp.allowFork, false);
+  assert.equal(result.config.mainFollowUp.requireSameRepository, true);
+  assert.deepEqual(result.config.mainFollowUp.requiredLabels, ['auto-merge-after-ci']);
 });
 
 test('sample config is valid for both JSON Schema and validator', async () => {
@@ -630,6 +662,47 @@ test('keeps GitHub Actions cron parity for numeric step values', async () => {
       }
     }
   }), true);
+});
+
+test('main follow-up config is valid for both JSON Schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({
+      enabled: true,
+      codexFollowUpEnabled: true,
+      allowedBaseBranches: ['master', 'develop']
+    })
+  }), true);
+
+  const result = validateAutomationConfig(validConfig({
+    mainFollowUp: validMainFollowUp({ enabled: true })
+  }));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.config.mainFollowUp.dryRun, true);
+  assert.equal(result.config.mainFollowUp.allowFork, false);
+  assert.equal(result.config.mainFollowUp.requireSameRepository, true);
+  assert.equal(result.config.mainFollowUp.maxAttempts, 2);
+});
+
+test('main follow-up unsafe booleans and invalid limits are invalid in schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ dryRun: false })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ allowFork: true })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ requireSameRepository: false })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ maxAttempts: 0 })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ maxOpenPullRequests: 1000 })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    mainFollowUp: validMainFollowUp({ duplicatePolicy: 'unknown' })
+  }), false);
 });
 
 test('rejects out-of-range cron values and step zero', async () => {

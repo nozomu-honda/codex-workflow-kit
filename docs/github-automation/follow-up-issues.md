@@ -54,10 +54,18 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - GitHub API write、auto-merge有効化、merge queue投入、merge API呼び出し、comment投稿、label操作、branch削除は含めない。
 
 7. Main follow-up automationの共通化を検討する
-   - PR branch update、Queue Issue、Codex triggerの責務分離を整理する。
+   - Issue #26で対応。
+   - default branch push / merged PR close / manual dispatch後にopen PRをread-onlyで分類する。
+   - safeなbehind PRはbranch update候補、conflict / update failedは条件付きCodex follow-up候補、危険変更はmanual review requiredにする。
+   - PR branch update、Queue Issue更新、Codex trigger、コメント投稿、label操作は含めない。
    - fork / external PRやprotected file変更は自動起動しない。
 
-8. End-to-end導入検証を行う
+8. Main follow-up write処理を段階的に追加する
+   - Issue #26のplan outputsを入力にして、PR branch update API、Codex follow-up起動、Queue Issue更新を別Issueで1つずつ追加する。
+   - write tokenをfork / external PRへ渡さない。
+   - `expected_head_sha` 相当のhead SHA一致とdedupe keyを必ず維持する。
+
+9. End-to-end導入検証を行う
    - 小さいdocs-only PRでdry-runから実行確認する。
    - 自動merge、deploy、`clasp push`、本番環境アクセスは含めない。
 

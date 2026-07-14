@@ -103,6 +103,48 @@ autoMerge:
   deleteBranchAfterMerge: false
   useMergeQueue: false
 
+mainFollowUp:
+  enabled: false
+  dryRun: true
+  allowedBaseBranches:
+    - master
+  requiredLabels:
+    - auto-merge-after-ci
+  blockedLabels:
+    - do-not-merge
+    - needs-codex-fix
+    - codex-fix-in-progress
+    - do-not-auto-codex-main-followup
+    - codex-main-followup-in-progress
+  allowDraft: false
+  requireSameRepository: true
+  allowFork: false
+  maxAttempts: 2
+  cooldownSeconds: 0
+  maxOpenPullRequests: 100
+  maxChangedFiles: 100
+  maxAdditions: 2000
+  maxDeletions: 2000
+  sensitivePathPatterns:
+    - .github/**
+    - scripts/**
+    - actions/**
+  protectedPathPatterns:
+    - .github/**
+    - scripts/**
+    - actions/**
+  workflowPathPatterns:
+    - .github/workflows/**
+    - .github/actions/**
+  dependencyPathPatterns:
+    - package.json
+    - package-lock.json
+  generatedPathPatterns:
+    - actions/**/dist/**
+    - '**/dist/**'
+  duplicatePolicy: dedupe-key
+  codexFollowUpEnabled: false
+
 protectedFiles:
   hardBlockPatterns:
     - docs/private/**

@@ -215,6 +215,20 @@ test('manual workflow_dispatchでPR番号がない場合はeligibleにしない'
   assertIneligible(result, /missing manual pull request number/);
 });
 
+test('main-follow-up workflow_dispatchはPR番号なしでも全PR scan用にeligibleにする', () => {
+  const result = normalizeAutomationEvent(baseInput({
+    eventName: 'workflow_dispatch',
+    eventAction: '',
+    payload: workflowDispatchPayload({ pullRequestNumber: '' }),
+    requestedCapability: 'main-follow-up-plan'
+  }));
+
+  assertEligible(result);
+  assert.equal(result.outputs.pull_request_number, '');
+  assert.equal(result.outputs.head_repository, REPOSITORY);
+  assert.equal(result.outputs.is_same_repository, 'true');
+});
+
 test('想定外actionはeligibleにしない', () => {
   const result = normalizeAutomationEvent(baseInput({
     eventName: 'pull_request_review',

@@ -9,6 +9,7 @@ import YAML from 'yaml';
 import {
   DEFAULT_AUDIT_CONFIG_FILE,
   DEFAULT_AUDIT_WORKFLOW_FILE,
+  DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
   auditConsumerInstallation,
   formatAuditResult
 } from '../src/installation-audit/index.js';
@@ -18,6 +19,7 @@ import { runTemplateAudit } from '../../../scripts/audit-template.mjs';
 const PINNED_SHA = '0123456789abcdef0123456789abcdef01234567';
 const OTHER_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 const SAMPLE_CONFIG = new URL('../../../templates/chatgpt-automation.yml', import.meta.url);
+const MAIN_FOLLOW_UP_TEMPLATE = new URL('../../../templates/workflows/main-follow-up-events.yml', import.meta.url);
 const CLI_SCRIPT = fileURLToPath(new URL('../../../scripts/audit-consumer-installation.mjs', import.meta.url));
 
 async function withConsumerRepo(callback, options = {}) {
@@ -47,6 +49,11 @@ async function writeRepoFile(root, relativePath, content) {
 
 async function readSampleConfig() {
   return readFile(SAMPLE_CONFIG, 'utf8');
+}
+
+async function readMainFollowUpWorkflow() {
+  const source = await readFile(MAIN_FOLLOW_UP_TEMPLATE, 'utf8');
+  return source.replaceAll('REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA', PINNED_SHA);
 }
 
 function mutateConfig(mutator) {
@@ -231,6 +238,71 @@ test('custom config and workflow paths can be audited', async () => {
     configPath,
     workflowPath,
     workflow: workflowSource({ configPath })
+  });
+});
+
+test('main-follow-up caller workflow can be audited as read-only event template', async () => {
+  await withConsumerRepo(async (dir) => {
+    const result = await auditConsumerInstallation({
+      rootDir: dir,
+      workflowKind: 'main-follow-up',
+      expectedRef: PINNED_SHA
+    });
+
+    assert.equal(result.ok, true, JSON.stringify(result, null, 2));
+    assert.equal(result.files.workflow, DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE);
+    assert.equal(findCode(result, 'MAIN_FOLLOW_UP_TRIGGERS_OK'), true);
+    assert.equal(findCode(result, 'WORKFLOW_KIT_REF_PINNED'), true);
+  }, {
+    workflowPath: DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
+    workflow: await readMainFollowUpWorkflow()
+  });
+});
+
+test('main-follow-up caller audit rejects unexpected trigger and mutable kit ref', async () => {
+  const workflow = YAML.parse(await readMainFollowUpWorkflow());
+  workflow.on.pull_request_target = {};
+  workflow.jobs['main-follow-up-plan'].with['kit-ref'] = 'master';
+
+  await withConsumerRepo(async (dir) => {
+    const result = await auditConsumerInstallation({
+      rootDir: dir,
+      workflowKind: 'main-follow-up',
+      expectedRef: PINNED_SHA
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(findCode(result, 'PULL_REQUEST_TARGET_FORBIDDEN'), true);
+    assert.equal(findCode(result, 'REUSABLE_WORKFLOW_REF_MUTABLE'), true);
+  }, {
+    workflowPath: DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
+    workflow: YAML.stringify(workflow)
+  });
+});
+
+test('CLI can audit main-follow-up caller workflow kind', async () => {
+  await withConsumerRepo(async (dir) => {
+    const json = { stdout: '', stderr: '' };
+    const exitCode = await runAuditConsumerInstallationCli([
+      '--root',
+      dir,
+      '--workflow-kind',
+      'main-follow-up',
+      '--expected-ref',
+      PINNED_SHA,
+      '--json'
+    ], {
+      stdout: (message) => { json.stdout += message; },
+      stderr: (message) => { json.stderr += message; }
+    });
+    const parsed = JSON.parse(json.stdout);
+
+    assert.equal(exitCode, 0);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.files.workflow, DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE);
+  }, {
+    workflowPath: DEFAULT_MAIN_FOLLOW_UP_AUDIT_WORKFLOW_FILE,
+    workflow: await readMainFollowUpWorkflow()
   });
 });
 
