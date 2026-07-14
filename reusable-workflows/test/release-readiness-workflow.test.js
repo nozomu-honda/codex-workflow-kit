@@ -53,6 +53,7 @@ test('release-readiness workflowの外部Actionは40桁SHA固定で、release re
   for (const uses of usesValues) {
     assert.match(uses, /@[a-f0-9]{40}$/);
   }
+  assert.deepEqual(steps[0].with, { 'fetch-depth': 2 });
   assert.deepEqual(runs, ['npm ci', 'npm run release:readiness']);
 });
 
