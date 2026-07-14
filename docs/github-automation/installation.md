@@ -2,7 +2,7 @@
 
 導入先リポジトリでは、薄いcaller workflowからこのリポジトリのreusable workflowまたはActionを呼ぶ想定です。
 
-現在は、設定schema、fail-closed validator、設定検証Action、設定検証reusable workflow、実イベント正規化、ChatGPT review routing plan生成、初回確認用caller workflowテンプレートを提供しています。ChatGPT実行、自動マージ、Codex起動、Queue Issue操作のwrite workflowは後続Issueで追加します。
+現在は、設定schema、fail-closed validator、設定検証Action、設定検証reusable workflow、実イベント正規化、ChatGPT review routing plan生成、Reviewed PR auto-merge plan生成、初回確認用caller workflowテンプレートを提供しています。ChatGPT実行、GitHub API writeを伴う自動マージ、Codex起動、Queue Issue操作のwrite workflowは後続Issueで追加します。
 
 ## Config
 
@@ -151,6 +151,42 @@ caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inhe
 共通reusable workflow `.github/workflows/review-routing.yml` は、Issue #23の正規化outputsを読み、PR情報、changed files、actor権限をGitHub API readで補完して、`should_route` / `skip_reason` / `actor_trust` / `dedupe_key` を返します。write処理は行いません。
 
 詳細は [ChatGPT review routing](review-routing.md) を参照してください。
+
+## Auto-merge plan caller workflow
+
+ChatGPTレビュー済みPRをauto-merge候補にできるかをdry-runで判定する場合は、auto-merge plan用caller templateを導入先へコピーします。
+
+```text
+templates/workflows/reviewed-pr-auto-merge-events.yml
+```
+
+コピー先:
+
+```text
+.github/workflows/reviewed-pr-auto-merge-events.yml
+```
+
+このcaller workflowは次のイベントを受けます。
+
+- `workflow_run`
+- `check_suite`
+- `check_run`
+- `pull_request_review`
+- `pull_request_review_comment`
+- `pull_request.ready_for_review`
+- `pull_request.synchronize`
+- `pull_request.closed`
+- `workflow_dispatch`
+
+導入時に置換するもの:
+
+- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+
+caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のauto-merge設定、dedupe/cooldown情報はSecret値を含まないVariablesとして渡します。
+
+共通reusable workflow `.github/workflows/auto-merge-plan.yml` は、Issue #23の正規化outputsを読み、PR情報、reviews、changed files、CI/check/status、repository settings、actor権限をGitHub API readで補完して、`eligible` / `should_enable_auto_merge` / `should_merge` / `skip_reason` / `dedupe_key` を返します。write処理は行いません。
+
+詳細は [Reviewed PR auto-merge plan](auto-merge.md) を参照してください。
 
 ## 将来の導入ステップ
 

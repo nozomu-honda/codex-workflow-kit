@@ -68,6 +68,41 @@ reviewRouting:
   cooldownSeconds: 0
   duplicatePolicy: dedupe-key
 
+autoMerge:
+  enabled: false
+  dryRun: true
+  mode: plan-only
+  mergeMethod: squash
+  allowedBaseBranches:
+    - master
+  requireSameRepository: true
+  allowFork: false
+  requiredApprovals: 1
+  allowBotApproval: false
+  trustedReviewers: []
+  requiredWorkflows:
+    - CI
+  requireResolvedThreads: true
+  allowDraft: false
+  sensitivePathPatterns:
+    - .github/**
+    - scripts/**
+    - actions/**
+  manualMergePathPatterns:
+    - .github/**
+    - scripts/**
+    - actions/**
+  maxChangedFiles: 100
+  maxAdditions: 2000
+  maxDeletions: 2000
+  requireChatGPTReview: true
+  requireHumanReview: false
+  requireCurrentReview: true
+  duplicatePolicy: dedupe-key
+  cooldownSeconds: 0
+  deleteBranchAfterMerge: false
+  useMergeQueue: false
+
 protectedFiles:
   hardBlockPatterns:
     - docs/private/**

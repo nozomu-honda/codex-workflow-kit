@@ -102,3 +102,32 @@
 6. 初回はdry-runのまま、`should_route`、`skip_reason`、`actor_trust`、`dedupe_key` を確認する。
 
 このテンプレートはrouting planの生成だけを行います。ChatGPT実行、コメント投稿、reaction、label操作、reviewer追加、自動マージ、Codex起動、Queue Issue更新は後続Issueで追加します。
+
+### `workflows/reviewed-pr-auto-merge-events.yml`
+
+導入先で実GitHubイベントを受け、Reviewed PR auto-merge planを共通reusable workflowで作るための、読み取り専用caller workflowテンプレートです。
+
+コピー先:
+
+```text
+.github/workflows/reviewed-pr-auto-merge-events.yml
+```
+
+このテンプレートの特徴:
+
+- triggerは `workflow_run`、`check_suite`、`check_run`、`pull_request_review`、`pull_request_review_comment`、`pull_request.ready_for_review`、`pull_request.synchronize`、`pull_request.closed`、`workflow_dispatch`
+- jobは `.github/workflows/auto-merge-plan.yml` をjob-level `uses` で呼ぶだけ
+- permissionsはread-onlyの `contents`、`pull-requests`、`issues`、`actions`、`checks`、`statuses`
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` は使わない
+
+導入手順:
+
+1. `templates/workflows/reviewed-pr-auto-merge-events.yml` を導入先の `.github/workflows/reviewed-pr-auto-merge-events.yml` へコピーする。
+2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+3. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_AUTO_MERGE_CONFIG_JSON` にSecret値を含まないJSONを設定する。
+4. 重複抑制やcooldownを外部で管理する場合は、Secretを含まないVariableでdedupe keyやlast planned timestampを渡す。
+5. 初回はdry-runのまま、`eligible`、`should_enable_auto_merge`、`should_merge`、`skip_reason`、`dedupe_key` を確認する。
+
+このテンプレートはauto-merge planの生成だけを行います。auto-merge有効化、merge queue投入、merge API呼び出し、コメント投稿、label操作、branch削除は後続Issueで追加します。

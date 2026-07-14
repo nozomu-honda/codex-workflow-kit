@@ -5,6 +5,8 @@ export const SUPPORTED_EVENT_NAMES = Object.freeze([
   'workflow_run',
   'pull_request',
   'push',
+  'check_suite',
+  'check_run',
   'workflow_dispatch'
 ]);
 
@@ -55,7 +57,9 @@ const ALLOWED_ACTIONS = Object.freeze({
   pull_request_review: new Set(['submitted']),
   pull_request_review_comment: new Set(['created', 'edited']),
   workflow_run: new Set(['completed']),
-  pull_request: new Set(['closed'])
+  pull_request: new Set(['closed', 'ready_for_review', 'synchronize']),
+  check_suite: new Set(['completed']),
+  check_run: new Set(['completed'])
 });
 
 export function normalizeAutomationEvent(input = {}) {
@@ -142,6 +146,10 @@ export function normalizeAutomationEvent(input = {}) {
       return normalizePullRequestClosed({ payload, eventAction, repository, baseOutputs });
     case 'push':
       return normalizePush({ payload, repository, defaultBranch, baseOutputs, fallbackSha: input.sha, fallbackRefName: input.refName });
+    case 'check_suite':
+      return normalizeCheckSuite({ payload, eventAction, repository, baseOutputs });
+    case 'check_run':
+      return normalizeCheckRun({ payload, eventAction, repository, baseOutputs });
     case 'workflow_dispatch':
       return normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha: input.sha });
     default:
@@ -229,8 +237,76 @@ function normalizePullRequestClosed({ payload, eventAction, repository, baseOutp
   if (!outputs.pull_request_number) {
     errors.push('missing pull request number');
   }
-  if (payload?.pull_request?.merged !== true) {
+  if (eventAction === 'closed' && payload?.pull_request?.merged !== true) {
     errors.push('pull request was not merged');
+  }
+  appendForkErrors(outputs, errors);
+
+  return finalize(outputs, errors);
+}
+
+function normalizeCheckSuite({ payload, eventAction, repository, baseOutputs }) {
+  const checkSuite = payload?.check_suite;
+  const headRepository = cleanRepository(checkSuite?.head_repository?.full_name) || repository;
+  const pullRequest = checkSuite?.pull_requests?.[0];
+  const outputs = {
+    ...baseOutputs,
+    pull_request_number: numberToOutput(pullRequest?.number),
+    head_sha: cleanSha(checkSuite?.head_sha),
+    base_sha: cleanSha(pullRequest?.base?.sha),
+    head_repository: headRepository,
+    is_same_repository: headRepository === repository ? 'true' : 'false',
+    is_fork: headRepository && headRepository !== repository ? 'true' : 'false',
+    workflow_name: cleanString(checkSuite?.app?.name || checkSuite?.name || 'check_suite'),
+    workflow_conclusion: cleanString(checkSuite?.conclusion)
+  };
+  const errors = [];
+
+  if (!ALLOWED_ACTIONS.check_suite.has(eventAction)) {
+    errors.push('unsupported action for check_suite');
+  }
+  if (outputs.workflow_conclusion !== 'success') {
+    errors.push('check_suite conclusion is not success');
+  }
+  if (!outputs.pull_request_number) {
+    errors.push('missing pull request number');
+  }
+  if (!outputs.head_sha) {
+    errors.push('missing head sha');
+  }
+  appendForkErrors(outputs, errors);
+
+  return finalize(outputs, errors);
+}
+
+function normalizeCheckRun({ payload, eventAction, repository, baseOutputs }) {
+  const checkRun = payload?.check_run;
+  const pullRequest = checkRun?.pull_requests?.[0];
+  const headRepository = cleanRepository(pullRequest?.head?.repo?.full_name) || repository;
+  const outputs = {
+    ...baseOutputs,
+    pull_request_number: numberToOutput(pullRequest?.number),
+    head_sha: cleanSha(checkRun?.head_sha),
+    base_sha: cleanSha(pullRequest?.base?.sha),
+    head_repository: headRepository,
+    is_same_repository: headRepository === repository ? 'true' : 'false',
+    is_fork: headRepository && headRepository !== repository ? 'true' : 'false',
+    workflow_name: cleanString(checkRun?.name),
+    workflow_conclusion: cleanString(checkRun?.conclusion)
+  };
+  const errors = [];
+
+  if (!ALLOWED_ACTIONS.check_run.has(eventAction)) {
+    errors.push('unsupported action for check_run');
+  }
+  if (outputs.workflow_conclusion !== 'success') {
+    errors.push('check_run conclusion is not success');
+  }
+  if (!outputs.pull_request_number) {
+    errors.push('missing pull request number');
+  }
+  if (!outputs.head_sha) {
+    errors.push('missing head sha');
   }
   appendForkErrors(outputs, errors);
 

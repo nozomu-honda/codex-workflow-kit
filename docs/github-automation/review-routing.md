@@ -209,4 +209,4 @@ reusable workflowはread-onlyです。
 
 ## Issue #25との境界
 
-Issue #24はrouting planの生成までです。レビュー済みPRのauto-merge判定やmerge API呼び出しはIssue #25で扱います。Issue #24のoutputsを使う場合も、write処理を追加するPRでは別途権限、Secret境界、fork fail-closed、dry-runをレビューします。
+Issue #24はrouting planの生成までです。レビュー済みPRのauto-merge候補判定はIssue #25でplan生成として扱います。Issue #25でもmerge API呼び出しやwrite処理は行わず、write処理を追加する後続PRでは別途権限、Secret境界、fork fail-closed、dry-runをレビューします。

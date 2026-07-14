@@ -47,8 +47,11 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
    - GitHub API write、ChatGPT実行、コメント投稿、label操作、reviewer追加は含めない。
 
 6. Reviewed PR auto-mergeの共通化を検討する
-   - 既存の安全条件を緩めずに移植範囲を決める。
-   - `expected_head_sha`、dangerous file block、secret-like added line blockを維持する。
+   - Issue #25で対応。
+   - 既存の安全条件を緩めず、auto-merge候補plan生成までを共通化する。
+   - `expected_head_sha` 相当のhead SHA一致、dangerous file block、secret-like added line blockを維持する。
+   - `eligible`、`should_enable_auto_merge`、`should_merge`、`skip_reason`、`dedupe_key` などをoutputsとして返す。
+   - GitHub API write、auto-merge有効化、merge queue投入、merge API呼び出し、comment投稿、label操作、branch削除は含めない。
 
 7. Main follow-up automationの共通化を検討する
    - PR branch update、Queue Issue、Codex triggerの責務分離を整理する。

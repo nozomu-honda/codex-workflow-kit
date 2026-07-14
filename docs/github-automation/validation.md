@@ -24,6 +24,7 @@ npm run check:action-dist
 npm run audit:template
 npm run test:events
 npm run test:review-routing
+npm run test:auto-merge
 npm run test:e2e:consumer
 npm run lint:e2e
 npm run ci
@@ -139,6 +140,16 @@ Review routing consumer E2Eでは、`templates/workflows/chatgpt-review-routing-
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
 
+Auto-merge consumer E2Eでは、`templates/workflows/reviewed-pr-auto-merge-events.yml` から一時consumer workflowを作り、次を確認します。
+
+- reusable workflow refと `kit-ref` が同じ固定SHAへ置換される
+- caller側はread-only permissionsのjob-level `uses` だけを持つ
+- repository固有auto-merge config、dedupe key、cooldown情報はVariable由来JSONとしてcaller側に残せる
+- same-repo、current ChatGPT approval、required CI successで `eligible=true` になる
+- fork相当payload、unknown actor、dangerous file変更は `eligible=false`
+- dry-runではwrite処理が発生しない
+- Secret、`pull_request_target`、inline write処理を含まない
+
 E2E専用確認:
 
 ```bash
@@ -211,6 +222,27 @@ Review routing専用確認:
 ```bash
 npm run test:review-routing
 npm run lint:review-routing
+```
+
+`.github/workflows/auto-merge-plan.yml` は、Reviewed PR auto-merge plan reusable workflowとして静的検証します。
+
+確認対象:
+
+- `workflow_call` だけを入口にする
+- Secret inputがない
+- workflow / job permissionsがread-onlyだけ
+- Issue #23の `.github/workflows/normalize-event.yml` を先に呼ぶ
+- outputsが `packages/chatgpt-automation-core/src/auto-merge/` のauto-merge output名と一致する
+- `kit-ref` は40桁commit SHAまたは `v1.2.3` 形式の完全なversion tagだけを許可する
+- `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- `scripts/plan-auto-merge.mjs` だけを実行する
+- `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+
+Auto-merge専用確認:
+
+```bash
+npm run test:auto-merge
+npm run lint:auto-merge
 ```
 
 GitHub Actions上の外部repository E2Eは、導入先caller workflow側の後続Issueで確認します。内部Action refを更新する場合は、候補commitに `actions/validate-config/action.yml` と `actions/validate-config/dist/index.js` が存在することを確認してから40桁commit SHAへ差し替えます。
@@ -301,6 +333,18 @@ npm run lint:template
 - repository固有config、dedupe key、cooldown情報はSecretを含まないVariablesとして渡す
 - reusable workflow refと `kit-ref` は同じ固定refへ置換する
 - `push.branches` は導入先default branchへ置換する
+- Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
+
+`templates/workflows/reviewed-pr-auto-merge-events.yml` はReviewed PR auto-merge plan用caller workflow templateとして静的検証します。
+
+確認対象:
+
+- 対象イベントが `workflow_run`、`check_suite`、`check_run`、`pull_request_review`、`pull_request_review_comment`、`pull_request.ready_for_review`、`pull_request.synchronize`、`pull_request.closed`、`workflow_dispatch`
+- jobは1つだけで `.github/workflows/auto-merge-plan.yml` をjob-level `uses` で呼ぶ
+- `event-payload-json` に `toJson(github.event)` を渡す
+- `dry-run: true`
+- repository固有config、dedupe key、cooldown情報はSecretを含まないVariablesとして渡す
+- reusable workflow refと `kit-ref` は同じ固定refへ置換する
 - Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を含まない
 
 ## Fail closed cases

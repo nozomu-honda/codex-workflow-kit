@@ -13,6 +13,7 @@
 - [Installation audit CLI](installation-audit.md)
 - [Event normalization](event-normalization.md)
 - [ChatGPT review routing](review-routing.md)
+- [Reviewed PR auto-merge plan](auto-merge.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
 - [Follow-up Issues](follow-up-issues.md)
@@ -23,6 +24,7 @@
 - 導入先側はイベントを受ける薄いcaller workflowと、repository固有設定、labels、Variables、Secrets、fine-grained PAT、Queue Issueを持つ
 - 実イベントは薄いcaller workflowから共通reusable workflowへ渡し、共通形式へ正規化してから後続処理に渡す
 - ChatGPT review routingはrouting plan生成までを共通化し、write処理は後続Issueへ分離する
+- Reviewed PR auto-mergeはmerge候補plan生成までを共通化し、GitHub API writeや実mergeは後続Issueへ分離する
 - `pull_request_target` は使わない
 - fork / external PRへSecretを渡さない
 - 設定欠落や不正値は安全側に倒す

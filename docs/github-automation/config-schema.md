@@ -44,6 +44,7 @@ validatorは次の安全defaultを常に保持します。
 - 最新 `changes_requested` を停止条件にすること
 - fork / cross-repository PRをCodex自動修正対象にしないsame-repository境界
 - ChatGPT review routingのdry-run default、fork禁止、same-repository必須
+- Reviewed PR auto-merge planのdry-run default、fork禁止、same-repository必須、branch削除禁止
 
 導入先設定は、これらを削除または弱体化できません。弱体化を試みる設定はvalidation errorになります。
 
@@ -119,6 +120,17 @@ scheduleのcronはGitHub Actionsで使う5フィールドcronの安全な数値s
 
 `SUN-SAT` のような曜日名はこの初期schemaでは扱いません。値域外、step 0、逆順range、不正構文はfail closedになります。
 
+## Auto-merge mode
+
+`autoMerge.mode` はauto-merge候補planの種類だけを表します。
+
+- `plan-only`: 判定結果だけを返す。
+- `enable-auto-merge`: 後続workflowがauto-merge有効化へ進める候補であることを返す。
+- `merge-queue`: 後続workflowがmerge queue投入へ進める候補であることを返す。`useMergeQueue: true` が必要です。
+- `immediate-merge`: 後続workflowが直接mergeへ進める候補であることを返す。`requiredApprovals >= 1` が必要です。
+
+共有キット自身はどのmodeでもGitHub API writeやmergeを行いません。`dryRun` は `true` のみ許可し、`allowFork: true`、`requireSameRepository: false`、`deleteBranchAfterMerge: true` はschemaとvalidatorの両方でinvalidです。
+
 ## Logical fields and defaults
 
 後続Issueで既存導入先設定からmappingできるよう、主要な論理フィールドとdefaultを記録します。このIssueでは既存 `.chatgpt-review.json` 互換layerは実装しません。
@@ -164,6 +176,27 @@ scheduleのcronはGitHub Actionsで使う5フィールドcronの安全な数値s
 | `reviewRouting.maxDeletions` | `2000` |
 | `reviewRouting.cooldownSeconds` | `0` |
 | `reviewRouting.duplicatePolicy` | `dedupe-key` |
+| `autoMerge.enabled` | `false` |
+| `autoMerge.dryRun` | `true` |
+| `autoMerge.mode` | `plan-only` |
+| `autoMerge.mergeMethod` | `squash` |
+| `autoMerge.requireSameRepository` | `true` |
+| `autoMerge.allowFork` | `false` |
+| `autoMerge.requiredApprovals` | `1` |
+| `autoMerge.allowBotApproval` | `false` |
+| `autoMerge.requiredWorkflows` | `ciWorkflowName` |
+| `autoMerge.requireResolvedThreads` | `true` |
+| `autoMerge.allowDraft` | `false` |
+| `autoMerge.maxChangedFiles` | `100` |
+| `autoMerge.maxAdditions` | `2000` |
+| `autoMerge.maxDeletions` | `2000` |
+| `autoMerge.requireChatGPTReview` | `true` |
+| `autoMerge.requireHumanReview` | `false` |
+| `autoMerge.requireCurrentReview` | `true` |
+| `autoMerge.duplicatePolicy` | `dedupe-key` |
+| `autoMerge.cooldownSeconds` | `0` |
+| `autoMerge.deleteBranchAfterMerge` | `false` |
+| `autoMerge.useMergeQueue` | `false` |
 | `codex.reviewFix.maxAttempts` | `2` |
 | `codex.reviewFix.sameRepoOnly` | `true` |
 | `codex.reviewFix.allowDraft` | `false` |
@@ -187,6 +220,7 @@ npm test
 npm run lint
 npm run validate:config
 npm run test:review-routing
+npm run test:auto-merge
 git diff --check
 ```
 

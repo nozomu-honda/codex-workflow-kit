@@ -139,6 +139,73 @@
         "duplicatePolicy": { "enum": ["dedupe-key", "allow-rerun"] }
       }
     },
+    "autoMerge": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "dryRun": { "const": true },
+        "mode": { "$ref": "#/$defs/autoMergeMode" },
+        "mergeMethod": { "enum": ["squash", "merge", "rebase"] },
+        "allowedBaseBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requireSameRepository": { "const": true },
+        "allowFork": { "const": false },
+        "requiredApprovals": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "allowBotApproval": { "type": "boolean", "default": false },
+        "trustedReviewers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requiredWorkflows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requireResolvedThreads": { "type": "boolean", "default": true },
+        "allowDraft": { "type": "boolean", "default": false },
+        "sensitivePathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "manualMergePathPatterns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "maxChangedFiles": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "maxAdditions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "maxDeletions": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "requireChatGPTReview": { "type": "boolean", "default": true },
+        "requireHumanReview": { "type": "boolean", "default": false },
+        "requireCurrentReview": { "type": "boolean", "default": true },
+        "duplicatePolicy": { "enum": ["dedupe-key", "allow-rerun"] },
+        "cooldownSeconds": { "type": "integer", "minimum": 0, "maximum": 604800 },
+        "deleteBranchAfterMerge": { "const": false },
+        "useMergeQueue": { "type": "boolean", "default": false }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "const": "merge-queue" } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": { "useMergeQueue": { "const": true } },
+            "required": ["useMergeQueue"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "mode": { "const": "immediate-merge" } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": { "requiredApprovals": { "type": "integer", "minimum": 1 } }
+          }
+        }
+      ]
+    },
     "protectedFiles": {
       "type": "object",
       "additionalProperties": true,
@@ -241,6 +308,9 @@
         "draft-ready",
         "pr-updated"
       ]
+    },
+    "autoMergeMode": {
+      "enum": ["plan-only", "enable-auto-merge", "merge-queue", "immediate-merge"]
     },
     "queue": {
       "type": "object",

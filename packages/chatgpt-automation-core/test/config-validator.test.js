@@ -163,6 +163,37 @@ function expectError(config, code) {
   return result;
 }
 
+function validAutoMerge(overrides = {}) {
+  return {
+    enabled: false,
+    dryRun: true,
+    mode: 'plan-only',
+    mergeMethod: 'squash',
+    allowedBaseBranches: ['master'],
+    requireSameRepository: true,
+    allowFork: false,
+    requiredApprovals: 1,
+    allowBotApproval: false,
+    trustedReviewers: [],
+    requiredWorkflows: ['CI'],
+    requireResolvedThreads: true,
+    allowDraft: false,
+    sensitivePathPatterns: ['.github/**', 'scripts/**'],
+    manualMergePathPatterns: ['.github/**', 'scripts/**'],
+    maxChangedFiles: 100,
+    maxAdditions: 2000,
+    maxDeletions: 2000,
+    requireChatGPTReview: true,
+    requireHumanReview: false,
+    requireCurrentReview: true,
+    duplicatePolicy: 'dedupe-key',
+    cooldownSeconds: 0,
+    deleteBranchAfterMerge: false,
+    useMergeQueue: false,
+    ...overrides
+  };
+}
+
 test('loads the sample config and normalizes safe defaults', async () => {
   const source = await readFile(new URL('../../../templates/chatgpt-automation.yml', import.meta.url), 'utf8');
   const result = validateAutomationConfig(source);
@@ -335,6 +366,82 @@ test('review routing unsafe booleans and invalid trigger config are invalid in s
       ...validConfig().reviewRouting,
       acceptedTriggerTypes: ['unknown-trigger']
     }
+  }), false);
+});
+
+test('auto merge config is valid for both JSON Schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      enabled: true,
+      mode: 'enable-auto-merge',
+      trustedReviewers: ['owner']
+    })
+  }), true);
+
+  const result = validateAutomationConfig(validConfig({
+    autoMerge: validAutoMerge({
+      enabled: true,
+      mode: 'plan-only'
+    })
+  }));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.config.autoMerge.dryRun, true);
+  assert.equal(result.config.autoMerge.allowFork, false);
+  assert.equal(result.config.autoMerge.requireSameRepository, true);
+  assert.equal(result.config.autoMerge.deleteBranchAfterMerge, false);
+});
+
+test('auto merge unsafe booleans and invalid mode/method are invalid in schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ dryRun: false })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ allowFork: true })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ requireSameRepository: false })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ deleteBranchAfterMerge: true })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ mode: 'force-merge' })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({ mergeMethod: 'fast-forward' })
+  }), false);
+});
+
+test('auto merge conditional safety rules match schema and validator', async () => {
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      mode: 'merge-queue',
+      useMergeQueue: false
+    })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      mode: 'merge-queue',
+      useMergeQueue: true
+    })
+  }), true);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      mode: 'immediate-merge',
+      requiredApprovals: 0
+    })
+  }), false);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      mode: 'immediate-merge',
+      requiredApprovals: 1
+    })
+  }), true);
+  await expectSchemaAndValidator(validConfig({
+    autoMerge: validAutoMerge({
+      requiredApprovals: '1'
+    })
   }), false);
 });
 
