@@ -42,6 +42,17 @@ PRごとの `action` は次のいずれかです。
 
 `conflict-follow-up-candidate` と `update-failed-follow-up-candidate` は `mainFollowUp.codexFollowUpEnabled: true` の場合だけ出ます。falseの場合はmanual review requiredに倒します。
 
+## write command boundary
+
+Issue #37では、main follow-up planから将来write workflow向けのcommand候補を作るpure converterを追加します。
+
+- `behind-update-candidate` かつ `should_update_branch=true` のentryだけ `update-pull-request-branch` command候補を作る
+- `manual-review-required`、`conflict-follow-up-candidate`、`update-failed-follow-up-candidate`、`up-to-date`、`ineligible` ではcommandを作らない
+- commandには `expectedHeadSha` と `expectedBaseSha`、plan snapshot、idempotency keyを含める
+- 既定の `DisabledGitHubWriteAdapter` は候補commandを受け取っても `write_disabled` で拒否する
+
+この境界は [github-write-adapter.md](github-write-adapter.md) を正とします。PR branch update API、Codex起動、Queue Issue更新、コメント投稿、label操作はこのIssueでもIssue #37でも行いません。
+
 ## Safety rules
 
 次は必ずmanual reviewまたはineligibleにします。

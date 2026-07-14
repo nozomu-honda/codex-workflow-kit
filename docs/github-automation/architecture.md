@@ -139,6 +139,17 @@ Issue #25ではauto-merge plan生成までを共通化し、実際のwrite処理
 
 Issue #26ではmain follow-up plan生成までを共通化し、実際のwrite処理は後続Issueに分けます。
 
+`packages/chatgpt-automation-core/src/github-write/` は、plan layerと将来のGitHub write layerの境界です。
+
+- auto-merge planやmain-follow-up planから、version付きwrite command候補をpure functionで生成する
+- commandにはoperation、repository、PR番号、expected head/base SHA、operation ID、idempotency key、dry-run、actor context、plan snapshotを含める
+- validatorはrepository、PR番号、SHA、timestamp、idempotency key、actor guard、plan snapshot不一致をfail closedにする
+- 既定の `DisabledGitHubWriteAdapter` はすべて `write_disabled` で拒否し、GitHub API writeやnetworkを行わない
+- `FakeGitHubWriteAdapter` はテスト専用で、fixture allowance内のcommandを記録するだけで実writeしない
+- audit recordはoperation、repository、PR番号、expected SHA、operation ID、reason、dry-run、accepted/executedだけに限定する
+
+Issue #37ではwrite command modelとadapter境界だけを追加し、auto-merge有効化、merge、PR branch update、コメント投稿、label操作、Queue Issue更新は実装しません。詳細は [github-write-adapter.md](github-write-adapter.md) を参照します。
+
 ## Caller workflow template
 
 `templates/workflows/validate-config.yml` は、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートです。
