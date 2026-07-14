@@ -4,7 +4,8 @@ export const SUPPORTED_EVENT_NAMES = Object.freeze([
   'pull_request_review_comment',
   'workflow_run',
   'pull_request',
-  'push'
+  'push',
+  'workflow_dispatch'
 ]);
 
 export const NORMALIZED_EVENT_OUTPUT_NAMES = Object.freeze([
@@ -141,6 +142,8 @@ export function normalizeAutomationEvent(input = {}) {
       return normalizePullRequestClosed({ payload, eventAction, repository, baseOutputs });
     case 'push':
       return normalizePush({ payload, repository, defaultBranch, baseOutputs, fallbackSha: input.sha, fallbackRefName: input.refName });
+    case 'workflow_dispatch':
+      return normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha: input.sha });
     default:
       return finalize(baseOutputs, ['unsupported event']);
   }
@@ -258,6 +261,25 @@ function normalizePush({ payload, repository, defaultBranch, baseOutputs, fallba
   }
   if (!outputs.head_sha) {
     errors.push('missing head sha');
+  }
+
+  return finalize(outputs, errors);
+}
+
+function normalizeWorkflowDispatch({ payload, repository, baseOutputs, fallbackSha }) {
+  const pullRequestNumber = numberToOutput(Number.parseInt(cleanString(payload?.inputs?.pull_request_number ?? payload?.inputs?.pr_number), 10));
+  const outputs = {
+    ...baseOutputs,
+    pull_request_number: pullRequestNumber,
+    head_sha: cleanSha(payload?.inputs?.head_sha) || cleanSha(fallbackSha),
+    head_repository: repository,
+    is_same_repository: 'true',
+    is_fork: 'false'
+  };
+  const errors = [];
+
+  if (!pullRequestNumber) {
+    errors.push('missing manual pull request number');
   }
 
   return finalize(outputs, errors);

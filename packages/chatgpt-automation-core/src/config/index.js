@@ -81,6 +81,29 @@ const DEFAULT_VARIABLES = Object.freeze({
   mainFollowupMaxAttempts: 'MAIN_FOLLOWUP_CODEX_AUTO_FIX_MAX_ATTEMPTS'
 });
 
+export const DEFAULT_REVIEW_ROUTING = Object.freeze({
+  enabled: false,
+  dryRun: true,
+  allowedBaseBranches: [],
+  acceptedTriggerTypes: ['ci-success', 'trusted-review-command', 'manual-review-request'],
+  commands: ['/chatgpt-review'],
+  requestLabels: [DEFAULT_LABELS.needsChatGptReview],
+  reviewerNames: [],
+  trustedHumanActors: [],
+  trustedBotActors: [],
+  allowDraft: false,
+  allowFork: false,
+  requireSameRepository: true,
+  requiredWorkflows: [],
+  ignoredPathPatterns: [],
+  sensitivePathPatterns: [...DEFAULT_HARD_BLOCK_FILE_PATTERNS],
+  maxChangedFiles: 100,
+  maxAdditions: 2000,
+  maxDeletions: 2000,
+  cooldownSeconds: 0,
+  duplicatePolicy: 'dedupe-key'
+});
+
 const DEFAULT_CAPABILITIES = Object.freeze({
   autoRequest: false,
   routeReview: false,
@@ -98,6 +121,7 @@ const ROOT_KEYS = [
   'features',
   'labels',
   'review',
+  'reviewRouting',
   'protectedFiles',
   'secretLike',
   'queues',
@@ -116,6 +140,16 @@ const CODEX_KEYS = ['reviewFix', 'mainFollowup'];
 const SCHEDULE_KEYS = ['reviewRequest', 'autoMerge', 'mainFollowup', 'actionsApproval'];
 const MERGE_METHODS = ['squash', 'merge', 'rebase'];
 const REVIEW_DECISION_MODES = ['marker-only', 'trusted-actors'];
+const REVIEW_ROUTING_TRIGGER_TYPES = [
+  'ci-success',
+  'trusted-review-command',
+  'trusted-review-request',
+  'manual-review-request',
+  'label-request',
+  'draft-ready',
+  'pr-updated'
+];
+const REVIEW_ROUTING_DUPLICATE_POLICIES = ['dedupe-key', 'allow-rerun'];
 const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
@@ -175,6 +209,7 @@ export function validateAutomationConfigObject(rawConfig) {
     features: normalizeFeatureFlags(rawConfig.features, errors, warnings),
     labels: normalizeLabels(rawConfig.labels, errors, warnings),
     review: normalizeReview(rawConfig.review, errors, warnings),
+    reviewRouting: normalizeReviewRouting(rawConfig.reviewRouting, errors, warnings),
     protectedFiles: normalizeProtectedFiles(rawConfig.protectedFiles, errors, warnings),
     secretLike: normalizeSecretLike(rawConfig.secretLike, errors, warnings),
     queues: normalizeQueues(rawConfig.queues, errors, warnings),
@@ -405,6 +440,124 @@ function normalizeReviewDecisions(value, decisions, errors, warnings) {
     }
     decisions.stopOnLatestChangesRequested = true;
   }
+}
+
+function normalizeReviewRouting(value, errors, warnings) {
+  const normalized = {
+    ...DEFAULT_REVIEW_ROUTING,
+    allowedBaseBranches: [],
+    acceptedTriggerTypes: [...DEFAULT_REVIEW_ROUTING.acceptedTriggerTypes],
+    commands: [...DEFAULT_REVIEW_ROUTING.commands],
+    requestLabels: [...DEFAULT_REVIEW_ROUTING.requestLabels],
+    reviewerNames: [],
+    trustedHumanActors: [],
+    trustedBotActors: [],
+    requiredWorkflows: [],
+    ignoredPathPatterns: [],
+    sensitivePathPatterns: [...DEFAULT_REVIEW_ROUTING.sensitivePathPatterns]
+  };
+
+  if (value === undefined) {
+    return normalized;
+  }
+
+  if (!isPlainObject(value)) {
+    errors.push(issue('reviewRouting', 'OBJECT_REQUIRED', 'Review routing config must be an object.'));
+    return normalized;
+  }
+
+  warnUnknownKeys(value, 'reviewRouting', [
+    'enabled',
+    'dryRun',
+    'allowedBaseBranches',
+    'acceptedTriggerTypes',
+    'commands',
+    'requestLabels',
+    'reviewerNames',
+    'trustedHumanActors',
+    'trustedBotActors',
+    'allowDraft',
+    'allowFork',
+    'requireSameRepository',
+    'requiredWorkflows',
+    'ignoredPathPatterns',
+    'sensitivePathPatterns',
+    'maxChangedFiles',
+    'maxAdditions',
+    'maxDeletions',
+    'cooldownSeconds',
+    'duplicatePolicy'
+  ], warnings);
+
+  normalized.enabled = normalizeOptionalBoolean(value.enabled, false, 'reviewRouting.enabled', errors);
+
+  if (value.dryRun !== undefined) {
+    if (value.dryRun !== true) {
+      errors.push(issue('reviewRouting.dryRun', 'DRY_RUN_REQUIRED', 'Review routing must default to dry-run in the shared kit.'));
+    }
+    normalized.dryRun = true;
+  }
+
+  if (value.allowDraft !== undefined) {
+    normalized.allowDraft = normalizeOptionalBoolean(value.allowDraft, false, 'reviewRouting.allowDraft', errors);
+  }
+
+  if (value.allowFork !== undefined) {
+    if (value.allowFork !== false) {
+      errors.push(issue('reviewRouting.allowFork', 'FORK_ROUTING_FORBIDDEN', 'Review routing must not route fork pull requests.'));
+    }
+    normalized.allowFork = false;
+  }
+
+  if (value.requireSameRepository !== undefined) {
+    if (value.requireSameRepository !== true) {
+      errors.push(issue('reviewRouting.requireSameRepository', 'SAME_REPOSITORY_REQUIRED', 'Review routing must require same-repository pull requests.'));
+    }
+    normalized.requireSameRepository = true;
+  }
+
+  if (value.acceptedTriggerTypes !== undefined) {
+    const triggerTypes = normalizeStringArray(value.acceptedTriggerTypes, 'reviewRouting.acceptedTriggerTypes', errors);
+    for (const triggerType of triggerTypes) {
+      if (!REVIEW_ROUTING_TRIGGER_TYPES.includes(triggerType)) {
+        errors.push(issue('reviewRouting.acceptedTriggerTypes', 'INVALID_TRIGGER_TYPE', 'Review routing trigger type is not supported.'));
+        break;
+      }
+    }
+    normalized.acceptedTriggerTypes = triggerTypes;
+  }
+
+  for (const key of ['allowedBaseBranches', 'commands', 'requestLabels', 'reviewerNames', 'trustedHumanActors', 'trustedBotActors', 'requiredWorkflows', 'ignoredPathPatterns', 'sensitivePathPatterns']) {
+    if (value[key] !== undefined) {
+      normalized[key] = normalizeStringArray(value[key], `reviewRouting.${key}`, errors);
+    }
+  }
+
+  if (value.maxChangedFiles !== undefined) {
+    normalized.maxChangedFiles = normalizePositiveInteger(value.maxChangedFiles, 'reviewRouting.maxChangedFiles', 1, 500, errors);
+  }
+
+  if (value.maxAdditions !== undefined) {
+    normalized.maxAdditions = normalizePositiveInteger(value.maxAdditions, 'reviewRouting.maxAdditions', 0, 100000, errors);
+  }
+
+  if (value.maxDeletions !== undefined) {
+    normalized.maxDeletions = normalizePositiveInteger(value.maxDeletions, 'reviewRouting.maxDeletions', 0, 100000, errors);
+  }
+
+  if (value.cooldownSeconds !== undefined) {
+    normalized.cooldownSeconds = normalizePositiveInteger(value.cooldownSeconds, 'reviewRouting.cooldownSeconds', 0, 604800, errors);
+  }
+
+  if (value.duplicatePolicy !== undefined) {
+    if (!REVIEW_ROUTING_DUPLICATE_POLICIES.includes(value.duplicatePolicy)) {
+      errors.push(issue('reviewRouting.duplicatePolicy', 'INVALID_DUPLICATE_POLICY', 'Review routing duplicate policy is not supported.'));
+    } else {
+      normalized.duplicatePolicy = value.duplicatePolicy;
+    }
+  }
+
+  return normalized;
 }
 
 function normalizeProtectedFiles(value, errors, warnings) {
@@ -778,6 +931,11 @@ function normalizeOptionalPatternArray(value, path, errors) {
 }
 
 function normalizeStringArray(value, path, errors) {
+  if (!Array.isArray(value)) {
+    errors.push(issue(path, 'ARRAY_REQUIRED', 'Value must be an array.'));
+    return [];
+  }
+
   const normalized = [];
 
   value.forEach((entry, index) => {
@@ -790,6 +948,15 @@ function normalizeStringArray(value, path, errors) {
   });
 
   return normalized;
+}
+
+function normalizePositiveInteger(value, path, min, max, errors) {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    errors.push(issue(path, 'INVALID_INTEGER', `Value must be an integer between ${min} and ${max}.`));
+    return min;
+  }
+
+  return value;
 }
 
 function warnUnknownKeys(value, path, allowedKeys, warnings) {
