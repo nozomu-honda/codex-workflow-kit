@@ -145,6 +145,8 @@ Downgrades, mixed refs inside one consumer, mutable refs, path traversal, duplic
 
 The planner may generate PR body text in a later issue, but Issue #27 does not create consumer PRs or push to consumer repositories.
 
+Live consumer audit is the read-only follow-up check for real consumers. It verifies that a consumer repository actually uses reviewed 40-character kit refs, matching capabilities, read-only permissions, safe triggers, and no Secret-bearing workflow structure. It does not update the consumer and is documented in [live-consumer-audit.md](live-consumer-audit.md).
+
 ## Release readiness workflow
 
 `.github/workflows/release-readiness.yml` is read-only.

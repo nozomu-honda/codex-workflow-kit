@@ -69,6 +69,19 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 
 詳細は [release-readiness.md](release-readiness.md) を参照します。
 
+## Live consumer audit
+
+`packages/chatgpt-automation-core/src/consumer-audit/` と `scripts/audit-live-consumer.mjs` は、実consumer repositoryを変更せずに導入状態をread-onlyで監査するlive consumer audit layerです。
+
+- GitHub REST APIはGETだけを使い、workflow dispatch、PR/Issue/comment/label操作、branch作成、consumer pushは行わない
+- default branch SHAを監査開始時と終了時に確認し、監査中に変化した場合はfail closedにする
+- config、caller workflow、workflow metadataをdefault branch上の固定snapshotとして読み取る
+- fixed SHA、mixed ref、mutable ref、placeholder、trigger、permission、`secrets: inherit`、Secret-like構成、capability整合を判定する
+- reportはdeterministicかつsanitizedで、token、Cookie、Authorization、Secret値、API response全文、絶対pathを含めない
+- 実consumerで問題を検出しても、このリポジトリ側からconsumerを修正しない
+
+offline consumer E2Eはテンプレートの自己検証です。live consumer auditは実consumerのdefault branch上に置かれたcaller workflowが同じ安全条件を満たしているかを確認します。詳細は [live-consumer-audit.md](live-consumer-audit.md) を参照します。
+
 ## Reusable workflow
 
 `.github/workflows/validate-config.yml` は、`workflow_call` で設定検証Actionを呼び出す読み取り専用reusable workflowです。

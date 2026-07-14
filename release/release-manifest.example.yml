@@ -32,6 +32,7 @@ callerTemplates:
   - templates/workflows/main-follow-up-events.yml
 schemas:
   - schemas/chatgpt-automation.schema.json
+  - schemas/live-consumer-audit-inventory.schema.json
   - schemas/release-manifest.schema.json
 rollbackCommitSha: "1111111111111111111111111111111111111111"
 validationCommands:

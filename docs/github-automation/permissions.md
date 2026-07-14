@@ -137,3 +137,29 @@ Release readiness workflowは `contents: read` のみを使います。
 - `pull_request_target`
 
 consumer更新計画に強いtokenやSecretは不要です。実consumer更新PRを作る処理はIssue #27の対象外です。
+
+## Live consumer audit
+
+Live consumer auditは、実consumer repositoryの導入状態をread-onlyで確認します。
+
+CLIが使うGitHub REST APIはGETだけです。必要なread対象:
+
+- repository metadata
+- default branch ref
+- config file
+- caller workflow files
+- `.github/workflows` tree
+- Actions workflow metadata
+
+禁止するもの:
+
+- GitHub API write
+- workflow dispatch
+- consumer branch / PR / Issue / comment / label作成
+- Secrets / Variables / Environments API
+- consumer PR head codeのcheckoutまたは実行
+- `pull_request_target`
+- `secrets: inherit`
+- write permission
+
+private repositoryを監査する場合は、consumer repositoryを読めるread-only tokenを環境変数 `GITHUB_TOKEN` または `GH_TOKEN` へ設定します。token値は引数、ログ、report、docsへ出しません。API read失敗、pagination不完了、権限不足、監査中のdefault branch変更はfail closedです。
