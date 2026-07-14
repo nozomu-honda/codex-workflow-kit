@@ -78,6 +78,52 @@ test('ChatGPT markerはtrusted actorごとのcurrent-head最新状態で判定�
   })), /changes_requested/);
 });
 
+test('同一ChatGPT source内の競合markerはapprovalではなくblockにする', () => {
+  for (const body of [
+    [
+      '<!-- chatgpt-review: approved -->',
+      '<!-- chatgpt-review: changes_requested -->'
+    ].join('\n'),
+    [
+      '<!-- chatgpt-review: changes_requested -->',
+      '<!-- chatgpt-review: approved -->'
+    ].join('\n')
+  ]) {
+    const state = getReviewState({
+      autoMergeConfig: automationConfig().autoMerge,
+      config: automationConfig(),
+      headSha: FIXTURE_SHAS.head,
+      issueComments: [
+        {
+          body,
+          created_at: '2026-01-01T02:00:00.000Z',
+          headSha: FIXTURE_SHAS.head,
+          user: { login: 'chatgpt-reviewer' }
+        }
+      ],
+      reviews: []
+    });
+
+    assert.equal(state.approvalCount, 0);
+    assert.equal(state.changesRequested, true);
+    assert.equal(state.chatGptReviewCurrent, false);
+  }
+
+  assertSkip(createAutoMergePlan(baseInput({
+    issueComments: [
+      {
+        body: [
+          '<!-- chatgpt-review: approved -->',
+          '<!-- chatgpt-review: changes_requested -->'
+        ].join('\n'),
+        created_at: '2026-01-01T02:00:00.000Z',
+        headSha: FIXTURE_SHAS.head,
+        user: { login: 'chatgpt-reviewer' }
+      }
+    ]
+  })), /changes_requested/);
+});
+
 test('ChatGPT markerはunknown actorやactorなしを状態へ反映しない', () => {
   const state = getReviewState({
     autoMergeConfig: automationConfig().autoMerge,
@@ -230,6 +276,141 @@ test('reviewerごとの最新current-head reviewだけをapprovalとして数え
   });
   assert.equal(staleApproval.humanApprovalCount, 0);
   assert.equal(staleApproval.reviewIsCurrent, false);
+});
+
+test('human CHANGES_REQUESTEDは同reviewerのcurrent-head APPROVEDだけで解除する', () => {
+  const staleChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T01:00:00.000Z' })
+    ]
+  });
+  assert.equal(staleChanges.changesRequested, true);
+  assert.equal(staleChanges.humanApprovalCount, 0);
+
+  const otherReviewerApproval = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'trusted-human', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(otherReviewerApproval.changesRequested, true);
+  assert.equal(otherReviewerApproval.humanApprovalCount, 1);
+
+  const commentedAfterChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', state: 'COMMENTED', submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(commentedAfterChanges.changesRequested, true);
+  assert.equal(commentedAfterChanges.humanApprovalCount, 0);
+
+  const staleApprovalAfterChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(staleApprovalAfterChanges.changesRequested, true);
+  assert.equal(staleApprovalAfterChanges.humanApprovalCount, 0);
+
+  const currentApprovalAfterChanges = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(currentApprovalAfterChanges.changesRequested, false);
+  assert.equal(currentApprovalAfterChanges.humanApprovalCount, 1);
+
+  const laterChangesAfterCurrentApproval = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  });
+  assert.equal(laterChangesAfterCurrentApproval.changesRequested, true);
+  assert.equal(laterChangesAfterCurrentApproval.humanApprovalCount, 0);
+
+  const sameTimestampConflict = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'APPROVED', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T01:00:00.000Z' })
+    ]
+  });
+  assert.equal(sameTimestampConflict.changesRequested, true);
+  assert.equal(sameTimestampConflict.humanApprovalCount, 0);
+
+  const invalidTimestamp = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'APPROVED', commit_id: FIXTURE_SHAS.head, submitted_at: 'not-a-date' })
+    ]
+  });
+  assert.equal(invalidTimestamp.changesRequested, true);
+  assert.equal(invalidTimestamp.humanApprovalCount, 0);
+
+  const dismissed = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'DISMISSED', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T01:00:00.000Z' })
+    ]
+  });
+  assert.equal(dismissed.dismissedReview, true);
+  assert.equal(dismissed.humanApprovalCount, 0);
+
+  const commentedOnly = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'COMMENTED', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T01:00:00.000Z' })
+    ]
+  });
+  assert.equal(commentedOnly.changesRequested, false);
+  assert.equal(commentedOnly.humanApprovalCount, 0);
+
+  assertSkip(createAutoMergePlan(baseInput({
+    reviews: [
+      approvalReview({ actor: 'owner', state: 'CHANGES_REQUESTED', commit_id: FIXTURE_SHAS.before, submitted_at: '2026-01-01T01:00:00.000Z' }),
+      approvalReview({ actor: 'trusted-human', commit_id: FIXTURE_SHAS.head, submitted_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  })), /changes_requested/);
 });
 
 test('同一review sourceをChatGPT approvalとhuman approvalへ二重計上しない', () => {

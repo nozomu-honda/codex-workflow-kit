@@ -312,15 +312,17 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const reviewerStates = latestReviewStatesByActor(reviewEvents, headSha);
   const currentHumanApprovals = [...reviewerStates.values()].filter((state) =>
-    state.current?.state === 'APPROVED'
-    && (!autoMergeConfig.requireCurrentReview || state.current.headSha === headSha)
+    state.currentApproval?.state === 'APPROVED'
+    && !state.unresolvedChangesRequested
+    && !state.timestampInvalid
+    && (!autoMergeConfig.requireCurrentReview || state.currentApproval.headSha === headSha)
     && trustedHumanReviewers.has(state.actor)
     && (autoMergeConfig.allowBotApproval || !isBotActor(state.actor))
-    && !chatGptState.sourceKeys.has(state.current.sourceKey)
+    && !chatGptState.sourceKeys.has(state.currentApproval.sourceKey)
   );
   const chatGptReviewCurrent = chatGptState.approvalCount > 0;
   const changesRequested = chatGptState.changesRequested
-    || [...reviewerStates.values()].some((state) => state.current?.state === 'CHANGES_REQUESTED');
+    || [...reviewerStates.values()].some((state) => state.unresolvedChangesRequested || state.timestampInvalid);
   const approvalCount = currentHumanApprovals.length + chatGptState.approvalCount;
   const staleApproval = reviewEvents.some((review) => review.state === 'APPROVED' && review.headSha && review.headSha !== headSha);
   const unresolvedReviewThreads = (Array.isArray(reviewThreads) ? reviewThreads : [])
@@ -332,7 +334,7 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     humanApprovalCount: currentHumanApprovals.length,
     chatGptReviewCurrent,
     changesRequested,
-    dismissedReview: [...reviewerStates.values()].some((state) => state.current?.state === 'DISMISSED'),
+    dismissedReview: [...reviewerStates.values()].some((state) => state.dismissedReview),
     reviewIsCurrent: approvalCount > 0 && (!staleApproval || currentHumanApprovals.length > 0 || chatGptReviewCurrent),
     staleApproval,
     unresolvedReviewThreads,
@@ -491,26 +493,73 @@ function latestReviewStatesByActor(reviewEvents, headSha) {
       continue;
     }
 
-    const current = states.get(review.actor) ?? { actor: review.actor, current: null, latest: null };
+    const current = states.get(review.actor) ?? { actor: review.actor, events: [] };
 
-    if (!current.latest) {
-      current.latest = review;
-    }
-
-    current.currentEvents ??= [];
-    if (review.headSha === headSha) {
-      current.currentEvents.push(review);
-    }
+    current.events.push(review);
 
     states.set(review.actor, current);
   }
 
   for (const state of states.values()) {
-    state.current = selectLatestState(state.currentEvents ?? []);
-    delete state.currentEvents;
+    const reduced = reduceReviewerState(state.actor, state.events, headSha);
+    Object.assign(state, reduced);
+    delete state.events;
   }
 
   return states;
+}
+
+function reduceReviewerState(actor, events, headSha) {
+  const parsed = (Array.isArray(events) ? events : []).map((event) => ({
+    ...event,
+    timestampMs: parseTimestamp(event.timestamp)
+  }));
+  const dismissedReview = parsed.some((event) => event.state === 'DISMISSED');
+
+  if (parsed.some((event) => !Number.isFinite(event.timestampMs))) {
+    return {
+      actor,
+      current: null,
+      currentApproval: null,
+      dismissedReview,
+      latest: null,
+      timestampInvalid: true,
+      unresolvedChangesRequested: true
+    };
+  }
+
+  const ordered = parsed.toSorted((a, b) =>
+    a.timestampMs - b.timestampMs
+    || reviewStatePriority(a.state) - reviewStatePriority(b.state)
+    || String(a.sourceKey).localeCompare(String(b.sourceKey))
+  );
+  let currentApproval = null;
+  let unresolvedChangesRequested = null;
+
+  for (const event of ordered) {
+    if (event.state === 'CHANGES_REQUESTED') {
+      unresolvedChangesRequested = event;
+      continue;
+    }
+
+    if (event.state === 'APPROVED') {
+      if (event.headSha === headSha) {
+        currentApproval = event;
+        unresolvedChangesRequested = null;
+      }
+      continue;
+    }
+  }
+
+  return {
+    actor,
+    current: selectLatestState(parsed.filter((event) => event.headSha === headSha)),
+    currentApproval,
+    dismissedReview,
+    latest: ordered.at(-1) ?? null,
+    timestampInvalid: false,
+    unresolvedChangesRequested
+  };
 }
 
 function selectLatestState(events) {
@@ -539,6 +588,19 @@ function selectLatestState(events) {
     ?? latest.find((event) => event.state === 'DISMISSED')
     ?? latest.find((event) => event.state === 'APPROVED')
     ?? latest[0];
+}
+
+function reviewStatePriority(state) {
+  if (state === 'CHANGES_REQUESTED') {
+    return 4;
+  }
+  if (state === 'DISMISSED') {
+    return 3;
+  }
+  if (state === 'APPROVED') {
+    return 2;
+  }
+  return 1;
 }
 
 function parseTimestamp(value) {
