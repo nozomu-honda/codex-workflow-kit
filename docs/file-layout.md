@@ -108,6 +108,6 @@ GitHub automation areas are intentionally separate:
 
 `.github/workflows/validate-config.yml` calls the validation Action through `workflow_call` and keeps permissions at `contents: read`. It pins the internal `actions/validate-config` reference to a reviewed 40-character commit SHA, does not define Secret inputs, use `secrets: inherit`, or perform write operations.
 
-`templates/workflows/validate-config.yml` is a caller workflow template for adopters to copy into `.github/workflows/validate-config.yml`. It uses only `workflow_dispatch`, calls the reusable workflow through job-level `uses`, and requires adopters to replace the ref placeholder with a full `v1.2.3` version tag or 40-character commit SHA.
+`templates/workflows/validate-config.yml` is a caller workflow template for adopters to copy into `.github/workflows/validate-config.yml`. It uses only `workflow_dispatch`, calls the reusable workflow through job-level `uses`, and requires adopters to replace the ref placeholder with a reviewed 40-character commit SHA.
 
 This layout does not migrate existing auto-review or auto-merge implementation yet.

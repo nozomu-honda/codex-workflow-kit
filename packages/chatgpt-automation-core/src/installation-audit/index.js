@@ -74,7 +74,7 @@ const WORKFLOW_SPECS = Object.freeze({
 });
 const SHA40_PATTERN = /^[a-f0-9]{40}$/i;
 const SHORT_SHA_PATTERN = /^[a-f0-9]{7,39}$/i;
-const PLACEHOLDER_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const PLACEHOLDER_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const INITIAL_DISABLED_CONFIG_PATHS = Object.freeze([
   'features.autoRequest',
   'features.routeReview',

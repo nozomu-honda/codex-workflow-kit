@@ -64,7 +64,7 @@ jobs:
   normalize-event:
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@<v1.2.3-or-40-character-commit-sha>
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@0123456789abcdef0123456789abcdef01234567
     with:
       event-name: ${{ github.event_name }}
       event-action: ${{ github.event.action || '' }}
@@ -79,7 +79,7 @@ jobs:
       permission-mode: read-only
       requested-capability: normalize-only
       repository-config-json: ${{ vars.CHATGPT_AUTOMATION_EVENT_CONFIG_JSON || '{}' }}
-      kit-ref: <same-v1.2.3-or-40-character-commit-sha>
+      kit-ref: 0123456789abcdef0123456789abcdef01234567
 ```
 
 `kit-ref` は、reusable workflow本体と同じ固定refへ置換します。`master` / `main`、feature branch、短縮SHA、`v1` / `v1.2` は使いません。
@@ -169,7 +169,7 @@ Issue #24以降でreview routingやwrite処理を追加する場合も、Issue #
 ## 導入手順
 
 1. `templates/workflows/chatgpt-automation-events.yml` を導入先の `.github/workflows/chatgpt-automation-events.yml` へコピーする。
-2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+2. `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリのレビュー済み40桁commit SHAへ置換する。
 3. `kit-ref` も同じ固定refへ置換する。
 4. `REPLACE_WITH_DEFAULT_BRANCH` を導入先のdefault branch名へ置換する。
 5. 必要なら導入先repository variable `CHATGPT_AUTOMATION_EVENT_CONFIG_JSON` に、Secret値を含まないrepository固有設定をJSONで置く。

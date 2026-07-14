@@ -90,7 +90,6 @@ test('共有kitを固定refでcheckoutし、kit-ref検証を持つ', async () =>
   const validate = steps.find((step) => step.name === 'Validate kit ref');
 
   assert.match(validate.run, /\^\[a-f0-9\]\{40\}\$/i);
-  assert.match(validate.run, /\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$/);
   assert.equal(checkout.uses, EXPECTED_CHECKOUT_USES);
   assert.deepEqual(checkout.with, {
     repository: 'nozomu-honda/codex-workflow-kit',

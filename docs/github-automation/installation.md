@@ -58,10 +58,10 @@ templates/workflows/validate-config.yml
 3. コピーしたworkflow内のref placeholderを固定refへ置換する。
 
 ```text
-REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+REPLACE_WITH_40_CHAR_COMMIT_SHA
 ```
 
-置換先は、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
+置換先は、このリポジトリのレビュー済み40桁commit SHAにします。`v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は、後から内容が変わるため禁止します。
 
 4. reusable workflow内部のAction参照も40桁commit SHAへ固定されていることを確認する。
 
@@ -106,10 +106,10 @@ templates/workflows/chatgpt-automation-events.yml
 
 導入時に置換するもの:
 
-- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+- `REPLACE_WITH_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
 - `REPLACE_WITH_DEFAULT_BRANCH`: 導入先default branch名へ置換する
 
-固定refは、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAにします。`master` / `main`、feature branch、短縮SHA、`v1` / `v1.2` は使いません。
+固定refは、このリポジトリのレビュー済み40桁commit SHAにします。`master` / `main`、feature branch、短縮SHA、`v1` / `v1.2` は使いません。
 
 caller workflowは `permissions: contents: read` だけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のlabels、Variables、Secrets、Queue Issue番号は導入先に残します。repository固有設定を渡す場合は、Secret値を含まないJSONを `CHATGPT_AUTOMATION_EVENT_CONFIG_JSON` variableへ置きます。
 
@@ -143,7 +143,7 @@ templates/workflows/chatgpt-review-routing-events.yml
 
 導入時に置換するもの:
 
-- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+- `REPLACE_WITH_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
 - `REPLACE_WITH_DEFAULT_BRANCH`: 導入先default branch名へ置換する
 
 caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のreview command、labels、trusted actors、dedupe/cooldown情報はSecret値を含まないVariablesとして渡します。
@@ -180,7 +180,7 @@ templates/workflows/reviewed-pr-auto-merge-events.yml
 
 導入時に置換するもの:
 
-- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+- `REPLACE_WITH_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
 
 caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のauto-merge設定、dedupe/cooldown情報はSecret値を含まないVariablesとして渡します。
 
@@ -210,7 +210,7 @@ templates/workflows/main-follow-up-events.yml
 
 導入時に置換するもの:
 
-- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
+- `REPLACE_WITH_40_CHAR_COMMIT_SHA`: reusable workflow refと `kit-ref` の両方を同じ固定refへ置換する
 
 caller workflowはread-only permissionsだけを持ち、Secret、`secrets: inherit`、`runs-on`、`steps`、`run`、`pull_request_target` を使いません。導入先固有のmain follow-up設定、dedupe key、attempt count、last attempted timestampはSecret値を含まないVariablesとして渡します。
 
@@ -243,3 +243,11 @@ node scripts/audit-consumer-installation.mjs \
 ## 互換性
 
 AutoHotkey / `install.ps1` の既存利用者は、このGitHub automation導入手順を使う必要はありません。ローカル入力補助は引き続きREADMEと `docs/install.md` の手順で利用できます。
+
+## Release ref update
+
+導入済みconsumerを新しいkitへ追従する場合も、更新先はversion tagではなくレビュー済み40桁commit SHAです。
+
+`release/consumers.example.yml` のようなSecretを含まないinventoryから、`npm run plan:consumer-updates` で更新計画を作ります。計画はread-onlyで、consumer PR作成やpushは行いません。
+
+rollback時もtagを動かさず、直前のレビュー済み40桁commit SHAへ戻す計画を作り、consumer CIを通してから人間がmerge判断します。詳細は [release-readiness.md](release-readiness.md) を参照してください。

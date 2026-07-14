@@ -27,7 +27,7 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
 4. Caller workflow templatesを追加する
    - Issue #11で設定検証用caller workflowテンプレートを対応。
    - 初期テンプレートは `workflow_dispatch` のみ。
-   - reusable workflow refは `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ固定する。
+   - reusable workflow refはレビュー済み40桁commit SHAへ固定する。
    - GitHub API write、自動レビュー、自動マージ、Codex起動は含めない。
    - Issue #23で実イベント受付、payload正規化、安全判定、実イベント用caller workflow templateを対応。
    - `issue_comment`
@@ -76,3 +76,8 @@ GitHub automation共通化は、1タスク=1Issue=1PRで段階的に進めます
 - 導入先の安全条件を緩めない。
 - Secret、token、OAuth情報、Cookie、実URL、実IDをdocs、logs、testsへ入れない。
 - 実装移植は対象機能ごとのIssueで行う。
+
+10. Release readinessとconsumer追従計画を整備する
+   - version tagは人間向け識別子に限定し、consumerの実行参照はレビュー済み40桁commit SHAを正本にする。
+   - release manifest、CHANGELOG、source/dist、fixed ref、consumer inventory、rollbackをread-only / plan-onlyで検証する。
+   - Issue #25のwrite処理は、導入先側のレビュー証跡gate完了まで保留する。

@@ -1,0 +1,46 @@
+schemaVersion: 1
+releaseVersion: 0.1.0
+releaseCommitSha: "0123456789abcdef0123456789abcdef01234567"
+previousReleaseCommitSha: "1111111111111111111111111111111111111111"
+releaseDate: 2026-07-14
+capabilities:
+  - config-validation
+  - event-normalization
+  - review-routing-plan
+  - auto-merge-plan
+  - main-follow-up-plan
+changedCapabilities:
+  - auto-merge-plan
+  - main-follow-up-plan
+breakingChanges: []
+migrationRequired: false
+actionArtifacts:
+  - actions/validate-config/action.yml
+  - actions/validate-config/dist/index.js
+  - actions/validate-config/dist/package.json
+reusableWorkflows:
+  - .github/workflows/validate-config.yml
+  - .github/workflows/normalize-event.yml
+  - .github/workflows/review-routing.yml
+  - .github/workflows/auto-merge-plan.yml
+  - .github/workflows/main-follow-up-plan.yml
+callerTemplates:
+  - templates/workflows/validate-config.yml
+  - templates/workflows/chatgpt-automation-events.yml
+  - templates/workflows/chatgpt-review-routing-events.yml
+  - templates/workflows/reviewed-pr-auto-merge-events.yml
+  - templates/workflows/main-follow-up-events.yml
+schemas:
+  - schemas/chatgpt-automation.schema.json
+  - schemas/release-manifest.schema.json
+rollbackCommitSha: "1111111111111111111111111111111111111111"
+validationCommands:
+  - npm ci
+  - npm run ci
+  - npm run release:readiness
+  - node scripts/plan-release.mjs --manifest release/release-manifest.example.yml --consumers release/consumers.example.yml --use-current-git-shas --json
+unimplementedWriteCapabilities:
+  - auto-merge-write
+  - branch-update-write
+  - codex-launch
+  - queue-issue-update

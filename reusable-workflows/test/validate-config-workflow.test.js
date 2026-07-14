@@ -13,6 +13,7 @@ const EXPECTED_ACTION_REPOSITORY = 'nozomu-honda/codex-workflow-kit';
 const EXPECTED_ACTION_PATH = 'actions/validate-config';
 const EXPECTED_ACTION_REF = '03d54075f77034124b0b0982200b0d44059bed8a';
 const EXPECTED_ACTION_USES = `${EXPECTED_ACTION_REPOSITORY}/${EXPECTED_ACTION_PATH}@${EXPECTED_ACTION_REF}`;
+const EXPECTED_CHECKOUT_USES = 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5';
 const EXPECTED_OUTPUTS = ['ok', 'error-count', 'warning-count', 'capabilities-json', 'dry-run'];
 
 async function readWorkflow() {
@@ -90,7 +91,7 @@ test('checkoutとvalidate-config Action以外の外部処理を持たない', as
   const steps = workflow.jobs['validate-config'].steps;
 
   assert.equal(steps.length, 2);
-  assert.equal(steps[0].uses, 'actions/checkout@v4');
+  assert.equal(steps[0].uses, EXPECTED_CHECKOUT_USES);
   assert.equal(steps[0].run, undefined);
   assert.equal(steps[1].id, 'validate-config');
   assert.equal(steps[1].uses, EXPECTED_ACTION_USES);
@@ -143,7 +144,7 @@ test('validate-config Action参照refはbranch名、短縮SHA、tagを拒否す�
 test('外部呼び出し例のpathと実体ファイルpathが一致する', async () => {
   const readme = await readFile(REUSABLE_WORKFLOWS_README, 'utf8');
 
-  assert.match(readme, new RegExp(`uses: nozomu-honda/codex-workflow-kit/${escapeRegExp(WORKFLOW_PATH)}@<v1\\.2\\.3-or-40-character-commit-sha>`));
+  assert.match(readme, new RegExp(`uses: nozomu-honda/codex-workflow-kit/${escapeRegExp(WORKFLOW_PATH)}@0123456789abcdef0123456789abcdef01234567`));
   assert.equal(readme.includes(`uses: nozomu-honda/codex-workflow-kit/${OLD_WORKFLOW_PATH}`), false);
 });
 

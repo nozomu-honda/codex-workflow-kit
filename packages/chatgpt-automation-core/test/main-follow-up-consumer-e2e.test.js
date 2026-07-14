@@ -20,7 +20,7 @@ import {
 } from '../../../fixtures/github-events/index.js';
 
 const PINNED_SHA = '0123456789abcdef0123456789abcdef01234567';
-const TEMPLATE_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const TEMPLATE_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const TEMPLATE = new URL('../../../templates/workflows/main-follow-up-events.yml', import.meta.url);
 const REUSABLE_WORKFLOW = new URL('../../../.github/workflows/main-follow-up-plan.yml', import.meta.url);
 

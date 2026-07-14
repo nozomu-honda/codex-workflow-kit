@@ -30,7 +30,7 @@ jobs:
     name: Normalize event
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@REPLACE_WITH_40_CHAR_COMMIT_SHA
     with:
       event-name: ${{ github.event_name }}
       event-action: ${{ github.event.action || '' }}
@@ -45,4 +45,4 @@ jobs:
       permission-mode: read-only
       requested-capability: normalize-only
       repository-config-json: ${{ vars.CHATGPT_AUTOMATION_EVENT_CONFIG_JSON || '{}' }}
-      kit-ref: REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+      kit-ref: REPLACE_WITH_40_CHAR_COMMIT_SHA

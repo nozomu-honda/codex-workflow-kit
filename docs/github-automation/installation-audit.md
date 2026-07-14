@@ -178,7 +178,7 @@ caller workflowは構造的にYAML parseして確認します。
 - `secrets`、`secrets: inherit`、`runs-on`、`steps`、`run`、`shell` を持たない
 - 想定外job、想定外input、workflow outputを持たない
 
-本番監査では `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` placeholder、branch、tag、短縮SHAを許可しません。
+本番監査では `REPLACE_WITH_40_CHAR_COMMIT_SHA` placeholder、branch、tag、短縮SHAを許可しません。
 
 ### main-follow-up caller
 
@@ -279,10 +279,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           path: consumer
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: nozomu-honda/codex-workflow-kit
           ref: 0123456789abcdef0123456789abcdef01234567
@@ -332,7 +332,7 @@ npm run audit:template
 - `WORKFLOW_MISSING`: caller workflowのコピー先pathを確認する。
 - `UNKNOWN_KEY`: typoまたは未審査の設定が混入しているため、config keyを削除するか別Issueでschema/validatorを拡張する。
 - `CONFIG_CAPABILITY_ENABLED_FORBIDDEN`: 初期導入監査では全capabilityを無効化する。自動化を有効にする場合は別Issueで安全条件と運用手順を確認する。
-- `REUSABLE_WORKFLOW_REF_PLACEHOLDER`: `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を40桁commit SHAへ置換する。
+- `REUSABLE_WORKFLOW_REF_PLACEHOLDER`: `REPLACE_WITH_40_CHAR_COMMIT_SHA` を40桁commit SHAへ置換する。
 - `REUSABLE_WORKFLOW_REF_TAG`: tag参照ではなく40桁commit SHAを使う。
 - `WORKFLOW_CONFIG_FILE_MISMATCH`: caller workflowの `with.config-file` とCLIの `--config` を一致させる。
 - `WORKFLOW_DRY_RUN_NOT_TRUE`: 初回導入caller workflowは `dry-run: true` に戻す。
@@ -348,3 +348,7 @@ npm run audit:template
 - deploy
 - release tag作成
 - merge
+
+## Release readinessとの関係
+
+Release readinessでは、installation auditの40桁SHA固定方針をconsumer inventory全体にも拡張します。同一consumer内のref混在、未解決placeholder、deprecated workflow、unknown workflow、write permission増加、`secrets: inherit`、`pull_request_target` はfail closedです。

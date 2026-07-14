@@ -53,7 +53,7 @@ async function readSampleConfig() {
 
 async function readMainFollowUpWorkflow() {
   const source = await readFile(MAIN_FOLLOW_UP_TEMPLATE, 'utf8');
-  return source.replaceAll('REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA', PINNED_SHA);
+  return source.replaceAll('REPLACE_WITH_40_CHAR_COMMIT_SHA', PINNED_SHA);
 }
 
 function mutateConfig(mutator) {
@@ -501,7 +501,7 @@ test('workflow ref validation rejects branch, tag, short SHA, and placeholder', 
   await expectAuditCode({ workflow: workflowSource({ ref: 'master' }) }, 'REUSABLE_WORKFLOW_REF_MUTABLE');
   await expectAuditCode({ workflow: workflowSource({ ref: 'v1.2.3' }) }, 'REUSABLE_WORKFLOW_REF_TAG');
   await expectAuditCode({ workflow: workflowSource({ ref: '0123456' }) }, 'REUSABLE_WORKFLOW_REF_SHORT_SHA');
-  await expectAuditCode({ workflow: workflowSource({ ref: 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA' }) }, 'REUSABLE_WORKFLOW_REF_PLACEHOLDER');
+  await expectAuditCode({ workflow: workflowSource({ ref: 'REPLACE_WITH_40_CHAR_COMMIT_SHA' }) }, 'REUSABLE_WORKFLOW_REF_PLACEHOLDER');
 });
 
 test('workflow repository and path must match the shared reusable workflow', async () => {

@@ -7,7 +7,7 @@ import YAML from 'yaml';
 import { AUTO_MERGE_OUTPUT_NAMES, createAutoMergePlan } from '../src/auto-merge/index.js';
 
 const PINNED_SHA = '0123456789abcdef0123456789abcdef01234567';
-const TEMPLATE_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const TEMPLATE_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const TEMPLATE = new URL('../../../templates/workflows/reviewed-pr-auto-merge-events.yml', import.meta.url);
 const REUSABLE_WORKFLOW = new URL('../../../.github/workflows/auto-merge-plan.yml', import.meta.url);
 const HEAD_SHA = '1111111111111111111111111111111111111111';

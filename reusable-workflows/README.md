@@ -13,7 +13,7 @@
 
 `.github/workflows/validate-config.yml` は以下だけを行います。
 
-1. caller repositoryを `actions/checkout@v4` でcheckoutする
+1. caller repositoryを `actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5` でcheckoutする
 2. `nozomu-honda/codex-workflow-kit/actions/validate-config@03d54075f77034124b0b0982200b0d44059bed8a` を呼び出す
 3. Action outputsをworkflow outputsとして公開する
 
@@ -35,7 +35,7 @@
 
 ## 外部repositoryからの呼び出し方針
 
-導入先の薄いcaller workflowでは、このreusable workflowを `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ固定して呼び出します。
+導入先の薄いcaller workflowでは、このreusable workflowをレビュー済み40桁commit SHAへ固定して呼び出します。
 
 GitHub Actionsで直接呼び出せる公開パスへ接続した後のcaller例:
 
@@ -44,7 +44,7 @@ jobs:
   validate-config:
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@<v1.2.3-or-40-character-commit-sha>
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@0123456789abcdef0123456789abcdef01234567
     with:
       config-file: .github/chatgpt-automation.yml
       dry-run: true
@@ -95,7 +95,7 @@ jobs:
   normalize-event:
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@<v1.2.3-or-40-character-commit-sha>
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/normalize-event.yml@0123456789abcdef0123456789abcdef01234567
     with:
       event-name: ${{ github.event_name }}
       event-action: ${{ github.event.action || '' }}
@@ -110,7 +110,7 @@ jobs:
       permission-mode: read-only
       requested-capability: normalize-only
       repository-config-json: ${{ vars.CHATGPT_AUTOMATION_EVENT_CONFIG_JSON || '{}' }}
-      kit-ref: <same-v1.2.3-or-40-character-commit-sha>
+      kit-ref: 0123456789abcdef0123456789abcdef01234567
 ```
 
 `kit-ref` は、このreusable workflowを呼ぶrefと同じ固定refにします。Secret input、`secrets: inherit`、write permission、`pull_request_target` は使いません。

@@ -11,7 +11,7 @@ jobs:
     name: Validate config
     permissions:
       contents: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/validate-config.yml@REPLACE_WITH_40_CHAR_COMMIT_SHA
     with:
       config-file: .github/chatgpt-automation.yml
       dry-run: true

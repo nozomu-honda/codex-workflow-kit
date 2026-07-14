@@ -200,7 +200,7 @@ reusable workflowはread-onlyです。
 ## 導入
 
 1. `templates/workflows/chatgpt-review-routing-events.yml` を導入先の `.github/workflows/` へコピーする。
-2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を `v1.2.3` 形式の完全なversion tag、またはレビュー済み40桁commit SHAへ置換する。
+2. `REPLACE_WITH_40_CHAR_COMMIT_SHA` をレビュー済み40桁commit SHAへ置換する。
 3. `REPLACE_WITH_DEFAULT_BRANCH` を導入先default branch名へ置換する。
 4. `CHATGPT_AUTOMATION_REVIEW_ROUTING_CONFIG_JSON` へSecret値を含まない設定JSONを置く。
 5. `workflow_dispatch` でdry-run確認する。

@@ -37,7 +37,7 @@ jobs:
       actions: read
       checks: read
       statuses: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/auto-merge-plan.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/auto-merge-plan.yml@REPLACE_WITH_40_CHAR_COMMIT_SHA
     with:
       event-name: ${{ github.event_name }}
       event-action: ${{ github.event.action || '' }}
@@ -52,4 +52,4 @@ jobs:
       repository-config-json: ${{ vars.CHATGPT_AUTOMATION_AUTO_MERGE_CONFIG_JSON || '{}' }}
       existing-dedupe-keys: ${{ vars.CHATGPT_AUTOMATION_AUTO_MERGE_DEDUPE_KEYS || '' }}
       last-planned-at: ${{ vars.CHATGPT_AUTOMATION_AUTO_MERGE_LAST_PLANNED_AT || '' }}
-      kit-ref: REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+      kit-ref: REPLACE_WITH_40_CHAR_COMMIT_SHA

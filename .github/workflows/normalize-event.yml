@@ -157,9 +157,9 @@ jobs:
         run: |
           node - <<'NODE'
           const ref = process.env.KIT_REF || '';
-          const ok = /^[a-f0-9]{40}$/i.test(ref) || /^v\d+\.\d+\.\d+$/.test(ref);
+          const ok = /^[a-f0-9]{40}$/.test(ref);
           if (!ok) {
-            console.error('kit-ref must be a 40-character commit SHA or complete version tag.');
+            console.error('kit-ref must be a reviewed 40-character lowercase commit SHA.');
             process.exit(1);
           }
           NODE

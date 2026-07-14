@@ -7,7 +7,7 @@ import YAML from 'yaml';
 import { NORMALIZED_EVENT_OUTPUT_NAMES, normalizeAutomationEvent } from '../src/events/index.js';
 
 const PINNED_SHA = '0123456789abcdef0123456789abcdef01234567';
-const TEMPLATE_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const TEMPLATE_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const DEFAULT_BRANCH = 'master';
 const EVENT_TEMPLATE = new URL('../../../templates/workflows/chatgpt-automation-events.yml', import.meta.url);
 const REUSABLE_WORKFLOW = new URL('../../../.github/workflows/normalize-event.yml', import.meta.url);

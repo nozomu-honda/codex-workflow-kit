@@ -1,0 +1,22 @@
+schemaVersion: 1
+consumers:
+  - repository: owner/example-repo
+    defaultBranch: main
+    configPath: .github/chatgpt-automation.yml
+    callerWorkflowPaths:
+      - .github/workflows/validate-config.yml
+      - .github/workflows/chatgpt-automation-events.yml
+      - .github/workflows/chatgpt-review-routing-events.yml
+      - .github/workflows/reviewed-pr-auto-merge-events.yml
+      - .github/workflows/main-follow-up-events.yml
+    currentKitRef: "1111111111111111111111111111111111111111"
+    desiredCapabilitySet:
+      - config-validation
+      - event-normalization
+      - review-routing-plan
+      - auto-merge-plan
+      - main-follow-up-plan
+    updatePolicy:
+      allowDowngrade: false
+      direction: forward
+    manualReviewRequired: false
