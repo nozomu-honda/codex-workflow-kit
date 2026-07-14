@@ -145,6 +145,12 @@ Downgrades, mixed refs inside one consumer, mutable refs, path traversal, duplic
 
 The planner may generate PR body text in a later issue, but Issue #27 does not create consumer PRs or push to consumer repositories.
 
+## Repository protection readiness
+
+Release readiness confirms fixed-SHA rollout inputs, but it does not inspect live GitHub Branch protection or Ruleset settings. Before enabling consumer automation that depends on safe default-branch protections, run the read-only repository protection audit described in [protection-audit.md](protection-audit.md).
+
+The protection audit checks required checks, required reviews, bypass actors, force push / deletion rules, merge settings, and TOCTOU changes. It still does not modify consumer repositories or create Issues / PRs.
+
 Live consumer audit is the read-only follow-up check for real consumers. It verifies that a consumer repository actually uses reviewed 40-character kit refs, matching capabilities, read-only permissions, safe triggers, and no Secret-bearing workflow structure. It does not update the consumer and is documented in [live-consumer-audit.md](live-consumer-audit.md).
 
 ## Release readiness workflow

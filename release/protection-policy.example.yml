@@ -1,0 +1,20 @@
+defaultBranch: master
+requiredStatusChecks:
+  - CI
+  - Review evidence gate
+requirePullRequest: true
+minimumApprovals: 1
+dismissStaleApprovals: true
+requireCodeOwnerReview: false
+requireLastPushApproval: true
+requireConversationResolution: true
+requireLinearHistory: false
+requireSignedCommits: false
+blockForcePush: true
+blockDeletion: true
+enforceAdmins: true
+allowedMergeMethods:
+  - squash
+allowedBypassActors: []
+requireReviewEvidenceGate: true
+requireRuleset: false

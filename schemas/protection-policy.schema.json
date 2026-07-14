@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/codex-workflow-kit/protection-policy.schema.json",
+  "title": "Repository protection audit policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requiredStatusChecks",
+    "requirePullRequest",
+    "minimumApprovals",
+    "dismissStaleApprovals",
+    "requireConversationResolution",
+    "blockForcePush",
+    "blockDeletion",
+    "allowedMergeMethods",
+    "requireReviewEvidenceGate"
+  ],
+  "properties": {
+    "defaultBranch": {
+      "type": "string",
+      "minLength": 0
+    },
+    "requiredStatusChecks": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "requirePullRequest": {
+      "type": "boolean"
+    },
+    "minimumApprovals": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "dismissStaleApprovals": {
+      "type": "boolean"
+    },
+    "requireCodeOwnerReview": {
+      "type": "boolean"
+    },
+    "requireLastPushApproval": {
+      "type": "boolean"
+    },
+    "requireConversationResolution": {
+      "type": "boolean"
+    },
+    "requireLinearHistory": {
+      "type": "boolean"
+    },
+    "requireSignedCommits": {
+      "type": "boolean"
+    },
+    "blockForcePush": {
+      "type": "boolean"
+    },
+    "blockDeletion": {
+      "type": "boolean"
+    },
+    "enforceAdmins": {
+      "type": "boolean"
+    },
+    "allowedMergeMethods": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["merge", "squash", "rebase"]
+      }
+    },
+    "allowedBypassActors": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "requireReviewEvidenceGate": {
+      "type": "boolean"
+    },
+    "requireRuleset": {
+      "type": "boolean"
+    }
+  }
+}

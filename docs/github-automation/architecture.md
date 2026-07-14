@@ -69,6 +69,20 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 
 詳細は [release-readiness.md](release-readiness.md) を参照します。
 
+## Repository protection audit
+
+`packages/chatgpt-automation-core/src/protection-audit/` と `scripts/audit-repository-protection.mjs` は、consumer repositoryのdefault branchに対するBranch protection / Ruleset / required checks / required reviews / bypass / merge settingsをread-onlyで監査するlayerです。
+
+- GitHub APIはGETだけを使う
+- Branch protectionやRulesetを変更しない
+- required checkやCheck Runを作成しない
+- Secret、token、Authorization、API response全文、不要なactor内部IDをreportへ出さない
+- Branch protectionとRulesetをeffective policyとして合成する
+- Branch protection / Ruleset / default branchのTOCTOUを監査終了時の再取得で検知する
+- API failure、pagination未完了、TOCTOU検知、状態不明はfail closedまたはmanual reviewにする
+
+詳細は [protection-audit.md](protection-audit.md) を参照します。
+
 ## Live consumer audit
 
 `packages/chatgpt-automation-core/src/consumer-audit/` と `scripts/audit-live-consumer.mjs` は、実consumer repositoryを変更せずに導入状態をread-onlyで監査するlive consumer audit layerです。

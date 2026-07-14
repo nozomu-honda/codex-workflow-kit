@@ -8,7 +8,8 @@ export const RELEASE_CAPABILITIES = Object.freeze([
   'event-normalization',
   'review-routing-plan',
   'auto-merge-plan',
-  'main-follow-up-plan'
+  'main-follow-up-plan',
+  'repository-protection-audit'
 ]);
 
 export const UNIMPLEMENTED_WRITE_CAPABILITIES = Object.freeze([
