@@ -42,6 +42,79 @@ test('信頼済みChatGPT actorのcurrent-head markerだけをChatGPT承認に�
   assert.equal(trusted.outputs.review_is_current, 'true');
 });
 
+test('ChatGPT markerはtrusted actorごとのcurrent-head最新状態で判定する', () => {
+  const config = automationConfig({
+    review: {
+      ...automationConfig().review,
+      trustedActors: ['chatgpt-a', 'chatgpt-b']
+    }
+  });
+
+  assertSkip(createAutoMergePlan(baseInput({
+    config,
+    issueComments: [
+      chatGptMarker('changes_requested', { actor: 'chatgpt-a', created_at: '2026-01-01T01:00:00.000Z' }),
+      chatGptMarker('approved', { actor: 'chatgpt-b', created_at: '2026-01-01T02:00:00.000Z' })
+    ]
+  })), /changes_requested/);
+
+  const cleared = createAutoMergePlan(baseInput({
+    config,
+    issueComments: [
+      chatGptMarker('changes_requested', { actor: 'chatgpt-a', created_at: '2026-01-01T01:00:00.000Z' }),
+      chatGptMarker('approved', { actor: 'chatgpt-b', created_at: '2026-01-01T02:00:00.000Z' }),
+      chatGptMarker('approved', { actor: 'chatgpt-a', created_at: '2026-01-01T03:00:00.000Z' })
+    ]
+  }));
+  assert.equal(cleared.outputs.eligible, 'true');
+
+  assertSkip(createAutoMergePlan(baseInput({
+    config,
+    issueComments: [
+      chatGptMarker('changes_requested', { actor: 'chatgpt-a', created_at: '2026-01-01T01:00:00.000Z' }),
+      chatGptMarker('approved', { actor: 'chatgpt-a', created_at: '2026-01-01T03:00:00.000Z', headSha: FIXTURE_SHAS.before }),
+      chatGptMarker('approved', { actor: 'chatgpt-b', created_at: '2026-01-01T04:00:00.000Z' })
+    ]
+  })), /changes_requested/);
+});
+
+test('ChatGPT markerはunknown actorやactorなしを状態へ反映しない', () => {
+  const state = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [
+      chatGptMarker('approved', { actor: 'unknown-actor' }),
+      chatGptMarker('changes_requested', { actor: '' })
+    ],
+    reviews: []
+  });
+
+  assert.equal(state.approvalCount, 0);
+  assert.equal(state.chatGptReviewCurrent, false);
+  assert.equal(state.changesRequested, false);
+
+  const allTrustedApproved = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig({
+      review: {
+        ...automationConfig().review,
+        trustedActors: ['chatgpt-a', 'chatgpt-b']
+      }
+    }),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [
+      chatGptMarker('approved', { actor: 'chatgpt-a' }),
+      chatGptMarker('approved', { actor: 'chatgpt-b' })
+    ],
+    reviews: []
+  });
+
+  assert.equal(allTrustedApproved.approvalCount, 2);
+  assert.equal(allTrustedApproved.chatGptReviewCurrent, true);
+  assert.equal(allTrustedApproved.changesRequested, false);
+});
+
 test('plan-only modeはeligibleでもwrite相当outputを出さない', () => {
   const plan = createAutoMergePlan(baseInput({
     config: automationConfig({ autoMerge: { mode: 'plan-only' } })
@@ -157,6 +230,82 @@ test('reviewerごとの最新current-head reviewだけをapprovalとして数え
   });
   assert.equal(staleApproval.humanApprovalCount, 0);
   assert.equal(staleApproval.reviewIsCurrent, false);
+});
+
+test('同一review sourceをChatGPT approvalとhuman approvalへ二重計上しない', () => {
+  const overlappingConfig = automationConfig({
+    review: {
+      ...automationConfig().review,
+      trustedActors: ['owner']
+    },
+    autoMerge: {
+      requiredApprovals: 2,
+      trustedReviewers: ['owner']
+    }
+  });
+  const markerReview = approvalReview({
+    actor: 'owner',
+    body: '<!-- chatgpt-review: approved -->',
+    id: 'review-overlap'
+  });
+  const state = getReviewState({
+    autoMergeConfig: overlappingConfig.autoMerge,
+    config: overlappingConfig,
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [markerReview]
+  });
+
+  assert.equal(state.approvalCount, 1);
+  assert.equal(state.humanApprovalCount, 0);
+  assert.equal(state.chatGptReviewCurrent, true);
+  assertSkip(createAutoMergePlan(baseInput({
+    config: overlappingConfig,
+    issueComments: [],
+    reviews: [markerReview]
+  })), /approval_missing/);
+
+  const independentHuman = createAutoMergePlan(baseInput({
+    config: automationConfig({
+      review: {
+        ...automationConfig().review,
+        trustedActors: ['owner']
+      },
+      autoMerge: {
+        requiredApprovals: 2,
+        trustedReviewers: ['owner', 'trusted-human']
+      }
+    }),
+    issueComments: [],
+    reviews: [
+      markerReview,
+      approvalReview({ actor: 'trusted-human', id: 'trusted-human-review', submitted_at: '2026-01-01T03:00:00.000Z' })
+    ]
+  }));
+  assert.equal(independentHuman.outputs.eligible, 'true');
+
+  const commentAndHuman = createAutoMergePlan(baseInput({
+    config: automationConfig({
+      autoMerge: {
+        requiredApprovals: 2,
+        trustedReviewers: ['owner']
+      }
+    }),
+    issueComments: [chatGptMarker('approved')],
+    reviews: [approvalReview({ actor: 'owner', body: 'Markerless human approval', id: 'owner-human-review' })]
+  }));
+  assert.equal(commentAndHuman.outputs.eligible, 'true');
+
+  const markerlessHuman = getReviewState({
+    autoMergeConfig: automationConfig().autoMerge,
+    config: automationConfig(),
+    headSha: FIXTURE_SHAS.head,
+    issueComments: [],
+    reviews: [approvalReview({ actor: 'owner', body: 'Markerless human approval', id: 'owner-markerless' })]
+  });
+  assert.equal(markerlessHuman.approvalCount, 1);
+  assert.equal(markerlessHuman.humanApprovalCount, 1);
+  assert.equal(markerlessHuman.chatGptReviewCurrent, false);
 });
 
 test('CI pending / failure / cancelled / skippedはfail closedにする', () => {
@@ -294,6 +443,45 @@ test('GraphQL reviewThreads paginationを全ページ取得し、途中失敗は
   }), /github_graphql_missing_review_threads_cursor/);
 
   assertSkip(createAutoMergePlan(baseInput({ apiReadError: 'github_graphql_missing_review_threads_cursor' })), /github_api_read_failed/);
+});
+
+test('GraphQL reviewThreads paginationはcursor循環とpage limit超過をfail closedにする', async () => {
+  await assert.rejects(() => listReviewThreads({
+    fetchImpl: reviewThreadPages([
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-a' } },
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-a' } }
+    ]),
+    githubApiUrl: 'https://api.github.test',
+    githubToken: 'test-token',
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName
+  }), /github_graphql_review_threads_cursor_cycle/);
+
+  await assert.rejects(() => listReviewThreads({
+    fetchImpl: reviewThreadPages([
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-a' } },
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-b' } },
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-a' } }
+    ]),
+    githubApiUrl: 'https://api.github.test',
+    githubToken: 'test-token',
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName
+  }), /github_graphql_review_threads_cursor_cycle/);
+
+  await assert.rejects(() => listReviewThreads({
+    fetchImpl: reviewThreadPages([
+      { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'cursor-a' } },
+      { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } }
+    ]),
+    githubApiUrl: 'https://api.github.test',
+    githubToken: 'test-token',
+    maxPages: 1,
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName
+  }), /github_graphql_review_threads_page_limit_exceeded/);
+
+  assertSkip(createAutoMergePlan(baseInput({ apiReadError: 'github_graphql_review_threads_cursor_cycle' })), /github_api_read_failed/);
 });
 
 test('CI helperはworkflow run / check run / commit statusを同じheadで見る', () => {
@@ -554,6 +742,7 @@ function approvalReview(overrides = {}) {
   return {
     body: overrides.body ?? 'Looks good',
     commit_id: overrides.commit_id ?? FIXTURE_SHAS.head,
+    id: overrides.id,
     state: overrides.state ?? 'APPROVED',
     submitted_at: overrides.submitted_at ?? '2026-01-01T01:00:00.000Z',
     user: { login: overrides.actor ?? 'owner' }
@@ -574,6 +763,24 @@ function jsonResponse(payload, ok = true, status = 200) {
     ok,
     status,
     json: async () => payload
+  };
+}
+
+function reviewThreadPages(pages) {
+  let index = 0;
+
+  return async () => {
+    const page = pages[Math.min(index, pages.length - 1)];
+    index += 1;
+    return jsonResponse({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: page
+          }
+        }
+      }
+    });
   };
 }
 

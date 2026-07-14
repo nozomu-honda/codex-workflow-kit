@@ -289,33 +289,39 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     .filter((source) => trustedChatGptActors.has(source.actor))
     .map((source) => {
       const decision = detectReviewDecision(source, reviewConfig);
-      return decision ? { ...decision, headSha: source.headSha } : null;
+      return decision ? {
+        ...decision,
+        headSha: source.headSha,
+        sourceKey: source.sourceKey,
+        sourceType: source.sourceType,
+        timestamp: decision.timestamp || source.submittedAt || source.updatedAt || source.createdAt || ''
+      } : null;
     })
     .filter(Boolean)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const latestChatGptDecision = chatGptDecisions[0] ?? null;
+  const chatGptState = getChatGptStatesByActor(chatGptDecisions, headSha);
   const reviewEvents = normalizeReviews(reviews)
     .map((review) => ({
       actor: review.actor,
       headSha: review.headSha,
       state: review.reviewState,
+      sourceKey: review.sourceKey,
       timestamp: review.submittedAt || review.updatedAt || review.createdAt || ''
     }))
     .filter((review) => review.state)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const reviewerStates = latestReviewStatesByActor(reviewEvents, headSha);
-  const latestReviewEvent = reviewEvents[0] ?? null;
   const currentHumanApprovals = [...reviewerStates.values()].filter((state) =>
     state.current?.state === 'APPROVED'
     && (!autoMergeConfig.requireCurrentReview || state.current.headSha === headSha)
     && trustedHumanReviewers.has(state.actor)
     && (autoMergeConfig.allowBotApproval || !isBotActor(state.actor))
+    && !chatGptState.sourceKeys.has(state.current.sourceKey)
   );
-  const chatGptReviewCurrent = latestChatGptDecision?.decision === 'approved'
-    && (!autoMergeConfig.requireCurrentReview || latestChatGptDecision.headSha === headSha);
-  const changesRequested = latestChatGptDecision?.decision === 'changes_requested'
-    || [...reviewerStates.values()].some((state) => state.current?.state === 'CHANGES_REQUESTED' || state.latest?.state === 'CHANGES_REQUESTED');
-  const approvalCount = currentHumanApprovals.length + (chatGptReviewCurrent ? 1 : 0);
+  const chatGptReviewCurrent = chatGptState.approvalCount > 0;
+  const changesRequested = chatGptState.changesRequested
+    || [...reviewerStates.values()].some((state) => state.current?.state === 'CHANGES_REQUESTED');
+  const approvalCount = currentHumanApprovals.length + chatGptState.approvalCount;
   const staleApproval = reviewEvents.some((review) => review.state === 'APPROVED' && review.headSha && review.headSha !== headSha);
   const unresolvedReviewThreads = (Array.isArray(reviewThreads) ? reviewThreads : [])
     .filter((thread) => thread?.isResolved === false || thread?.resolved === false)
@@ -326,7 +332,7 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     humanApprovalCount: currentHumanApprovals.length,
     chatGptReviewCurrent,
     changesRequested,
-    dismissedReview: latestReviewEvent?.state === 'DISMISSED',
+    dismissedReview: [...reviewerStates.values()].some((state) => state.current?.state === 'DISMISSED'),
     reviewIsCurrent: approvalCount > 0 && (!staleApproval || currentHumanApprovals.length > 0 || chatGptReviewCurrent),
     staleApproval,
     unresolvedReviewThreads,
@@ -434,6 +440,49 @@ function normalizePullRequest(value = {}, normalizedEvent) {
   };
 }
 
+function getChatGptStatesByActor(decisions, headSha) {
+  const states = new Map();
+  const sourceKeys = new Set();
+
+  for (const decision of Array.isArray(decisions) ? decisions : []) {
+    if (!decision.actor || decision.headSha !== headSha) {
+      continue;
+    }
+
+    sourceKeys.add(decision.sourceKey);
+
+    const state = states.get(decision.actor) ?? { actor: decision.actor, decisions: [] };
+    state.decisions.push({
+      sourceKey: decision.sourceKey,
+      state: decision.decision === 'changes_requested' ? 'CHANGES_REQUESTED' : 'APPROVED',
+      timestamp: decision.timestamp
+    });
+    states.set(decision.actor, state);
+  }
+
+  let approvalCount = 0;
+  let changesRequested = false;
+
+  for (const state of states.values()) {
+    const latest = selectLatestState(state.decisions);
+
+    if (latest?.state === 'CHANGES_REQUESTED') {
+      changesRequested = true;
+      continue;
+    }
+
+    if (latest?.state === 'APPROVED') {
+      approvalCount += 1;
+    }
+  }
+
+  return {
+    approvalCount,
+    changesRequested,
+    sourceKeys
+  };
+}
+
 function latestReviewStatesByActor(reviewEvents, headSha) {
   const states = new Map();
 
@@ -448,38 +497,96 @@ function latestReviewStatesByActor(reviewEvents, headSha) {
       current.latest = review;
     }
 
-    if (review.headSha === headSha && !current.current) {
-      current.current = review;
+    current.currentEvents ??= [];
+    if (review.headSha === headSha) {
+      current.currentEvents.push(review);
     }
 
     states.set(review.actor, current);
   }
 
+  for (const state of states.values()) {
+    state.current = selectLatestState(state.currentEvents ?? []);
+    delete state.currentEvents;
+  }
+
   return states;
 }
 
-function normalizeIssueComments(issueComments = []) {
-  return (Array.isArray(issueComments) ? issueComments : []).map((comment) => ({
-    actor: cleanString(comment.user?.login ?? comment.actor),
-    body: cleanString(comment.body),
-    createdAt: cleanString(comment.created_at ?? comment.createdAt),
-    updatedAt: cleanString(comment.updated_at ?? comment.updatedAt),
-    url: cleanString(comment.html_url ?? comment.url),
-    headSha: cleanSha(comment.headSha ?? comment.head_sha)
+function selectLatestState(events) {
+  const current = Array.isArray(events) ? events : [];
+
+  if (current.length === 0) {
+    return null;
+  }
+
+  const parsed = current.map((event) => ({
+    ...event,
+    timestampMs: parseTimestamp(event.timestamp)
   }));
+
+  if (parsed.some((event) => !Number.isFinite(event.timestampMs))) {
+    return {
+      ...(parsed.find((event) => event.state === 'CHANGES_REQUESTED') ?? parsed[0]),
+      state: 'CHANGES_REQUESTED'
+    };
+  }
+
+  const latestTimestamp = Math.max(...parsed.map((event) => event.timestampMs));
+  const latest = parsed.filter((event) => event.timestampMs === latestTimestamp);
+
+  return latest.find((event) => event.state === 'CHANGES_REQUESTED')
+    ?? latest.find((event) => event.state === 'DISMISSED')
+    ?? latest.find((event) => event.state === 'APPROVED')
+    ?? latest[0];
+}
+
+function parseTimestamp(value) {
+  const time = Date.parse(cleanString(value));
+  return Number.isFinite(time) ? time : Number.NaN;
+}
+
+function normalizeIssueComments(issueComments = []) {
+  return (Array.isArray(issueComments) ? issueComments : []).map((comment, index) => {
+    const actor = cleanString(comment.user?.login ?? comment.actor);
+    const createdAt = cleanString(comment.created_at ?? comment.createdAt);
+    const updatedAt = cleanString(comment.updated_at ?? comment.updatedAt);
+    const url = cleanString(comment.html_url ?? comment.url);
+
+    return {
+      actor,
+      body: cleanString(comment.body),
+      createdAt,
+      updatedAt,
+      url,
+      headSha: cleanSha(comment.headSha ?? comment.head_sha),
+      sourceKey: sourceKey('issue_comment', comment, { actor, index, timestamp: updatedAt || createdAt, url }),
+      sourceType: 'issue_comment'
+    };
+  });
 }
 
 function normalizeReviews(reviews = []) {
-  return (Array.isArray(reviews) ? reviews : []).map((review) => ({
-    actor: cleanString(review.user?.login ?? review.actor),
-    body: cleanString(review.body),
-    createdAt: cleanString(review.created_at ?? review.createdAt),
-    updatedAt: cleanString(review.updated_at ?? review.updatedAt),
-    submittedAt: cleanString(review.submitted_at ?? review.submittedAt),
-    reviewState: cleanString(review.state ?? review.reviewState).toUpperCase(),
-    url: cleanString(review.html_url ?? review.url),
-    headSha: cleanSha(review.commit_id ?? review.commitId ?? review.headSha ?? review.head_sha)
-  }));
+  return (Array.isArray(reviews) ? reviews : []).map((review, index) => {
+    const actor = cleanString(review.user?.login ?? review.actor);
+    const createdAt = cleanString(review.created_at ?? review.createdAt);
+    const updatedAt = cleanString(review.updated_at ?? review.updatedAt);
+    const submittedAt = cleanString(review.submitted_at ?? review.submittedAt);
+    const url = cleanString(review.html_url ?? review.url);
+
+    return {
+      actor,
+      body: cleanString(review.body),
+      createdAt,
+      updatedAt,
+      submittedAt,
+      reviewState: cleanString(review.state ?? review.reviewState).toUpperCase(),
+      url,
+      headSha: cleanSha(review.commit_id ?? review.commitId ?? review.headSha ?? review.head_sha),
+      sourceKey: sourceKey('review', review, { actor, index, timestamp: submittedAt || updatedAt || createdAt, url }),
+      sourceType: 'review'
+    };
+  });
 }
 
 function getRequiredCheck({ checkRuns = [], commitStatuses = [], headSha, name, workflowRuns = [] }) {
@@ -694,6 +801,23 @@ function boolOutput(value, defaultValue = 'false') {
 
 function numberToOutput(value) {
   return Number.isInteger(value) && value > 0 ? String(value) : cleanString(value);
+}
+
+function sourceKey(type, value, fallback) {
+  const rawId = value.id ?? value.node_id ?? value.nodeId;
+  const id = typeof rawId === 'number' || typeof rawId === 'bigint'
+    ? String(rawId)
+    : cleanString(rawId);
+  if (id) {
+    return `${type}:${id}`;
+  }
+
+  const url = cleanString(fallback.url);
+  if (url) {
+    return `${type}:${url}`;
+  }
+
+  return `${type}:${cleanString(fallback.actor) || 'unknown'}:${cleanString(fallback.timestamp) || 'unknown'}:${fallback.index}`;
 }
 
 function cleanSha(value) {

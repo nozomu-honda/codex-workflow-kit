@@ -169,7 +169,7 @@ async function listCommitStatuses({ githubApiUrl, githubToken, repository, headS
   return Array.isArray(data?.statuses) ? data.statuses : [];
 }
 
-export async function listReviewThreads({ fetchImpl = fetch, githubApiUrl, githubToken, pullRequestNumber, repository }) {
+export async function listReviewThreads({ fetchImpl = fetch, githubApiUrl, githubToken, maxPages = 100, pullRequestNumber, repository }) {
   const [owner, name] = repository.split('/');
   const query = `query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
     repository(owner:$owner, name:$name) {
@@ -182,13 +182,24 @@ export async function listReviewThreads({ fetchImpl = fetch, githubApiUrl, githu
     }
   }`;
   const threads = [];
+  const seenCursors = new Set();
   let cursor = null;
+  let pageCount = 0;
 
   if (!owner || !name || !Number.isInteger(Number(pullRequestNumber))) {
     throw new Error('github_graphql_invalid_review_thread_input');
   }
 
   do {
+    pageCount += 1;
+    if (pageCount > maxPages) {
+      throw new Error('github_graphql_review_threads_page_limit_exceeded');
+    }
+
+    if (cursor) {
+      seenCursors.add(cursor);
+    }
+
     const data = await githubGraphql({
       fetchImpl,
       githubApiUrl,
@@ -208,7 +219,14 @@ export async function listReviewThreads({ fetchImpl = fetch, githubApiUrl, githu
       throw new Error('github_graphql_missing_review_threads_cursor');
     }
 
-    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    if (connection.pageInfo.hasNextPage) {
+      if (connection.pageInfo.endCursor === cursor || seenCursors.has(connection.pageInfo.endCursor)) {
+        throw new Error('github_graphql_review_threads_cursor_cycle');
+      }
+      cursor = connection.pageInfo.endCursor;
+    } else {
+      cursor = null;
+    }
   } while (cursor);
 
   return threads;
