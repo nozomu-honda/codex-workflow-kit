@@ -187,11 +187,9 @@ export async function collectLiveConsumerSnapshot(options) {
       apiErrors.push({ code: 'pagination_incomplete', path: '/git/trees' });
     }
 
-    const workflowPaths = collectWorkflowPathsFromTree(tree.tree ?? []);
     const pathsToFetch = new Set([
       options.consumer.configPath,
-      ...options.consumer.callerWorkflowPaths,
-      ...workflowPaths
+      ...options.consumer.callerWorkflowPaths
     ]);
 
     for (const path of [...pathsToFetch].sort()) {
@@ -501,15 +499,6 @@ async function fetchRepositoryFile(api, repository, path, ref, tree) {
     }
     return { status: 'read_failed', content: '', sha: '', size: 0 };
   }
-}
-
-function collectWorkflowPathsFromTree(tree) {
-  return tree
-    .filter((entry) => entry.type === 'blob')
-    .map((entry) => entry.path)
-    .filter((path) => path.startsWith('.github/workflows/'))
-    .filter((path) => path.endsWith('.yml') || path.endsWith('.yaml'))
-    .sort();
 }
 
 function sanitizeWorkflowMetadata(workflows) {

@@ -39,6 +39,61 @@ test('valid live consumer snapshot produces sanitized deterministic report', asy
   assertNoUnsafeOutput(`${JSON.stringify(first)}\n${human}`);
 });
 
+test('non-caller workflows are ignored and only inventory callers are audited', async () => {
+  const snapshot = await validSnapshot({
+    extraFiles: {
+      '.github/workflows/ci.yml': {
+        status: 'ok',
+        content: [
+          'name: CI',
+          'on:',
+          '  pull_request:',
+          'permissions:',
+          '  contents: read',
+          'jobs:',
+          '  test:',
+          '    runs-on: ubuntu-latest',
+          '    steps:',
+          '      - run: npm test'
+        ].join('\n'),
+        sha: 'cisha',
+        size: 120
+      }
+    }
+  });
+  const result = auditLiveConsumerInstallation({ consumer: validConsumer(), snapshot });
+
+  assert.equal(result.ok, true, JSON.stringify(result, null, 2));
+  assert.equal(result.ready, true);
+  assert.equal(hasCode(result, 'unknown_workflow'), false);
+  assert.equal(result.workflowsAudited.some((entry) => entry.path === '.github/workflows/ci.yml'), false);
+});
+
+test('caller workflow paths from inventory define the audited workflow set', async () => {
+  const result = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config']
+    }),
+    snapshot: await validSnapshot({
+      extraFiles: {
+        '.github/workflows/dependabot.yml': {
+          status: 'ok',
+          content: 'name: Dependabot\non:\n  workflow_dispatch:\n',
+          sha: 'dependabotsha',
+          size: 40
+        }
+      }
+    })
+  });
+
+  assert.equal(result.ok, true, JSON.stringify(result, null, 2));
+  assert.equal(result.workflowsAudited.length, 1);
+  assert.equal(result.workflowsAudited[0].path, '.github/workflows/validate-config.yml');
+  assert.equal(hasCode(result, 'unknown_workflow'), false);
+});
+
 test('inventory validation rejects unknown keys, URLs, unsafe paths, duplicate paths, bad refs, and unknown capabilities', () => {
   const inventory = {
     schemaVersion: 1,
@@ -195,6 +250,117 @@ test('trigger, permission, and secret-like dangerous workflow patterns fail clos
   }
 });
 
+test('inventory trigger and permission contracts override default workflow specs', async () => {
+  const allowedTrigger = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config'],
+      allowedTriggers: {
+        'config-validation': ['workflow_dispatch', 'workflow_run']
+      }
+    }),
+    snapshot: await validSnapshot({
+      mutateWorkflow: {
+        capability: 'config-validation',
+        mutate: (workflow) => {
+          workflow.on.workflow_run = {};
+        }
+      }
+    })
+  });
+  assert.equal(allowedTrigger.ok, true, JSON.stringify(allowedTrigger, null, 2));
+
+  const disallowedTrigger = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config']
+    }),
+    snapshot: await validSnapshot({
+      mutateWorkflow: {
+        capability: 'config-validation',
+        mutate: (workflow) => {
+          workflow.on.workflow_run = {};
+        }
+      }
+    })
+  });
+  assert.equal(disallowedTrigger.ok, false);
+  assert.equal(hasCode(disallowedTrigger, 'unexpected_trigger'), true);
+
+  const allowedPermission = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config'],
+      allowedPermissions: {
+        'config-validation': {
+          contents: 'read',
+          actions: 'read'
+        }
+      }
+    }),
+    snapshot: await validSnapshot({
+      mutateWorkflow: {
+        capability: 'config-validation',
+        mutate: (workflow) => {
+          workflow.permissions.actions = 'read';
+          workflow.jobs['validate-config'].permissions.actions = 'read';
+        }
+      }
+    })
+  });
+  assert.equal(allowedPermission.ok, true, JSON.stringify(allowedPermission, null, 2));
+});
+
+test('workflow metadata name is checked against inventory expectedWorkflowNames', async () => {
+  const match = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config']
+    }),
+    snapshot: await validSnapshot()
+  });
+  assert.equal(match.ok, true, JSON.stringify(match, null, 2));
+  assert.equal(hasCode(match, 'workflow_metadata_ok'), true);
+
+  const mismatchSnapshot = await validSnapshot();
+  mismatchSnapshot.workflowMetadata = mismatchSnapshot.workflowMetadata.map((entry) => entry.path === '.github/workflows/validate-config.yml'
+    ? { ...entry, name: 'Unexpected workflow name' }
+    : entry);
+  const mismatch = auditLiveConsumerInstallation({
+    consumer: validConsumer({
+      callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+      desiredCapabilitySet: ['config-validation'],
+      expectedWorkflowNames: ['Validate ChatGPT automation config']
+    }),
+    snapshot: mismatchSnapshot
+  });
+  assert.equal(mismatch.ok, false);
+  assert.equal(hasCode(mismatch, 'workflow_name_mismatch'), true);
+});
+
+test('manualReviewRequired controls ready state consistently', async () => {
+  const manual = auditLiveConsumerInstallation({
+    consumer: validConsumer({ manualReviewRequired: true }),
+    snapshot: await validSnapshot()
+  });
+  assert.equal(manual.ok, false);
+  assert.equal(manual.ready, false);
+  assert.equal(manual.manualReviewRequired, true);
+  assert.equal(hasCode(manual, 'manual_review_required'), true);
+
+  const automatic = auditLiveConsumerInstallation({
+    consumer: validConsumer({ manualReviewRequired: false }),
+    snapshot: await validSnapshot()
+  });
+  assert.equal(automatic.ok, true);
+  assert.equal(automatic.ready, true);
+  assert.equal(automatic.manualReviewRequired, false);
+});
+
 test('config and capability mismatches fail closed', async () => {
   const missingConfig = auditLiveConsumerInstallation({
     consumer: validConsumer(),
@@ -287,6 +453,7 @@ function validConsumer(overrides = {}) {
 
 async function validSnapshot(options = {}) {
   const files = {};
+  const workflowMetadata = [];
   const config = options.config ?? await readFile(CONFIG_FILE, 'utf8');
   files['.github/chatgpt-automation.yml'] = { status: 'ok', content: config, sha: 'configsha', size: config.length };
 
@@ -298,7 +465,18 @@ async function validSnapshot(options = {}) {
       options.mutateWorkflow.mutate(workflow);
       source = YAML.stringify(workflow);
     }
+    const workflow = YAML.parse(source);
     files[spec.path] = { status: 'ok', content: source, sha: `${capability}sha`, size: source.length };
+    workflowMetadata.push({
+      id: workflowMetadata.length + 1,
+      name: workflow.name,
+      path: spec.path,
+      state: 'active'
+    });
+  }
+
+  for (const [path, file] of Object.entries(options.extraFiles ?? {})) {
+    files[path] = file;
   }
 
   for (const path of options.missing ?? []) {
@@ -311,6 +489,7 @@ async function validSnapshot(options = {}) {
     defaultBranchStartSha: SHA,
     defaultBranchEndSha: SHA,
     files,
+    workflowMetadata,
     apiErrors: []
   };
 }

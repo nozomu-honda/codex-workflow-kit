@@ -143,21 +143,22 @@ export function auditLiveConsumerInstallation(options = {}) {
     checks.push(...configAudit.checks);
   }
 
-  const workflowPaths = new Set([
-    ...inventory.callerWorkflowPaths,
-    ...Object.keys(snapshot.files).filter((path) => isWorkflowPath(path))
-  ]);
+  const workflowPaths = new Set(inventory.callerWorkflowPaths);
+  const workflowMetadataByPath = new Map(snapshot.workflowMetadata.map((entry) => [entry.path, entry]));
 
   for (const path of [...workflowPaths].sort()) {
     const file = snapshot.files[path];
-    const spec = workflowSpecForPath(path);
+    const spec = workflowContractForPath(path, inventory);
+    const metadata = workflowMetadataByPath.get(path);
     const workflowSummary = {
       path,
       capability: spec?.capability ?? 'unknown',
       status: 'not_found',
       kitRefs: [],
       triggers: [],
-      permissions: {}
+      permissions: {},
+      workflowName: metadata?.name ?? null,
+      workflowState: metadata?.state ?? null
     };
 
     if (!file || file.status === 'missing') {
@@ -181,9 +182,17 @@ export function auditLiveConsumerInstallation(options = {}) {
       expectedKitRef: inventory.expectedKitRef,
       kitRepository
     });
+    const metadataAudit = auditWorkflowMetadata({
+      path,
+      metadata,
+      metadataProvided: snapshot.workflowMetadataProvided,
+      expectedWorkflowNames: inventory.expectedWorkflowNames
+    });
     errors.push(...workflowAudit.errors);
+    errors.push(...metadataAudit.errors);
     warnings.push(...workflowAudit.warnings);
     checks.push(...workflowAudit.checks);
+    checks.push(...metadataAudit.checks);
     for (const ref of workflowAudit.kitRefs) {
       detectedKitRefs.add(ref);
     }
@@ -220,7 +229,12 @@ export function auditLiveConsumerInstallation(options = {}) {
     checks
   });
 
-  const blockers = [...errors].sort(compareIssues);
+  let blockers = [...errors].sort(compareIssues);
+  if (inventory.manualReviewRequired === true) {
+    const manualReviewBlockers = [];
+    addError(manualReviewBlockers, checks, 'manual_review_required', 'Consumer inventory requires manual review.');
+    blockers = [...blockers, ...manualReviewBlockers].sort(compareIssues);
+  }
   const manualReviewRequired = inventory.manualReviewRequired === true || blockers.length > 0;
   const ready = blockers.length === 0;
 
@@ -480,6 +494,46 @@ function auditWorkflowFile(options) {
     hasWritePermission: rootPermissionAudit.hasWritePermission || jobAudit.hasWritePermission,
     missingPermissions: rootPermissionAudit.missingPermissions || jobAudit.missingPermissions
   };
+}
+
+function auditWorkflowMetadata(options) {
+  const errors = [];
+  const checks = [];
+
+  if (!options.metadataProvided) {
+    return { errors, checks };
+  }
+
+  if (!options.metadata) {
+    addError(errors, checks, 'workflow_metadata_missing', 'Actions workflow metadata is missing for caller workflow.', {
+      file: options.path
+    });
+    return { errors, checks };
+  }
+
+  if (options.metadata.state && options.metadata.state !== 'active') {
+    addError(errors, checks, 'workflow_metadata_inactive', 'Actions workflow metadata is not active.', {
+      file: options.path,
+      value: options.metadata.state
+    });
+  }
+
+  if (
+    options.expectedWorkflowNames.length > 0
+    && !options.expectedWorkflowNames.includes(options.metadata.name)
+  ) {
+    addError(errors, checks, 'workflow_name_mismatch', 'Actions workflow name does not match inventory contract.', {
+      file: options.path
+    });
+  }
+
+  if (errors.length === 0) {
+    addCheck(checks, 'workflow_metadata_ok', 'Actions workflow metadata matches inventory contract.', 'pass', {
+      file: options.path
+    });
+  }
+
+  return { errors, checks };
 }
 
 function auditTriggers(onValue, spec, file) {
@@ -1009,6 +1063,56 @@ function validateInventory(inventory, errors, warnings, checks, prefix = '') {
       value: duplicate
     });
   }
+
+  for (const duplicate of findDuplicates(inventory.expectedWorkflowNames)) {
+    addError(errors, checks, 'workflow_name_duplicate', 'expectedWorkflowNames contains duplicate workflow name.', {
+      path: joinPath(prefix, 'expectedWorkflowNames'),
+      value: duplicate
+    });
+  }
+
+  for (const [capability, triggers] of Object.entries(inventory.allowedTriggers)) {
+    if (!RELEASE_CAPABILITIES.includes(capability)) {
+      addError(errors, checks, 'capability_unknown', 'allowedTriggers contains an unknown capability.', {
+        path: joinPath(prefix, `allowedTriggers.${capability}`)
+      });
+      continue;
+    }
+    if (!Array.isArray(triggers) || triggers.length === 0 || triggers.some((trigger) => typeof trigger !== 'string' || trigger.trim() === '')) {
+      addError(errors, checks, 'allowed_triggers_invalid', 'allowedTriggers entries must be non-empty string arrays.', {
+        path: joinPath(prefix, `allowedTriggers.${capability}`)
+      });
+      continue;
+    }
+    for (const duplicate of findDuplicates(triggers.map(String))) {
+      addError(errors, checks, 'allowed_triggers_duplicate', 'allowedTriggers contains duplicate trigger.', {
+        path: joinPath(prefix, `allowedTriggers.${capability}`),
+        value: duplicate
+      });
+    }
+  }
+
+  for (const [capability, permissions] of Object.entries(inventory.allowedPermissions)) {
+    if (!RELEASE_CAPABILITIES.includes(capability)) {
+      addError(errors, checks, 'capability_unknown', 'allowedPermissions contains an unknown capability.', {
+        path: joinPath(prefix, `allowedPermissions.${capability}`)
+      });
+      continue;
+    }
+    if (!isPlainObject(permissions) || Object.keys(permissions).length === 0) {
+      addError(errors, checks, 'allowed_permissions_invalid', 'allowedPermissions entries must be non-empty permission objects.', {
+        path: joinPath(prefix, `allowedPermissions.${capability}`)
+      });
+      continue;
+    }
+    for (const [name, value] of Object.entries(permissions)) {
+      if (value !== 'read') {
+        addError(errors, checks, 'allowed_permissions_invalid', 'allowedPermissions only permits read values.', {
+          path: joinPath(prefix, `allowedPermissions.${capability}.${name}`)
+        });
+      }
+    }
+  }
 }
 
 function validateSnapshot(snapshot, inventory, errors, warnings, checks) {
@@ -1075,11 +1179,37 @@ function normalizeConsumerInventoryItem(value = {}) {
         ? raw.currentKitRef.trim()
         : '',
     desiredCapabilitySet,
-    expectedWorkflowNames: Array.isArray(raw.expectedWorkflowNames) ? raw.expectedWorkflowNames.map(String) : [],
-    allowedTriggers: isPlainObject(raw.allowedTriggers) ? raw.allowedTriggers : {},
-    allowedPermissions: isPlainObject(raw.allowedPermissions) ? raw.allowedPermissions : {},
+    expectedWorkflowNames: Array.isArray(raw.expectedWorkflowNames)
+      ? raw.expectedWorkflowNames.map((value) => String(value).trim()).filter(Boolean)
+      : [],
+    allowedTriggers: normalizeAllowedTriggers(raw.allowedTriggers),
+    allowedPermissions: normalizeAllowedPermissions(raw.allowedPermissions),
     manualReviewRequired: raw.manualReviewRequired === true
   };
+}
+
+function normalizeAllowedTriggers(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const result = {};
+  for (const [capability, triggers] of Object.entries(value)) {
+    result[capability] = Array.isArray(triggers)
+      ? triggers.map((trigger) => String(trigger).trim()).filter(Boolean)
+      : triggers;
+  }
+  return result;
+}
+
+function normalizeAllowedPermissions(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const result = {};
+  for (const [capability, permissions] of Object.entries(value)) {
+    result[capability] = isPlainObject(permissions) ? stableObject(permissions) : permissions;
+  }
+  return result;
 }
 
 function normalizeSnapshot(value = {}) {
@@ -1088,14 +1218,30 @@ function normalizeSnapshot(value = {}) {
   for (const [path, file] of Object.entries(rawFiles)) {
     files[normalizeRepositoryPath(path)] = normalizeFile(file);
   }
+  const workflowMetadataProvided = Array.isArray(value.workflowMetadata);
   return {
     repository: normalizeRepositoryName(value.repository),
     defaultBranch: typeof value.defaultBranch === 'string' ? value.defaultBranch.trim() : '',
     defaultBranchStartSha: typeof value.defaultBranchStartSha === 'string' ? value.defaultBranchStartSha.trim() : '',
     defaultBranchEndSha: typeof value.defaultBranchEndSha === 'string' ? value.defaultBranchEndSha.trim() : '',
     files,
+    workflowMetadata: workflowMetadataProvided
+      ? value.workflowMetadata.map(normalizeWorkflowMetadata).filter((entry) => entry.path)
+      : [],
+    workflowMetadataProvided,
     apiErrors: Array.isArray(value.apiErrors) ? value.apiErrors : [],
     paginationIncomplete: value.paginationIncomplete === true
+  };
+}
+
+function normalizeWorkflowMetadata(value) {
+  if (!isPlainObject(value)) {
+    return { path: '', name: '', state: '' };
+  }
+  return {
+    path: normalizeRepositoryPath(value.path),
+    name: typeof value.name === 'string' ? value.name.trim() : '',
+    state: typeof value.state === 'string' ? value.state.trim() : ''
   };
 }
 
@@ -1113,6 +1259,28 @@ function normalizeFile(file) {
 
 function workflowSpecForPath(path) {
   return Object.values(LIVE_CONSUMER_WORKFLOW_SPECS).find((spec) => spec.path === path);
+}
+
+function workflowContractForPath(path, inventory) {
+  const spec = workflowSpecForPath(path);
+  if (!spec) {
+    return null;
+  }
+  return {
+    ...spec,
+    allowedTriggers: inventoryTriggerContract(inventory, spec),
+    allowedPermissions: inventoryPermissionContract(inventory, spec)
+  };
+}
+
+function inventoryTriggerContract(inventory, spec) {
+  const value = inventory.allowedTriggers[spec.capability];
+  return Array.isArray(value) ? stableArray(value) : spec.allowedTriggers;
+}
+
+function inventoryPermissionContract(inventory, spec) {
+  const value = inventory.allowedPermissions[spec.capability];
+  return isPlainObject(value) ? stableObject(value) : spec.allowedPermissions;
 }
 
 function configCapabilityAllowed(name, desired) {

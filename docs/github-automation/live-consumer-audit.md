@@ -64,8 +64,10 @@ live consumer audit inventoryは `schemas/live-consumer-audit-inventory.schema.j
 - `callerWorkflowPaths`: 監査対象caller workflowのrepository相対path。
 - `expectedKitRef`: レビュー済み40桁小文字commit SHA。
 - `desiredCapabilitySet`: 期待するread-only / plan-only capability。
-- `expectedWorkflowNames`: 任意のworkflow名確認用metadata。
-- `manualReviewRequired`: 人間確認を強制したいconsumer用の印。
+- `expectedWorkflowNames`: Actions workflow metadataで許可するworkflow名。
+- `allowedTriggers`: capabilityごとの許可trigger。未指定時は共通default specを使います。
+- `allowedPermissions`: capabilityごとの許可read permission。未指定時は共通default specを使います。
+- `manualReviewRequired`: 人間確認を強制したいconsumer用の印。この値が `true` の場合、blockerがなくても `ready: false` になります。
 
 unknown key、path traversal、重複path、URL形式repository、mutable ref、short SHA、version tag、placeholderはfail closedです。
 
@@ -89,9 +91,15 @@ BLOCKする例:
 
 external Actionも原則40桁SHA固定です。local `./` 参照は許可します。
 
+### Caller workflow scope
+
+厳格監査の対象は `callerWorkflowPaths` に列挙されたcaller workflowだけです。
+
+導入先にはCI、Dependabot、Vercel、Release readinessなど通常workflowが共存できます。これらはChatGPT automation callerではないため、`callerWorkflowPaths` に含めない限り `unknown_workflow` blockerにはしません。
+
 ### Trigger
 
-capabilityごとに許可triggerを固定します。`pull_request_target` は常にBLOCKです。
+capabilityごとの許可triggerはinventoryの `allowedTriggers` を優先し、未指定時だけ共通default specを使います。`pull_request_target` は常にBLOCKです。
 
 `workflow_dispatch` はread-only用途だけ許可します。`schedule` や想定外triggerは、実行頻度や意図を確認できないためBLOCKします。
 
@@ -113,7 +121,13 @@ BLOCKする例:
 - `id-token: write`
 - job-level overrideで権限が広がる構成
 
-read-only plannerは、必要なread permissionだけを明示する必要があります。
+read-only plannerは、必要なread permissionだけを明示する必要があります。許可permissionはinventoryの `allowedPermissions` を優先し、未指定時だけ共通default specを使います。
+
+### Actions workflow metadata
+
+Actions workflow metadataを取得できる場合、caller workflow pathごとにmetadataが存在し、`state: active` であることを確認します。
+
+inventoryの `expectedWorkflowNames` が指定されている場合、caller workflowのmetadata nameはその一覧に含まれている必要があります。metadata取得に失敗した場合はAPI read errorとしてfail closedです。
 
 ### Secret / dangerous structure
 
@@ -189,6 +203,10 @@ JSON reportはdeterministicで、絶対path、token、Cookie、Authorization、S
 - `config_schema_invalid`
 - `capability_caller_mismatch`
 - `unknown_workflow`
+- `workflow_metadata_missing`
+- `workflow_metadata_inactive`
+- `workflow_name_mismatch`
+- `manual_review_required`
 - `untrusted_payload_in_shell`
 - `api_read_failed`
 - `pagination_incomplete`

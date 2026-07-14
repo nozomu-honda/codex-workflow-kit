@@ -55,6 +55,7 @@ export async function runAuditConsumerFixtureCli(argv = process.argv.slice(2), i
 
 async function createFixtureSnapshot(consumer) {
   const files = {};
+  const workflowMetadata = [];
   const config = await readFile(CONFIG_TEMPLATE, 'utf8');
   files[consumer.configPath] = {
     status: 'ok',
@@ -71,12 +72,19 @@ async function createFixtureSnapshot(consumer) {
     }
     const source = (await readFile(templatePath, 'utf8'))
       .replaceAll('REPLACE_WITH_40_CHAR_COMMIT_SHA', consumer.expectedKitRef);
+    const workflow = YAML.parse(source);
     files[spec.path] = {
       status: 'ok',
       content: source,
       sha: `${capability}-fixture-sha`,
       size: source.length
     };
+    workflowMetadata.push({
+      id: workflowMetadata.length + 1,
+      name: workflow.name,
+      path: spec.path,
+      state: 'active'
+    });
   }
 
   return {
@@ -85,6 +93,7 @@ async function createFixtureSnapshot(consumer) {
     defaultBranchStartSha: consumer.expectedKitRef,
     defaultBranchEndSha: consumer.expectedKitRef,
     files,
+    workflowMetadata,
     apiErrors: []
   };
 }
