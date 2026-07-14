@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/codex-workflow-kit/live-consumer-audit-inventory.schema.json",
+  "title": "Codex Workflow Kit live consumer audit inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "consumers"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "consumers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "defaultBranch",
+          "configPath",
+          "callerWorkflowPaths",
+          "expectedKitRef",
+          "desiredCapabilitySet"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+          },
+          "defaultBranch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "configPath": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+            }
+          },
+          "callerWorkflowPaths": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "not": {
+                "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+              }
+            }
+          },
+          "expectedKitRef": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "desiredCapabilitySet": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "config-validation",
+                "event-normalization",
+                "review-routing-plan",
+                "auto-merge-plan",
+                "main-follow-up-plan"
+              ]
+            }
+          },
+          "expectedWorkflowNames": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "allowedTriggers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "allowedPermissions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "enum": ["read"]
+              }
+            }
+          },
+          "manualReviewRequired": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

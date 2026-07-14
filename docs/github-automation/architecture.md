@@ -78,9 +78,23 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - required checkやCheck Runを作成しない
 - Secret、token、Authorization、API response全文、不要なactor内部IDをreportへ出さない
 - Branch protectionとRulesetをeffective policyとして合成する
+- Branch protection / Ruleset / default branchのTOCTOUを監査終了時の再取得で検知する
 - API failure、pagination未完了、TOCTOU検知、状態不明はfail closedまたはmanual reviewにする
 
 詳細は [protection-audit.md](protection-audit.md) を参照します。
+
+## Live consumer audit
+
+`packages/chatgpt-automation-core/src/consumer-audit/` と `scripts/audit-live-consumer.mjs` は、実consumer repositoryを変更せずに導入状態をread-onlyで監査するlive consumer audit layerです。
+
+- GitHub REST APIはGETだけを使い、workflow dispatch、PR/Issue/comment/label操作、branch作成、consumer pushは行わない
+- default branch SHAを監査開始時と終了時に確認し、監査中に変化した場合はfail closedにする
+- config、caller workflow、workflow metadataをdefault branch上の固定snapshotとして読み取る
+- fixed SHA、mixed ref、mutable ref、placeholder、trigger、permission、`secrets: inherit`、Secret-like構成、capability整合を判定する
+- reportはdeterministicかつsanitizedで、token、Cookie、Authorization、Secret値、API response全文、絶対pathを含めない
+- 実consumerで問題を検出しても、このリポジトリ側からconsumerを修正しない
+
+offline consumer E2Eはテンプレートの自己検証です。live consumer auditは実consumerのdefault branch上に置かれたcaller workflowが同じ安全条件を満たしているかを確認します。詳細は [live-consumer-audit.md](live-consumer-audit.md) を参照します。
 
 ## Reusable workflow
 

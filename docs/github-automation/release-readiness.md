@@ -151,6 +151,8 @@ Release readiness confirms fixed-SHA rollout inputs, but it does not inspect liv
 
 The protection audit checks required checks, required reviews, bypass actors, force push / deletion rules, merge settings, and TOCTOU changes. It still does not modify consumer repositories or create Issues / PRs.
 
+Live consumer audit is the read-only follow-up check for real consumers. It verifies that a consumer repository actually uses reviewed 40-character kit refs, matching capabilities, read-only permissions, safe triggers, and no Secret-bearing workflow structure. It does not update the consumer and is documented in [live-consumer-audit.md](live-consumer-audit.md).
+
 ## Release readiness workflow
 
 `.github/workflows/release-readiness.yml` is read-only.

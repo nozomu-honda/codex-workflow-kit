@@ -28,6 +28,8 @@ npm run test:auto-merge
 npm run test:main-follow-up
 npm run test:protection-audit
 npm run test:e2e:consumer
+npm run test:consumer-audit
+npm run audit:consumer-fixture
 npm run lint:e2e
 npm run ci
 git diff --check
@@ -108,6 +110,38 @@ GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
 ```bash
 npm run audit:consumer -- --root ../consumer-repo --expected-ref 0123456789abcdef0123456789abcdef01234567
 ```
+
+## Live consumer audit validation
+
+`scripts/audit-live-consumer.mjs` は、実consumer repositoryを変更せず、GitHub REST APIのGETだけで導入状態を監査します。詳細は [Live consumer audit](live-consumer-audit.md) を参照します。
+
+確認対象:
+
+- inventory validationがURL repository、path traversal、重複path、unknown key、mutable ref、short SHA、version tag、placeholderをfail closedにする
+- fixed SHA、mixed refs、trigger、permission、`pull_request_target`、`secrets: inherit`、Secret-like構成を検出する
+- config / capability / caller workflow不一致を検出する
+- API read失敗、pagination不完了、branch SHA変化、binary / submodule / symlink / oversized fileをfail closedにする
+- JSON reportがdeterministicで、token、Cookie、Authorization、Secret値、API response全文、絶対pathを含まない
+- GitHub API write、workflow dispatch、consumer mutationが0回である
+
+Live consumer audit専用確認:
+
+```bash
+npm run test:consumer-audit
+npm run lint:consumer-audit
+npm run audit:consumer-fixture
+```
+
+実consumerを確認する場合:
+
+```bash
+node scripts/audit-live-consumer.mjs \
+  --repository owner/example-repo \
+  --expected-kit-sha 0123456789abcdef0123456789abcdef01234567 \
+  --json
+```
+
+実consumer確認でblockerが出た場合、このCLIは修正PRやIssueを作りません。sanitized reportをもとに、consumer側の後続対応を別Issue / 別PRで扱います。
 
 ## Shared Action validation
 

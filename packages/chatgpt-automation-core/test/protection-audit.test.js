@@ -352,6 +352,94 @@ test('API failures, pagination failure, and TOCTOU changes fail closed', () => {
   assert.equal(resultCodes(changed).includes('protection_changed_during_audit'), true);
 });
 
+test('branch protection fingerprint detects TOCTOU changes and keeps reports sanitized', () => {
+  const cases = [
+    {
+      name: 'required status checks changed',
+      endBranchProtection: safeBranchProtection({
+        required_status_checks: {
+          contexts: ['CI'],
+          strict: true
+        }
+      })
+    },
+    {
+      name: 'required reviews changed',
+      endBranchProtection: safeBranchProtection({
+        required_pull_request_reviews: {
+          dismiss_stale_reviews: true,
+          require_code_owner_reviews: false,
+          require_last_push_approval: true,
+          required_approving_review_count: 2
+        }
+      })
+    },
+    {
+      name: 'admin enforcement changed',
+      endBranchProtection: safeBranchProtection({
+        enforce_admins: { enabled: false }
+      })
+    },
+    {
+      name: 'force push allowance changed',
+      endBranchProtection: safeBranchProtection({
+        allow_force_pushes: { enabled: true }
+      })
+    },
+    {
+      name: 'branch deletion allowance changed',
+      endBranchProtection: safeBranchProtection({
+        allow_deletions: { enabled: true }
+      })
+    },
+    {
+      name: 'conversation resolution changed',
+      endBranchProtection: safeBranchProtection({
+        required_conversation_resolution: { enabled: false }
+      })
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditRepositoryProtection(safeInput({
+      endBranchProtection: entry.endBranchProtection
+    }));
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.ready, false, entry.name);
+    assert.equal(resultCodes(result).includes('protection_changed_during_audit'), true, entry.name);
+    assert.equal(serialized.includes('Authorization'), false, entry.name);
+    assert.equal(serialized.includes('Bearer'), false, entry.name);
+    assert.equal(serialized.includes('actor_id'), false, entry.name);
+    assert.equal(serialized.includes('secret-token-value'), false, entry.name);
+  }
+});
+
+test('branch protection fingerprint detects presence changes', () => {
+  const missingToPresent = auditRepositoryProtection(safeInput({
+    branchProtection: null,
+    endBranchProtection: safeBranchProtection()
+  }));
+  const presentToMissing = auditRepositoryProtection(safeInput({
+    endBranchProtection: null
+  }));
+
+  assert.equal(missingToPresent.ready, false);
+  assert.equal(resultCodes(missingToPresent).includes('protection_changed_during_audit'), true);
+  assert.equal(resultCodes(missingToPresent).includes('branch_protection_missing'), true);
+  assert.equal(presentToMissing.ready, false);
+  assert.equal(resultCodes(presentToMissing).includes('protection_changed_during_audit'), true);
+});
+
+test('unchanged branch protection fingerprint allows audit to continue', () => {
+  const result = auditRepositoryProtection(safeInput({
+    endBranchProtection: safeBranchProtection()
+  }));
+
+  assert.equal(result.ready, true, JSON.stringify(result, null, 2));
+  assert.equal(resultCodes(result).includes('protection_changed_during_audit'), false);
+});
+
 test('policy schema validates the example policy', async () => {
   const schema = JSON.parse(await readFile(new URL('../../../schemas/protection-policy.schema.json', import.meta.url), 'utf8'));
   const policy = YAML.parse(await readFile(new URL('../../../release/protection-policy.example.yml', import.meta.url), 'utf8'));

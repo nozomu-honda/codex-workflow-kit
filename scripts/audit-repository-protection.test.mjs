@@ -48,7 +48,26 @@ test('fetchRepositoryProtectionAudit reads GitHub settings with GET only and ret
   assert.equal(result.ready, true, JSON.stringify(result, null, 2));
   assert.equal(requests.length > 0, true);
   assert.equal(requests.every((request) => request.method === 'GET'), true);
+  assert.equal(requests.filter((request) => request.path === '/repos/owner/example-repo/branches/master/protection').length, 2);
   assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
+});
+
+test('fetchRepositoryProtectionAudit refetches branch protection and blocks TOCTOU changes', async () => {
+  const requests = [];
+  const { result } = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch(requests, { changedBranchProtectionOnSecondRead: true }),
+    githubToken: 'secret-token-value',
+    policy: policy(),
+    repository: 'owner/example-repo'
+  });
+  const serialized = JSON.stringify(result);
+
+  assert.equal(result.ready, false);
+  assert.equal(result.reasonCodes.includes('protection_changed_during_audit'), true);
+  assert.equal(requests.filter((request) => request.path === '/repos/owner/example-repo/branches/master/protection').length, 2);
+  assert.equal(serialized.includes('secret-token-value'), false);
+  assert.equal(serialized.includes('Authorization'), false);
+  assert.equal(serialized.includes('Cookie'), false);
 });
 
 test('CLI prints stable JSON and does not expose token values', async () => {
@@ -170,6 +189,7 @@ function policy() {
 }
 
 function fakeFetch(requests, options = {}) {
+  let branchProtectionReads = 0;
   return async (url, init = {}) => {
     const parsed = new URL(url);
     requests.push({
@@ -201,6 +221,10 @@ function fakeFetch(requests, options = {}) {
       return response({ commit: { sha: SHA } });
     }
     if (path === '/repos/owner/example-repo/branches/master/protection') {
+      branchProtectionReads += 1;
+      if (options.changedBranchProtectionOnSecondRead && branchProtectionReads === 2) {
+        return response(branchProtection({ allow_force_pushes: { enabled: true } }));
+      }
       return response(branchProtection());
     }
     if (path === '/repos/owner/example-repo/rulesets?targets=branch&per_page=100') {
@@ -239,7 +263,7 @@ function repository() {
   };
 }
 
-function branchProtection() {
+function branchProtection(overrides = {}) {
   return {
     allow_deletions: { enabled: false },
     allow_force_pushes: { enabled: false },
@@ -253,7 +277,8 @@ function branchProtection() {
     required_status_checks: {
       contexts: ['CI', 'Review evidence gate'],
       strict: true
-    }
+    },
+    ...overrides
   };
 }
 

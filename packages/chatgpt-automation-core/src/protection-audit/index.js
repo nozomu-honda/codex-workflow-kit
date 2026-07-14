@@ -628,6 +628,14 @@ function addTocTouFailures(blockers, input) {
     addBlocker(blockers, 'protection_changed_during_audit', 'Repository protection settings changed during the audit.', 'tocTou');
   }
 
+  if (Object.prototype.hasOwnProperty.call(input, 'endBranchProtection')) {
+    const startFingerprint = branchProtectionFingerprint(input.branchProtection);
+    const endFingerprint = branchProtectionFingerprint(input.endBranchProtection);
+    if (startFingerprint !== endFingerprint) {
+      addBlocker(blockers, 'protection_changed_during_audit', 'Branch protection settings changed during the audit.', 'tocTou.branchProtection');
+    }
+  }
+
   const start = input.startSnapshot;
   const end = input.endSnapshot;
   if (!isPlainObject(start) || !isPlainObject(end)) {
@@ -637,6 +645,36 @@ function addTocTouFailures(blockers, input) {
   if (cleanString(start.defaultBranch) !== cleanString(end.defaultBranch) || cleanSha(start.defaultBranchSha) !== cleanSha(end.defaultBranchSha)) {
     addBlocker(blockers, 'protection_changed_during_audit', 'Default branch or default branch SHA changed during the audit.', 'tocTou.defaultBranch');
   }
+}
+
+function branchProtectionFingerprint(value) {
+  const normalized = normalizeBranchProtection(value);
+  const reviews = normalized.requiredReviews ?? {};
+
+  return JSON.stringify({
+    deletionBlocked: normalized.deletionBlocked,
+    enforceAdmins: normalized.enforceAdmins,
+    forcePushBlocked: normalized.forcePushBlocked,
+    present: normalized.present,
+    requireConversationResolution: normalized.requireConversationResolution,
+    requireLinearHistory: normalized.requireLinearHistory,
+    requireSignedCommits: normalized.requireSignedCommits,
+    requiredChecks: normalized.requiredChecks
+      .map((check) => ({
+        appId: check.appId === undefined || check.appId === null ? null : String(check.appId),
+        name: check.name
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name) || String(a.appId ?? '').localeCompare(String(b.appId ?? ''))),
+    requiredReviews: normalized.requiredReviews
+      ? {
+          dismissStaleApprovals: reviews.dismiss_stale_reviews === true || reviews.dismissStaleReviews === true,
+          minimumApprovals: Number(reviews.required_approving_review_count ?? reviews.requiredApprovingReviewCount ?? 0) || 0,
+          requireCodeOwnerReview: reviews.require_code_owner_reviews === true || reviews.requireCodeOwnerReviews === true,
+          requireLastPushApproval: reviews.require_last_push_approval === true || reviews.requireLastPushApproval === true
+        }
+      : null,
+    strictStatusChecks: normalized.strictStatusChecks
+  });
 }
 
 function addBlocker(blockers, code, message, path = '') {

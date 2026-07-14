@@ -118,6 +118,8 @@ export async function fetchRepositoryProtectionAudit({
   let repositoryMetadata = { full_name: normalizedRepository };
   let branch = {};
   let branchProtection = null;
+  let endBranchProtection = null;
+  let endBranchProtectionRead = false;
   let rulesets = [];
   let rulesetDetails = [];
   let endSnapshot = {};
@@ -164,6 +166,10 @@ export async function fetchRepositoryProtectionAudit({
     try {
       const finalRepository = await githubGet(client, `/repos/${normalizedRepository}`);
       const finalBranch = await githubGet(client, `/repos/${normalizedRepository}/branches/${encodeURIComponent(finalRepository.default_branch)}`);
+      endBranchProtection = await githubGet(client, `/repos/${normalizedRepository}/branches/${encodeURIComponent(finalRepository.default_branch)}/protection`, {
+        allowNotFound: true
+      });
+      endBranchProtectionRead = true;
       const finalRulesets = await githubList(client, `/repos/${normalizedRepository}/rulesets?targets=branch&per_page=100`);
       endSnapshot = {
         defaultBranch: finalRepository.default_branch,
@@ -189,7 +195,8 @@ export async function fetchRepositoryProtectionAudit({
     rulesetDetails,
     rulesets,
     rulesetsChangedDuringAudit,
-    startSnapshot
+    startSnapshot,
+    ...(endBranchProtectionRead ? { endBranchProtection } : {})
   });
 
   return { result };
