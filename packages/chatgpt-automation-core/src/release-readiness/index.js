@@ -44,6 +44,12 @@ const REQUIRED_MANIFEST_FIELDS = Object.freeze([
 const OPTIONAL_MANIFEST_FIELDS = Object.freeze([
   'unimplementedWriteCapabilities'
 ]);
+const MANIFEST_FILE_LIST_FIELDS = Object.freeze([
+  'actionArtifacts',
+  'reusableWorkflows',
+  'callerTemplates',
+  'schemas'
+]);
 
 export function isValidSemVer(value) {
   return typeof value === 'string' && SEMVER_PATTERN.test(value);
@@ -359,6 +365,107 @@ export function checkChangelog(options = {}) {
   };
 }
 
+export function auditReleaseGitState(options = {}) {
+  const manifest = options.manifest;
+  const gitState = options.gitState;
+  const errors = [];
+  const warnings = [];
+  const checks = [];
+
+  if (!isPlainObject(gitState) || gitState.ok !== true) {
+    addError(errors, checks, 'RELEASE_GIT_STATE_UNAVAILABLE', 'Release git state could not be verified.');
+    return { ok: false, errors, warnings, checks };
+  }
+
+  if (!isValidReleaseSha(gitState.headSha)) {
+    addError(errors, checks, 'RELEASE_GIT_HEAD_INVALID', 'Checked-out HEAD must resolve to a 40-character lowercase commit SHA.');
+  }
+
+  const releaseSha = String(manifest?.releaseCommitSha ?? '');
+  const previousSha = String(manifest?.previousReleaseCommitSha ?? '');
+  const rollbackSha = String(manifest?.rollbackCommitSha ?? '');
+
+  validateCommitInfo(gitState, releaseSha, 'releaseCommitSha', 'RELEASE_COMMIT', errors, checks);
+  validateCommitInfo(gitState, previousSha, 'previousReleaseCommitSha', 'RELEASE_PREVIOUS_COMMIT', errors, checks);
+  validateCommitInfo(gitState, rollbackSha, 'rollbackCommitSha', 'RELEASE_ROLLBACK_COMMIT', errors, checks);
+
+  if (isValidReleaseSha(releaseSha) && isValidReleaseSha(gitState.headSha) && releaseSha !== gitState.headSha) {
+    addError(errors, checks, 'RELEASE_COMMIT_HEAD_MISMATCH', 'releaseCommitSha must match the checked-out HEAD commit.', {
+      path: 'releaseCommitSha'
+    });
+  }
+
+  if (isValidReleaseSha(previousSha) && isValidReleaseSha(releaseSha)) {
+    if (previousSha === releaseSha) {
+      addError(errors, checks, 'RELEASE_PREVIOUS_EQUALS_RELEASE', 'previousReleaseCommitSha must not equal releaseCommitSha.', {
+        path: 'previousReleaseCommitSha'
+      });
+    } else {
+      validateAncestor(gitState, previousSha, releaseSha, 'previousReleaseCommitSha', 'RELEASE_PREVIOUS', errors, checks);
+    }
+  }
+
+  if (isValidReleaseSha(rollbackSha) && isValidReleaseSha(releaseSha)) {
+    validateAncestor(gitState, rollbackSha, releaseSha, 'rollbackCommitSha', 'RELEASE_ROLLBACK', errors, checks);
+  }
+
+  if (errors.length === 0) {
+    addCheck(checks, 'RELEASE_GIT_STATE_VALID', 'Release manifest SHAs match checked-out git state.', 'pass');
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    checks
+  };
+}
+
+export function auditReleaseManifestInventory(options = {}) {
+  const manifest = options.manifest;
+  const inventory = options.repositoryInventory;
+  const errors = [];
+  const warnings = [];
+  const checks = [];
+
+  if (!isPlainObject(inventory)) {
+    addError(errors, checks, 'RELEASE_REPOSITORY_INVENTORY_MISSING', 'Repository inventory was not provided.');
+    return { ok: false, errors, warnings, checks };
+  }
+
+  const existingFiles = new Set((inventory.existingFiles ?? []).map(normalizeRepositoryPath));
+
+  for (const field of MANIFEST_FILE_LIST_FIELDS) {
+    compareManifestInventoryList({
+      field,
+      manifestList: manifest?.[field],
+      inventoryList: inventory[field],
+      existingFiles,
+      errors,
+      checks
+    });
+  }
+
+  compareCapabilityInventory({
+    manifestCapabilities: manifest?.capabilities,
+    implementedCapabilities: inventory.capabilities ?? RELEASE_CAPABILITIES,
+    changedCapabilities: manifest?.changedCapabilities,
+    errors,
+    checks
+  });
+
+  if (errors.length === 0) {
+    addCheck(checks, 'RELEASE_MANIFEST_INVENTORY_VALID', 'Release manifest matches repository inventory.', 'pass');
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    checks
+  };
+}
+
 export function createConsumerUpdatePlan(options = {}) {
   const manifest = options.manifest;
   const inventory = options.inventory;
@@ -422,6 +529,11 @@ export function createConsumerUpdatePlan(options = {}) {
 export function createReleaseReadinessPlan(options = {}) {
   const manifest = options.manifest ?? {};
   const manifestAudit = validateReleaseManifestObject(manifest);
+  const gitAudit = auditReleaseGitState({ manifest, gitState: options.gitState });
+  const inventoryAudit = auditReleaseManifestInventory({
+    manifest,
+    repositoryInventory: options.repositoryInventory
+  });
   const fixedRefAudit = auditFixedRefs({ files: options.refAuditFiles ?? [] });
   const changelogAudit = checkChangelog({
     source: options.changelogSource ?? '',
@@ -435,6 +547,8 @@ export function createReleaseReadinessPlan(options = {}) {
   const sourceDist = normalizeSourceDistStatus(options.sourceDistStatus);
   const blockers = [
     ...manifestAudit.errors,
+    ...gitAudit.errors,
+    ...inventoryAudit.errors,
     ...fixedRefAudit.errors,
     ...changelogAudit.errors,
     ...consumerPlan.errors,
@@ -442,6 +556,8 @@ export function createReleaseReadinessPlan(options = {}) {
   ];
   const warnings = [
     ...manifestAudit.warnings,
+    ...gitAudit.warnings,
+    ...inventoryAudit.warnings,
     ...fixedRefAudit.warnings,
     ...changelogAudit.warnings,
     ...consumerPlan.warnings,
@@ -449,6 +565,8 @@ export function createReleaseReadinessPlan(options = {}) {
   ];
   const checks = [
     ...manifestAudit.checks,
+    ...gitAudit.checks,
+    ...inventoryAudit.checks,
     ...fixedRefAudit.checks,
     ...changelogAudit.checks,
     ...consumerPlan.checks,
@@ -508,6 +626,131 @@ function validateShaField(value, path, errors, checks) {
         ? 'RELEASE_SHA_SHORT'
         : 'RELEASE_SHA_INVALID';
     addError(errors, checks, code, `${path} must be a 40-character lowercase commit SHA.`, { path });
+  }
+}
+
+function validateCommitInfo(gitState, sha, path, codePrefix, errors, checks) {
+  if (!isValidReleaseSha(sha)) {
+    return;
+  }
+
+  const commit = gitState.commits?.[sha];
+  if (!isPlainObject(commit) || commit.exists !== true) {
+    addError(errors, checks, `${codePrefix}_NOT_FOUND`, `${path} must exist in the checked-out repository.`, {
+      path
+    });
+    return;
+  }
+
+  if (commit.type !== 'commit') {
+    addError(errors, checks, `${codePrefix}_NOT_COMMIT`, `${path} must resolve to a commit object.`, {
+      path
+    });
+  }
+}
+
+function validateAncestor(gitState, ancestorSha, releaseSha, path, codePrefix, errors, checks) {
+  const key = ancestorKey(ancestorSha, releaseSha);
+  const result = gitState.ancestors?.[key];
+
+  if (!isPlainObject(result) || result.ok !== true) {
+    addError(errors, checks, `${codePrefix}_ANCESTOR_CHECK_FAILED`, `${path} ancestor check failed.`, {
+      path
+    });
+    return;
+  }
+
+  if (result.isAncestor !== true) {
+    addError(errors, checks, `${codePrefix}_NOT_ANCESTOR`, `${path} must be an ancestor of releaseCommitSha.`, {
+      path
+    });
+  }
+}
+
+function compareManifestInventoryList(options) {
+  const field = options.field;
+  const manifestList = Array.isArray(options.manifestList)
+    ? options.manifestList.map(normalizeRepositoryPath).filter(Boolean)
+    : [];
+  const inventoryList = Array.isArray(options.inventoryList)
+    ? options.inventoryList.map(normalizeRepositoryPath).filter(Boolean)
+    : [];
+  const manifestSet = new Set(manifestList);
+  const inventorySet = new Set(inventoryList);
+
+  for (const duplicate of findDuplicates(manifestList)) {
+    addError(options.errors, options.checks, 'RELEASE_MANIFEST_FILE_DUPLICATE', `${field} contains duplicate entries.`, {
+      path: field,
+      value: duplicate
+    });
+  }
+
+  for (const path of manifestList) {
+    if (!options.existingFiles.has(path)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_FILE_MISSING', `${field} entry does not exist in the repository.`, {
+        path: field,
+        value: path
+      });
+    }
+  }
+
+  for (const path of inventoryList) {
+    if (!manifestSet.has(path)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_INVENTORY_MISSING', `${field} is missing a repository release file.`, {
+        path: field,
+        value: path
+      });
+    }
+  }
+
+  for (const path of manifestList) {
+    if (!inventorySet.has(path)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_INVENTORY_EXTRA', `${field} contains an unexpected repository file.`, {
+        path: field,
+        value: path
+      });
+    }
+  }
+}
+
+function compareCapabilityInventory(options) {
+  const manifestCapabilities = Array.isArray(options.manifestCapabilities)
+    ? options.manifestCapabilities.map(String)
+    : [];
+  const implementedCapabilities = Array.isArray(options.implementedCapabilities)
+    ? options.implementedCapabilities.map(String)
+    : [];
+  const changedCapabilities = Array.isArray(options.changedCapabilities)
+    ? options.changedCapabilities.map(String)
+    : [];
+  const manifestSet = new Set(manifestCapabilities);
+  const implementedSet = new Set(implementedCapabilities);
+
+  for (const capability of implementedCapabilities) {
+    if (!manifestSet.has(capability)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_CAPABILITY_MISSING', 'Release manifest is missing an implemented capability.', {
+        path: 'capabilities',
+        value: capability
+      });
+    }
+  }
+
+  for (const capability of manifestCapabilities) {
+    if (!implementedSet.has(capability)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_CAPABILITY_EXTRA', 'Release manifest contains an unknown or unreleased capability.', {
+        path: 'capabilities',
+        value: capability
+      });
+    }
+  }
+
+  for (const capability of changedCapabilities) {
+    if (!manifestSet.has(capability)) {
+      addError(options.errors, options.checks, 'RELEASE_MANIFEST_CHANGED_CAPABILITY_UNKNOWN', 'changedCapabilities must be part of released capabilities.', {
+        path: 'changedCapabilities',
+        value: capability
+      });
+    }
   }
 }
 
@@ -741,6 +984,10 @@ function findDuplicates(values) {
 function normalizeRepositoryName(value) {
   const repository = typeof value === 'string' ? value.trim() : '';
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ? repository : '';
+}
+
+function ancestorKey(ancestorSha, releaseSha) {
+  return `${ancestorSha}..${releaseSha}`;
 }
 
 function isSafeRepositoryPath(value) {

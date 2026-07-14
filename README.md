@@ -44,7 +44,7 @@ docs/github-automation/
 
 `templates/workflows/validate-config.yml` には、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートを置いています。triggerは `workflow_dispatch` のみで、reusable workflow refは導入時にレビュー済み40桁commit SHAへ置換します。
 
-release運用では、version tagは人間向け識別子として扱い、導入先の実行参照はレビュー済み40桁commit SHAを正本にします。read-onlyのrelease readiness、manifest、consumer update plan、rollback方針は [docs/github-automation/release-readiness.md](docs/github-automation/release-readiness.md) を参照してください。
+release運用では、version tagは人間向け識別子として扱い、導入先の実行参照はレビュー済み40桁commit SHAを正本にします。release readinessはmanifest SHAをchecked-out `HEAD`とancestor関係へ照合し、manifest file listをrepository inventoryと比較します。CLIはdry-run onlyで、`--no-dry-run` は拒否します。read-onlyのmanifest、consumer update plan、rollback方針は [docs/github-automation/release-readiness.md](docs/github-automation/release-readiness.md) を参照してください。
 
 `scripts/audit-consumer-installation.mjs` には、導入先リポジトリのChatGPT automation設定とcaller workflowをネットワークアクセスなし・GitHub API writeなしで監査するread-only CLIを置いています。詳細は `docs/github-automation/installation-audit.md` を参照してください。
 

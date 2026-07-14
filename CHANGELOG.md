@@ -12,10 +12,12 @@
 
 - Documented that consumer execution refs are reviewed 40-character commit SHA values.
 - Clarified that version tags such as `v1.2.3` are human-facing release identifiers, not consumer rollout refs.
+- Release readiness now rejects `--no-dry-run`; planning remains dry-run only.
 
 ### Fixed
 
 - Recorded PR #32 and PR #33 plan-only capabilities in the release process before enabling any write workflow.
+- Release readiness now blocks nonexistent or mismatched manifest SHAs, non-ancestor rollback/previous SHAs, and manifest file lists that differ from repository inventory.
 
 ### Security
 

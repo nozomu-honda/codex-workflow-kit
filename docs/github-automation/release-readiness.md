@@ -40,6 +40,7 @@ This repository does not bump versions, create tags, or publish npm packages fro
 
 The release manifest schema lives at `schemas/release-manifest.schema.json`.
 The example manifest lives at `release/release-manifest.example.yml`.
+The example manifest is a fixture: its committed SHA fields are dummy values and must not be treated as a production-ready release manifest as-is.
 
 The manifest records:
 
@@ -68,6 +69,24 @@ For Issue #27, these remain explicitly out of scope:
 - `queue-issue-update`
 
 Issue #25 real auto-merge write remains blocked until the review-evidence gate in `oshi-management-app` Issue #133 is complete.
+
+Release readiness also checks the manifest against the checked-out Git repository:
+
+- `releaseCommitSha` must exist as a commit object in the checked-out repository.
+- `releaseCommitSha` must match the checked-out `HEAD`.
+- `previousReleaseCommitSha` must exist, must not equal `releaseCommitSha`, and must be an ancestor of `releaseCommitSha`.
+- `rollbackCommitSha` must exist and must be an ancestor of `releaseCommitSha`.
+- Git initialization failures, unreadable commits, missing objects, and `merge-base --is-ancestor` failures block readiness.
+
+Because a file committed to the repository cannot contain the SHA of the commit that contains that file, the committed example manifest is used as a fixture. Local CI commands pass `--use-current-git-shas` so the planner replaces fixture SHAs with the checked-out `HEAD` and its first parent for dry-run validation. Real release gates should pass a manifest generated for the already reviewed release commit.
+
+Manifest file lists are compared with repository inventory:
+
+- `actionArtifacts` must match the expected Shared Action artifacts.
+- `reusableWorkflows` must match the current `workflow_call` workflows.
+- `callerTemplates` must match `templates/workflows/**/*.yml`.
+- `schemas` must match `schemas/**/*.json`.
+- Missing files, duplicate entries, extra entries, omitted inventory files, and unknown capabilities block readiness.
 
 ## Source and dist
 
@@ -168,11 +187,13 @@ Direct CLI:
 node scripts/plan-release.mjs \
   --manifest release/release-manifest.example.yml \
   --consumers release/consumers.example.yml \
+  --use-current-git-shas \
   --json
 ```
 
 The CLI exits non-zero when readiness blockers exist.
 It does not call the GitHub API, create tags, create releases, create PRs, push, deploy, or read secrets.
+`--no-dry-run` is rejected. The CLI is dry-run only until a later issue explicitly implements a write path.
 
 ## Rollback policy
 

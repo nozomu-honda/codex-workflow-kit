@@ -38,6 +38,7 @@ validationCommands:
   - npm ci
   - npm run ci
   - npm run release:readiness
+  - node scripts/plan-release.mjs --manifest release/release-manifest.example.yml --consumers release/consumers.example.yml --use-current-git-shas --json
 unimplementedWriteCapabilities:
   - auto-merge-write
   - branch-update-write

@@ -4,6 +4,9 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import {
   LEGACY_RELEASE_REF_PLACEHOLDER,
   RELEASE_REF_PLACEHOLDER,
+  RELEASE_CAPABILITIES,
+  auditReleaseGitState,
+  auditReleaseManifestInventory,
   auditFixedRefs,
   checkChangelog,
   classifyRef,
@@ -21,6 +24,7 @@ import releaseManifestSchema from '../../../schemas/release-manifest.schema.json
 const RELEASE_SHA = '0123456789abcdef0123456789abcdef01234567';
 const PREVIOUS_SHA = '1111111111111111111111111111111111111111';
 const OTHER_SHA = '2222222222222222222222222222222222222222';
+const FUTURE_SHA = '3333333333333333333333333333333333333333';
 
 function manifest(overrides = {}) {
   return {
@@ -129,6 +133,46 @@ function refAuditFiles(source) {
   ];
 }
 
+function gitState(overrides = {}) {
+  return {
+    ok: true,
+    headSha: RELEASE_SHA,
+    commits: {
+      [RELEASE_SHA]: { exists: true, type: 'commit' },
+      [PREVIOUS_SHA]: { exists: true, type: 'commit' },
+      [OTHER_SHA]: { exists: true, type: 'commit' },
+      [FUTURE_SHA]: { exists: true, type: 'commit' },
+      ...overrides.commits
+    },
+    ancestors: {
+      [`${PREVIOUS_SHA}..${RELEASE_SHA}`]: { ok: true, isAncestor: true },
+      [`${OTHER_SHA}..${RELEASE_SHA}`]: { ok: true, isAncestor: false },
+      [`${FUTURE_SHA}..${RELEASE_SHA}`]: { ok: true, isAncestor: false },
+      ...overrides.ancestors
+    },
+    ...overrides.root
+  };
+}
+
+function repositoryInventory(overrides = {}) {
+  const base = manifest();
+  const inventory = {
+    actionArtifacts: base.actionArtifacts,
+    reusableWorkflows: base.reusableWorkflows,
+    callerTemplates: base.callerTemplates,
+    schemas: base.schemas,
+    capabilities: RELEASE_CAPABILITIES,
+    existingFiles: [
+      ...base.actionArtifacts,
+      ...base.reusableWorkflows,
+      ...base.callerTemplates,
+      ...base.schemas
+    ],
+    ...overrides
+  };
+  return inventory;
+}
+
 function findCode(result, code) {
   return [...(result.errors ?? []), ...(result.warnings ?? []), ...(result.blockers ?? []), ...(result.checks ?? [])]
     .some((entry) => entry.code === code);
@@ -194,6 +238,131 @@ test('migrationRequired=true は migration notes を要求する', () => {
 
   assert.equal(findCode(invalid, 'RELEASE_MIGRATION_DETAILS_REQUIRED'), true);
   assert.equal(valid.ok, true);
+});
+
+test('release git stateはcommit存在、HEAD一致、ancestorを検証する', () => {
+  const valid = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState()
+  });
+  const releaseMissing = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState({ commits: { [RELEASE_SHA]: { exists: false, type: '' } } })
+  });
+  const headMismatch = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState({ root: { headSha: OTHER_SHA } })
+  });
+  const previousMissing = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState({ commits: { [PREVIOUS_SHA]: { exists: false, type: '' } } })
+  });
+  const rollbackMissing = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState({ commits: { [PREVIOUS_SHA]: { exists: false, type: '' } } })
+  });
+
+  assert.equal(valid.ok, true, JSON.stringify(valid, null, 2));
+  assert.equal(findCode(releaseMissing, 'RELEASE_COMMIT_NOT_FOUND'), true);
+  assert.equal(findCode(headMismatch, 'RELEASE_COMMIT_HEAD_MISMATCH'), true);
+  assert.equal(findCode(previousMissing, 'RELEASE_PREVIOUS_COMMIT_NOT_FOUND'), true);
+  assert.equal(findCode(rollbackMissing, 'RELEASE_ROLLBACK_COMMIT_NOT_FOUND'), true);
+});
+
+test('release git stateはprevious / rollback ancestorとgit失敗をfail closedにする', () => {
+  const previousNotAncestor = auditReleaseGitState({
+    manifest: manifest({ previousReleaseCommitSha: OTHER_SHA }),
+    gitState: gitState()
+  });
+  const rollbackValid = auditReleaseGitState({
+    manifest: manifest({ rollbackCommitSha: PREVIOUS_SHA }),
+    gitState: gitState()
+  });
+  const rollbackNotAncestor = auditReleaseGitState({
+    manifest: manifest({ rollbackCommitSha: FUTURE_SHA }),
+    gitState: gitState()
+  });
+  const mergeBaseFailed = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: gitState({
+      ancestors: {
+        [`${PREVIOUS_SHA}..${RELEASE_SHA}`]: { ok: false, isAncestor: false }
+      }
+    })
+  });
+  const gitFailed = auditReleaseGitState({
+    manifest: manifest(),
+    gitState: { ok: false, reason: 'git_command_failed' }
+  });
+
+  assert.equal(findCode(previousNotAncestor, 'RELEASE_PREVIOUS_NOT_ANCESTOR'), true);
+  assert.equal(rollbackValid.ok, true);
+  assert.equal(findCode(rollbackNotAncestor, 'RELEASE_ROLLBACK_NOT_ANCESTOR'), true);
+  assert.equal(findCode(mergeBaseFailed, 'RELEASE_PREVIOUS_ANCESTOR_CHECK_FAILED'), true);
+  assert.equal(findCode(gitFailed, 'RELEASE_GIT_STATE_UNAVAILABLE'), true);
+});
+
+test('manifest inventoryはfile存在、重複、漏れ、余分を検出する', () => {
+  const valid = auditReleaseManifestInventory({
+    manifest: manifest(),
+    repositoryInventory: repositoryInventory()
+  });
+  const missingWorkflow = auditReleaseManifestInventory({
+    manifest: manifest({ reusableWorkflows: ['.github/workflows/missing.yml'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const missingSchema = auditReleaseManifestInventory({
+    manifest: manifest({ schemas: ['schemas/missing.schema.json'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const missingTemplate = auditReleaseManifestInventory({
+    manifest: manifest({ callerTemplates: ['templates/workflows/missing.yml'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const missingArtifact = auditReleaseManifestInventory({
+    manifest: manifest({ actionArtifacts: ['actions/validate-config/dist/missing.js'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const duplicate = auditReleaseManifestInventory({
+    manifest: manifest({ schemas: ['schemas/release-manifest.schema.json', 'schemas/release-manifest.schema.json'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const omitted = auditReleaseManifestInventory({
+    manifest: manifest({ schemas: ['schemas/release-manifest.schema.json'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const extra = auditReleaseManifestInventory({
+    manifest: manifest({ schemas: [...manifest().schemas, 'schemas/extra.schema.json'] }),
+    repositoryInventory: repositoryInventory({ existingFiles: [...repositoryInventory().existingFiles, 'schemas/extra.schema.json'] })
+  });
+
+  assert.equal(valid.ok, true, JSON.stringify(valid, null, 2));
+  assert.equal(findCode(missingWorkflow, 'RELEASE_MANIFEST_FILE_MISSING'), true);
+  assert.equal(findCode(missingSchema, 'RELEASE_MANIFEST_FILE_MISSING'), true);
+  assert.equal(findCode(missingTemplate, 'RELEASE_MANIFEST_FILE_MISSING'), true);
+  assert.equal(findCode(missingArtifact, 'RELEASE_MANIFEST_FILE_MISSING'), true);
+  assert.equal(findCode(duplicate, 'RELEASE_MANIFEST_FILE_DUPLICATE'), true);
+  assert.equal(findCode(omitted, 'RELEASE_MANIFEST_INVENTORY_MISSING'), true);
+  assert.equal(findCode(extra, 'RELEASE_MANIFEST_INVENTORY_EXTRA'), true);
+});
+
+test('manifest inventoryはcapability漏れと余分を検出する', () => {
+  const missing = auditReleaseManifestInventory({
+    manifest: manifest({ capabilities: RELEASE_CAPABILITIES.filter((capability) => capability !== 'main-follow-up-plan') }),
+    repositoryInventory: repositoryInventory()
+  });
+  const extra = auditReleaseManifestInventory({
+    manifest: manifest({ capabilities: [...RELEASE_CAPABILITIES, 'unknown-read-only-plan'] }),
+    repositoryInventory: repositoryInventory()
+  });
+  const changedUnknown = auditReleaseManifestInventory({
+    manifest: manifest({ changedCapabilities: ['unknown-read-only-plan'] }),
+    repositoryInventory: repositoryInventory()
+  });
+
+  assert.equal(findCode(missing, 'RELEASE_MANIFEST_CAPABILITY_MISSING'), true);
+  assert.equal(findCode(extra, 'RELEASE_MANIFEST_CAPABILITY_EXTRA'), true);
+  assert.equal(findCode(changedUnknown, 'RELEASE_MANIFEST_CHANGED_CAPABILITY_UNKNOWN'), true);
 });
 
 test('fixed ref auditは40桁SHAとlocal actionを許可し、mutable/tag/short SHA/malformed usesを拒否する', () => {
@@ -364,6 +533,8 @@ test('release readiness planはmanifest、refs、changelog、source/dist、consu
     changelogSource: changelog(),
     refAuditFiles: refAuditFiles(`jobs:\n  ok:\n    steps:\n      - uses: actions/checkout@${RELEASE_SHA}\n`),
     consumerInventory: inventory(),
+    gitState: gitState(),
+    repositoryInventory: repositoryInventory(),
     sourceDistStatus: { ok: true },
     dryRun: true
   });
@@ -386,6 +557,8 @@ test('release readiness planはsource/dist不一致や固定ref違反でblockす
     changelogSource: changelog(),
     refAuditFiles: refAuditFiles('jobs:\n  bad:\n    steps:\n      - uses: actions/checkout@main\n'),
     consumerInventory: inventory(),
+    gitState: gitState(),
+    repositoryInventory: repositoryInventory(),
     sourceDistStatus: { ok: false },
     dryRun: true
   });
