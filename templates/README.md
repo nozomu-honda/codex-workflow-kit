@@ -35,7 +35,7 @@
 導入手順:
 
 1. `templates/workflows/validate-config.yml` を導入先の `.github/workflows/validate-config.yml` へコピーする。
-2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+2. `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリのレビュー済み40桁commit SHAへ置換する。
 3. `v1` / `v1.2` のような未固定major/minor tagや、`master` / `main` などの可変branch参照は使わない。
 4. 導入先に `.github/chatgpt-automation.yml` を置く。
 5. GitHub Actionsの `workflow_dispatch` で手動実行し、valid configでは成功、invalid configではfail closedで失敗することを確認する。
@@ -66,7 +66,7 @@
 導入手順:
 
 1. `templates/workflows/chatgpt-automation-events.yml` を導入先の `.github/workflows/chatgpt-automation-events.yml` へコピーする。
-2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+2. 2か所の `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリの同じレビュー済み40桁commit SHAへ置換する。
 3. `REPLACE_WITH_DEFAULT_BRANCH` を導入先のdefault branch名へ置換する。
 4. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_EVENT_CONFIG_JSON` にSecret値を含まないJSONを設定する。
 5. 初回はdry-runのまま、正規化outputsと `eligible` / `ineligible_reason` を確認する。
@@ -95,7 +95,7 @@
 導入手順:
 
 1. `templates/workflows/chatgpt-review-routing-events.yml` を導入先の `.github/workflows/chatgpt-review-routing-events.yml` へコピーする。
-2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+2. 2か所の `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリの同じレビュー済み40桁commit SHAへ置換する。
 3. `REPLACE_WITH_DEFAULT_BRANCH` を導入先のdefault branch名へ置換する。
 4. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_REVIEW_ROUTING_CONFIG_JSON` にSecret値を含まないJSONを設定する。
 5. 重複抑制やcooldownを外部で管理する場合は、Secretを含まないVariableでdedupe keyやlast routed timestampを渡す。
@@ -125,7 +125,7 @@
 導入手順:
 
 1. `templates/workflows/reviewed-pr-auto-merge-events.yml` を導入先の `.github/workflows/reviewed-pr-auto-merge-events.yml` へコピーする。
-2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換する。
+2. 2か所の `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリの同じレビュー済み40桁commit SHAへ置換する。
 3. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_AUTO_MERGE_CONFIG_JSON` にSecret値を含まないJSONを設定する。
 4. 重複抑制やcooldownを外部で管理する場合は、Secretを含まないVariableでdedupe keyやlast planned timestampを渡す。
 5. 初回はdry-runのまま、`eligible`、`should_enable_auto_merge`、`should_merge`、`skip_reason`、`dedupe_key` を確認する。
@@ -155,7 +155,7 @@
 導入手順:
 
 1. `templates/workflows/main-follow-up-events.yml` を導入先の `.github/workflows/main-follow-up-events.yml` へコピーする。
-2. 2か所の `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ40桁commit SHAへ置換する。
+2. 2か所の `REPLACE_WITH_40_CHAR_COMMIT_SHA` を、このリポジトリの同じ40桁commit SHAへ置換する。
 3. repository固有設定を渡す場合は、導入先Variable `CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_CONFIG_JSON` にSecret値を含まないJSONを設定する。
 4. 重複抑制やattempt/cooldownを外部で管理する場合は、Secretを含まないVariableでdedupe key、attempt count、last attempted timestampを渡す。
 5. 初回はdry-runのまま、`plans_json`、`update_candidate_count`、`codex_follow_up_candidate_count`、`manual_review_count` を確認する。

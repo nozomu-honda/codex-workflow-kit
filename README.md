@@ -42,7 +42,9 @@ docs/github-automation/
 
 `.github/workflows/validate-config.yml` には、`workflow_call` で `actions/validate-config` を呼び出す読み取り専用reusable workflowの最小骨格を置いています。権限は `contents: read` のみで、Secret input、`secrets: inherit`、GitHub API writeは使いません。内部Action参照もレビュー済みの40桁commit SHAへ固定し、caller側と内部Action側の両方で再現性を保ちます。
 
-`templates/workflows/validate-config.yml` には、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートを置いています。triggerは `workflow_dispatch` のみで、reusable workflow refは導入時に `v1.2.3` 形式の完全なversion tagまたは40桁commit SHAへ置換します。
+`templates/workflows/validate-config.yml` には、導入先が `.github/workflows/validate-config.yml` へコピーして使う設定検証用caller workflowテンプレートを置いています。triggerは `workflow_dispatch` のみで、reusable workflow refは導入時にレビュー済み40桁commit SHAへ置換します。
+
+release運用では、version tagは人間向け識別子として扱い、導入先の実行参照はレビュー済み40桁commit SHAを正本にします。read-onlyのrelease readiness、manifest、consumer update plan、rollback方針は [docs/github-automation/release-readiness.md](docs/github-automation/release-readiness.md) を参照してください。
 
 `scripts/audit-consumer-installation.mjs` には、導入先リポジトリのChatGPT automation設定とcaller workflowをネットワークアクセスなし・GitHub API writeなしで監査するread-only CLIを置いています。詳細は `docs/github-automation/installation-audit.md` を参照してください。
 

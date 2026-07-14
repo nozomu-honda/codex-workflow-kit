@@ -18,7 +18,7 @@ export async function runTemplateAudit(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const templateConfig = await readFile(join(cwd, TEMPLATE_CONFIG), 'utf8');
   const templateWorkflow = (await readFile(join(cwd, TEMPLATE_WORKFLOW), 'utf8'))
-    .replaceAll('REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA', DOGFOOD_REF);
+    .replaceAll('REPLACE_WITH_40_CHAR_COMMIT_SHA', DOGFOOD_REF);
   const tempRoot = await mkdtemp(join(tmpdir(), 'chatgpt-automation-template-audit-'));
 
   try {

@@ -47,7 +47,7 @@ jobs:
       dry-run: ${{ steps.validate-config.outputs.dry-run }}
     steps:
       - name: Checkout caller repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Validate config
         id: validate-config

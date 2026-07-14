@@ -216,7 +216,7 @@ reusable workflowはread-onlyです。
 ## 導入
 
 1. `templates/workflows/reviewed-pr-auto-merge-events.yml` を導入先の `.github/workflows/` へコピーする。
-2. `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA` を `v1.2.3` 形式の完全なversion tag、またはレビュー済み40桁commit SHAへ置換する。
+2. `REPLACE_WITH_40_CHAR_COMMIT_SHA` をレビュー済み40桁commit SHAへ置換する。
 3. `CHATGPT_AUTOMATION_AUTO_MERGE_CONFIG_JSON` へSecret値を含まない設定JSONを置く。
 4. 重複抑制やcooldownを外部で管理する場合は、Secretを含まないVariableでdedupe keyやlast planned timestampを渡す。
 5. `workflow_dispatch` でdry-run確認する。

@@ -19,7 +19,7 @@ import {
 } from '../../../actions/validate-config/test/helpers.js';
 
 const PINNED_SHA = '0123456789abcdef0123456789abcdef01234567';
-const PLACEHOLDER_REF = 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const PLACEHOLDER_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const SENSITIVE_FIXTURE = 'DUMMY_SENSITIVE_MARKER_FOR_OUTPUT_REDACTION';
 const TEMPLATE_WORKFLOW = new URL('../../../templates/workflows/validate-config.yml', import.meta.url);
 

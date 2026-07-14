@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nozomu-honda/codex-workflow-kit/schemas/release-manifest.schema.json",
+  "title": "codex-workflow-kit release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseVersion",
+    "releaseCommitSha",
+    "previousReleaseCommitSha",
+    "releaseDate",
+    "capabilities",
+    "changedCapabilities",
+    "breakingChanges",
+    "migrationRequired",
+    "actionArtifacts",
+    "reusableWorkflows",
+    "callerTemplates",
+    "schemas",
+    "rollbackCommitSha",
+    "validationCommands"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "releaseVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "releaseCommitSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "previousReleaseCommitSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "releaseDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "changedCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "breakingChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "migration": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "migrationRequired": {
+      "type": "boolean"
+    },
+    "actionArtifacts": {
+      "$ref": "#/$defs/repositoryPaths"
+    },
+    "reusableWorkflows": {
+      "$ref": "#/$defs/repositoryPaths"
+    },
+    "callerTemplates": {
+      "$ref": "#/$defs/repositoryPaths"
+    },
+    "schemas": {
+      "$ref": "#/$defs/repositoryPaths"
+    },
+    "rollbackCommitSha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "validationCommands": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "unimplementedWriteCapabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "auto-merge-write",
+          "branch-update-write",
+          "codex-launch",
+          "queue-issue-update"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "repositoryPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "not": {
+          "pattern": "(^/|^[A-Za-z]:|\\.\\.)"
+        }
+      },
+      "uniqueItems": true
+    }
+  }
+}

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import YAML from 'yaml';
 
 const TEMPLATE_FILE = new URL('../workflows/chatgpt-review-routing-events.yml', import.meta.url);
-const REUSABLE_WORKFLOW_USES = 'nozomu-honda/codex-workflow-kit/.github/workflows/review-routing.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+const REUSABLE_WORKFLOW_USES = 'nozomu-honda/codex-workflow-kit/.github/workflows/review-routing.yml@REPLACE_WITH_40_CHAR_COMMIT_SHA';
 const EXPECTED_EVENTS = [
   'issue_comment',
   'pull_request_review',
@@ -68,7 +68,7 @@ test('callerはpayload、導入先Variables、固定refだけを渡す', async (
     'repository-config-json': "${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_CONFIG_JSON || '{}' }}",
     'existing-dedupe-keys': "${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_DEDUPE_KEYS || '' }}",
     'last-routed-at': "${{ vars.CHATGPT_AUTOMATION_REVIEW_ROUTING_LAST_ROUTED_AT || '' }}",
-    'kit-ref': 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA'
+    'kit-ref': 'REPLACE_WITH_40_CHAR_COMMIT_SHA'
   });
 });
 
@@ -92,10 +92,10 @@ test('reusable workflow refとkit-refは同じ固定refへ置換する契約に�
   const job = workflow.jobs['review-routing'];
   const ref = job.uses.split('@').at(-1);
 
-  assert.equal(ref, 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA');
+  assert.equal(ref, 'REPLACE_WITH_40_CHAR_COMMIT_SHA');
   assert.equal(job.with['kit-ref'], ref);
   assert.equal(isAllowedTemplateRef(ref), true);
-  assert.equal(isAllowedTemplateRef('v1.2.3'), true);
+  assert.equal(isAllowedTemplateRef('v1.2.3'), false);
   assert.equal(isAllowedTemplateRef('0123456789abcdef0123456789abcdef01234567'), true);
   assert.equal(isAllowedTemplateRef('v1'), false);
   assert.equal(isAllowedTemplateRef('v1.2'), false);
@@ -116,9 +116,8 @@ function readOnlyPermissions() {
 }
 
 function isAllowedTemplateRef(ref) {
-  return /^v\d+\.\d+\.\d+$/.test(ref)
-    || /^[a-f0-9]{40}$/i.test(ref)
-    || ref === 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+  return /^[a-f0-9]{40}$/i.test(ref)
+    || ref === 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 }
 
 function hasYamlKey(source, key) {

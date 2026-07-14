@@ -176,7 +176,7 @@ templates/workflows/main-follow-up-events.yml
 
 置換するもの:
 
-- `REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`
+- `REPLACE_WITH_40_CHAR_COMMIT_SHA`
 
 reusable workflow refと `kit-ref` は同じ40桁commit SHAへ置換します。branch、tag、短縮SHA、placeholderのままの本番利用は禁止します。
 

@@ -8,7 +8,7 @@ const TEMPLATE_FILE = new URL('../workflows/validate-config.yml', import.meta.ur
 const TEMPLATES_README = new URL('../README.md', import.meta.url);
 const INSTALLATION_DOC = new URL('../../docs/github-automation/installation.md', import.meta.url);
 const REUSABLE_WORKFLOW_PATH = '.github/workflows/validate-config.yml';
-const EXPECTED_USES = `nozomu-honda/codex-workflow-kit/${REUSABLE_WORKFLOW_PATH}@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA`;
+const EXPECTED_USES = `nozomu-honda/codex-workflow-kit/${REUSABLE_WORKFLOW_PATH}@REPLACE_WITH_40_CHAR_COMMIT_SHA`;
 
 async function readTemplate() {
   const source = await readFile(TEMPLATE_FILE, 'utf8');
@@ -86,20 +86,20 @@ test('reusable workflow参照はpath一致かつ可変branchを使わない', as
   const ref = workflow.jobs['validate-config'].uses.split('@').at(-1);
 
   assert.equal(workflow.jobs['validate-config'].uses.startsWith(`nozomu-honda/codex-workflow-kit/${REUSABLE_WORKFLOW_PATH}@`), true);
-  assert.equal(ref, 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA');
+  assert.equal(ref, 'REPLACE_WITH_40_CHAR_COMMIT_SHA');
   assert.equal(isAllowedFixedRef(ref), true);
   assert.notEqual(ref, 'master');
   assert.notEqual(ref, 'main');
 });
 
-test('reusable workflow参照refは完全なversion tag、40桁SHA、placeholderだけを許可する', () => {
+test('reusable workflow参照refは40桁SHAまたはplaceholderだけを許可する', () => {
   const validRefs = [
-    'v1.2.3',
-    'v10.20.30',
     '0123456789abcdef0123456789abcdef01234567',
-    'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA'
+    'REPLACE_WITH_40_CHAR_COMMIT_SHA'
   ];
   const invalidRefs = [
+    'v1.2.3',
+    'v10.20.30',
     'v1',
     'v1.2',
     'master',
@@ -131,9 +131,8 @@ test('docsのコピー先とテンプレート実体pathが一致する', async 
 });
 
 function isAllowedFixedRef(ref) {
-  return /^v\d+\.\d+\.\d+$/.test(ref)
-    || /^[a-f0-9]{40}$/i.test(ref)
-    || ref === 'REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA';
+  return /^[a-f0-9]{40}$/i.test(ref)
+    || ref === 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
 }
 
 function assertNoWritePermission(permissions) {

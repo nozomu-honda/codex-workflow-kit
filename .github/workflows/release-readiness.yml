@@ -1,0 +1,47 @@
+name: Release readiness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - CHANGELOG.md
+      - release/**
+      - schemas/release-manifest.schema.json
+      - scripts/plan-release.mjs
+      - packages/chatgpt-automation-core/src/release-readiness/**
+      - packages/chatgpt-automation-core/test/release-readiness.test.js
+      - scripts/plan-release.test.mjs
+      - docs/github-automation/release-readiness.md
+      - .github/workflows/release-readiness.yml
+      - package.json
+      - package-lock.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-readiness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-readiness:
+    name: Release readiness dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release readiness
+        run: npm run release:readiness

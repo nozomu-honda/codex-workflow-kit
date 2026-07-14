@@ -28,7 +28,7 @@ jobs:
       actions: read
       checks: read
       statuses: read
-    uses: nozomu-honda/codex-workflow-kit/.github/workflows/main-follow-up-plan.yml@REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+    uses: nozomu-honda/codex-workflow-kit/.github/workflows/main-follow-up-plan.yml@REPLACE_WITH_40_CHAR_COMMIT_SHA
     with:
       event-name: ${{ github.event_name }}
       event-action: ${{ github.event.action || '' }}
@@ -44,4 +44,4 @@ jobs:
       existing-dedupe-keys: ${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_DEDUPE_KEYS || '' }}
       attempt-counts-json: ${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_ATTEMPT_COUNTS_JSON || '{}' }}
       last-attempted-at-json: ${{ vars.CHATGPT_AUTOMATION_MAIN_FOLLOW_UP_LAST_ATTEMPTED_AT_JSON || '{}' }}
-      kit-ref: REPLACE_WITH_TAG_OR_40_CHAR_COMMIT_SHA
+      kit-ref: REPLACE_WITH_40_CHAR_COMMIT_SHA
