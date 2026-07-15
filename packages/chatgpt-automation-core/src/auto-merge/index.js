@@ -124,11 +124,14 @@ export function createAutoMergePlan(input = {}) {
   const reviewState = getReviewState({
     autoMergeConfig,
     config,
+    eventPayload,
     headSha: pullRequest.headSha,
     issueComments: input.issueComments,
+    normalizedEvent,
     pullRequest,
     reviewThreads: input.reviewThreads,
-    reviews: input.reviews
+    reviews: input.reviews,
+    runStartedAt: input.runStartedAt
   });
   const ciState = getCiState({
     checkRuns: input.checkRuns,
@@ -223,6 +226,7 @@ export function createAutoMergePlan(input = {}) {
     hasLabel(pullRequest, config.labels?.codexFixInProgress) && 'codex_fix_in_progress_label',
     !hasLabel(pullRequest, config.labels?.autoMergeAfterCi) && 'auto_merge_label_missing',
     !hasLabel(pullRequest, config.labels?.reviewedByChatGpt) && 'reviewed_by_chatgpt_label_missing',
+    reviewState.sameRunReviewEvidenceBlocker,
     reviewState.changesRequested && 'changes_requested',
     reviewState.dismissedReview && 'dismissed_review',
     autoMergeConfig.requireChatGPTReview && !reviewState.chatGptReviewCurrent && 'chatgpt_review_missing',
@@ -277,7 +281,18 @@ export function createAutoMergeDedupeKey({ repository, pullRequestNumber, headSh
   return `${repository}#${pullRequestNumber}:${headSha}:${mergeMode}:v${configVersion}`;
 }
 
-export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = {}, headSha = '', issueComments = [], pullRequest = {}, reviewThreads = [], reviews = [] } = {}) {
+export function getReviewState({
+  autoMergeConfig = DEFAULT_AUTO_MERGE,
+  config = {},
+  eventPayload = {},
+  headSha = '',
+  issueComments = [],
+  normalizedEvent = {},
+  pullRequest = {},
+  reviewThreads = [],
+  reviews = [],
+  runStartedAt = ''
+} = {}) {
   const reviewConfig = config.review ?? {};
   const trustedChatGptActors = new Set(Array.isArray(reviewConfig.trustedActors) ? reviewConfig.trustedActors : []);
   const trustedHumanReviewers = new Set(Array.isArray(autoMergeConfig.trustedReviewers) ? autoMergeConfig.trustedReviewers : []);
@@ -328,6 +343,14 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
   const unresolvedReviewThreads = (Array.isArray(reviewThreads) ? reviewThreads : [])
     .filter((thread) => thread?.isResolved === false || thread?.resolved === false)
     .length;
+  const sameRunReviewEvidenceBlocker = getSameRunReviewEvidenceBlocker({
+    eventPayload,
+    headSha,
+    normalizedEvent,
+    reviewConfig,
+    runStartedAt,
+    sources
+  });
 
   return {
     approvalCount,
@@ -336,6 +359,7 @@ export function getReviewState({ autoMergeConfig = DEFAULT_AUTO_MERGE, config = 
     changesRequested,
     dismissedReview: [...reviewerStates.values()].some((state) => state.dismissedReview),
     reviewIsCurrent: approvalCount > 0 && (!staleApproval || currentHumanApprovals.length > 0 || chatGptReviewCurrent),
+    sameRunReviewEvidenceBlocker,
     staleApproval,
     unresolvedReviewThreads,
     requestedReviewers: pullRequest.requestedReviewers ?? 0,
@@ -651,6 +675,99 @@ function normalizeReviews(reviews = []) {
   });
 }
 
+function getSameRunReviewEvidenceBlocker({ eventPayload = {}, headSha = '', normalizedEvent = {}, reviewConfig = {}, runStartedAt = '', sources = [] } = {}) {
+  const trigger = getTriggeredChatGptReviewEvidence({
+    eventPayload,
+    normalizedEvent,
+    reviewConfig
+  });
+  if (!trigger) {
+    return '';
+  }
+
+  const runStart = cleanString(runStartedAt);
+  const triggerTimingBlocker = sameRunTimingBlocker(trigger.timestamp, runStart);
+  if (triggerTimingBlocker) {
+    return triggerTimingBlocker;
+  }
+
+  if (trigger.headSha !== headSha) {
+    return 'same_run_review_evidence_head_mismatch';
+  }
+
+  const apiSource = sources.find((source) => source.sourceKey === trigger.sourceKey);
+  const alternateSource = apiSource ?? sources.find((source) =>
+    source.sourceType === trigger.sourceType
+    && source.actor === trigger.actor
+    && source.headSha === trigger.headSha
+    && sourceTimestamp(source) === trigger.timestamp
+    && detectReviewDecision(source, reviewConfig)?.decision === 'approved'
+  );
+  if (!alternateSource) {
+    return 'same_run_review_evidence_id_mismatch';
+  }
+  if (alternateSource.sourceKey !== trigger.sourceKey) {
+    return 'same_run_review_evidence_id_mismatch';
+  }
+  if (alternateSource.actor !== trigger.actor) {
+    return 'same_run_review_evidence_actor_mismatch';
+  }
+  if (alternateSource.headSha !== headSha) {
+    return 'same_run_review_evidence_head_mismatch';
+  }
+
+  const apiTimingBlocker = sameRunTimingBlocker(sourceTimestamp(alternateSource), runStart);
+  if (apiTimingBlocker) {
+    return apiTimingBlocker;
+  }
+
+  return '';
+}
+
+function getTriggeredChatGptReviewEvidence({ eventPayload = {}, normalizedEvent = {}, reviewConfig = {} } = {}) {
+  const eventName = cleanString(normalizedEvent.event_name ?? eventPayload.event_name);
+  const eventAction = cleanString(normalizedEvent.event_action ?? eventPayload.action);
+  if (eventName !== 'pull_request_review' || eventAction !== 'submitted' || !isPlainObject(eventPayload.review)) {
+    return null;
+  }
+
+  const source = normalizeReviews([eventPayload.review])[0];
+  const trustedChatGptActors = new Set(Array.isArray(reviewConfig.trustedActors) ? reviewConfig.trustedActors : []);
+  if (!source?.actor || !trustedChatGptActors.has(source.actor)) {
+    return null;
+  }
+
+  const decision = detectReviewDecision(source, reviewConfig);
+  if (decision?.decision !== 'approved') {
+    return null;
+  }
+
+  return {
+    ...source,
+    timestamp: decision.timestamp || sourceTimestamp(source),
+    triggerSource: eventName
+  };
+}
+
+function sameRunTimingBlocker(timestamp, runStartedAt) {
+  const evidenceTime = parseTimestamp(timestamp);
+  const runStartedTime = parseTimestamp(runStartedAt);
+  if (!Number.isFinite(evidenceTime) || !Number.isFinite(runStartedTime)) {
+    return 'same_run_review_evidence_indeterminate';
+  }
+  if (evidenceTime > runStartedTime) {
+    return 'same_run_review_evidence_after_run_start';
+  }
+  if (Math.floor(evidenceTime / 1000) === Math.floor(runStartedTime / 1000)) {
+    return 'same_run_review_evidence_indeterminate';
+  }
+  return '';
+}
+
+function sourceTimestamp(source = {}) {
+  return cleanString(source.submittedAt || source.updatedAt || source.createdAt || '');
+}
+
 function getRequiredCheck({ checkRuns = [], commitStatuses = [], headSha, name, workflowRuns = [] }) {
   const runs = [
     ...workflowRuns.map((run) => ({
@@ -880,6 +997,10 @@ function sourceKey(type, value, fallback) {
   }
 
   return `${type}:${cleanString(fallback.actor) || 'unknown'}:${cleanString(fallback.timestamp) || 'unknown'}:${fallback.index}`;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function cleanSha(value) {

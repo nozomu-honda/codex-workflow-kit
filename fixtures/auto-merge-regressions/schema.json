@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.invalid/schemas/auto-merge-regression-scenario.schema.json",
+  "title": "Auto-merge regression replay scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scenarioVersion",
+    "id",
+    "description",
+    "category",
+    "normalizedEvent",
+    "pullRequestSnapshot",
+    "reviewEvidenceSnapshot",
+    "ciSnapshot",
+    "changedFilesSnapshot",
+    "consumerAuditSnapshot",
+    "protectionAuditSnapshot",
+    "executionContext",
+    "expectedDecision",
+    "expectedReasonCodes"
+  ],
+  "properties": {
+    "scenarioVersion": {
+      "const": "auto-merge-regression.v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "enum": [
+        "audit",
+        "ci",
+        "diff",
+        "pr-state",
+        "replay-prevention",
+        "review",
+        "success"
+      ]
+    },
+    "normalizedEvent": {
+      "type": "object"
+    },
+    "pullRequestSnapshot": {
+      "type": "object"
+    },
+    "reviewEvidenceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueComments",
+        "reviews",
+        "reviewThreads"
+      ],
+      "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "blockers": {
+          "type": "array"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "currentRunEvidence": {
+          "type": "boolean"
+        },
+        "issueComments": {
+          "type": "array"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewedAt": {
+          "type": "string"
+        },
+        "reviews": {
+          "type": "array"
+        },
+        "reviewThreads": {
+          "type": "array"
+        },
+        "warnings": {
+          "type": "array"
+        }
+      }
+    },
+    "ciSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflowRuns",
+        "checkRuns",
+        "commitStatuses"
+      ],
+      "properties": {
+        "workflowRuns": {
+          "type": "array"
+        },
+        "checkRuns": {
+          "type": "array"
+        },
+        "commitStatuses": {
+          "type": "array"
+        }
+      }
+    },
+    "changedFilesSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files"
+      ],
+      "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array"
+        },
+        "headSha": {
+          "type": "string"
+        }
+      }
+    },
+    "consumerAuditSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "reasonCodes"
+      ],
+      "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "auditedCommitSha": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "manualReviewRequired": {
+          "type": "boolean"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "protectionAuditSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "reasonCodes",
+        "repositorySettings"
+      ],
+      "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "auditedSha": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "manualReviewRequired": {
+          "type": "boolean"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "repositorySettings": {
+          "type": "object"
+        }
+      }
+    },
+    "executionContext": {
+      "type": "object"
+    },
+    "eventPayload": {
+      "type": "object"
+    },
+    "expectedDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eligible",
+        "commandCreated",
+        "adapterCalled",
+        "executed",
+        "dryRun"
+      ],
+      "properties": {
+        "eligible": {
+          "type": "boolean"
+        },
+        "commandCreated": {
+          "type": "boolean"
+        },
+        "adapterCalled": {
+          "type": "boolean"
+        },
+        "executed": {
+          "const": false
+        },
+        "dryRun": {
+          "type": "boolean"
+        }
+      }
+    },
+    "expectedReasonCodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

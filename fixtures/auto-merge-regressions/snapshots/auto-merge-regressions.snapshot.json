@@ -1,0 +1,812 @@
+{
+  "scenarioResults": [
+    {
+      "id": "attempt-limit-exceeded",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "attempt_limit_exceeded"
+        ]
+      }
+    },
+    {
+      "id": "base-sha-changed",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_base_sha_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "binary-file",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "branch-deletion-allowed",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "bypass-actor-unknown",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "changed-files-api-read-failure",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "changed-files-head-mismatch",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_head_sha_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "changes-requested",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "changes_requested",
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "check-head-sha-mismatch",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_head_sha_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "ci-failure",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "ci_not_successful"
+        ]
+      }
+    },
+    {
+      "id": "ci-pending",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "ci_not_successful"
+        ]
+      }
+    },
+    {
+      "id": "closed-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "command-expired",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "write_command_invalid"
+        ]
+      }
+    },
+    {
+      "id": "conflict-dirty",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-api-read-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-pagination-incomplete",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-sha-mismatch",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "cooldown-active",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "cooldown_active"
+        ]
+      }
+    },
+    {
+      "id": "current-head-valid-review",
+      "category": "review",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "dangerous-file",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "dependency-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "draft-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "duplicate-check-name",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready",
+          "required_check_missing"
+        ]
+      }
+    },
+    {
+      "id": "duplicate-idempotency-key",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "duplicate_operation"
+        ]
+      }
+    },
+    {
+      "id": "external-repository",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_repository_mismatch",
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "force-push-allowed",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "fork-pr",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "future-timestamp",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "write_command_invalid"
+        ]
+      }
+    },
+    {
+      "id": "generated-dist-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "head-sha-changed",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_head_sha_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "mergeability-unknown",
+      "category": "pr-state",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "no-review-evidence",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "no-review-evidence-regression",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-api-read-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-pagination-incomplete",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "pull-request-target",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "requested-reviewer-remaining",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "requested_reviewer_remaining"
+        ]
+      }
+    },
+    {
+      "id": "required-check-missing",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "ci_not_successful",
+          "required_check_missing"
+        ]
+      }
+    },
+    {
+      "id": "review-evidence-gate-missing",
+      "category": "ci",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "required_check_missing"
+        ]
+      }
+    },
+    {
+      "id": "review-report-expired",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_expired"
+        ]
+      }
+    },
+    {
+      "id": "review-report-from-future",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_from_future"
+        ]
+      }
+    },
+    {
+      "id": "ruleset-missing",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "safe-candidate-write-disabled",
+      "category": "success",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence",
+      "category": "review",
+      "result": {
+        "adapterCalled": true,
+        "commandCreated": true,
+        "dryRun": true,
+        "eligible": true,
+        "executed": false,
+        "reasonCodes": [
+          "write_disabled"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-actor-mismatch",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_from_current_run"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-after-run-start",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_from_current_run"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-id-mismatch",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_from_current_run"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-same-second",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_from_current_run"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-stale-head",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_from_current_run",
+          "stale_review_head"
+        ]
+      }
+    },
+    {
+      "id": "secret-like-addition",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "secret_like_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "stale-chatgpt-marker",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "stale-human-approval",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "stale_review_head"
+        ]
+      }
+    },
+    {
+      "id": "submodule-change",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    },
+    {
+      "id": "unresolved-review-thread",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unresolved_review_thread"
+        ]
+      }
+    },
+    {
+      "id": "workflow-permission-increase",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "dangerous_change_detected"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "failed": 0,
+    "passed": 57,
+    "total": 57
+  }
+}
