@@ -1,4 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import YAML from 'yaml';
@@ -93,6 +97,101 @@ test('workflowは固定ref検証、pinned action、dry-run executor CLIだけを
   assert.match(execute.run, /node scripts\/execute-auto-merge-dry-run\.mjs/);
   assert.match(execute.run, /--json/);
 });
+
+test('workflowはvalidなblock decisionでもsanitized outputsを公開する', async () => {
+  const { workflow } = await readWorkflow();
+  const publishScript = getPublishScript(workflow);
+  const result = runPublishScript(publishScript, JSON.stringify({
+    adapterAccepted: false,
+    commandCreated: false,
+    dryRun: true,
+    eligible: false,
+    executed: false,
+    reasonCodes: ['review_evidence_missing'],
+    reportVersion: 'auto-merge-dry-run-executor.v1'
+  }));
+
+  try {
+    assert.equal(result.run.status, 0, result.run.stderr);
+    const outputs = readFileSync(result.outputFile, 'utf8');
+    assert.match(outputs, /^eligible=false$/m);
+    assert.match(outputs, /^command_created=false$/m);
+    assert.match(outputs, /^adapter_accepted=false$/m);
+    assert.match(outputs, /^executed=false$/m);
+    assert.match(outputs, /^reason_codes_json=\["review_evidence_missing"\]$/m);
+    assert.match(outputs, /^result_json<<JSON$/m);
+    assert.match(outputs, /"eligible":false/);
+  } finally {
+    result.cleanup();
+  }
+});
+
+test('workflowはresult file欠落・不正JSONをsystem errorとしてfail closedにする', async () => {
+  const { workflow } = await readWorkflow();
+  const publishScript = getPublishScript(workflow);
+
+  for (const resultJson of [undefined, '{invalid-json']) {
+    const result = runPublishScript(publishScript, resultJson);
+    try {
+      assert.notEqual(result.run.status, 0);
+      assert.equal(readFileSync(result.outputFile, 'utf8'), '');
+    } finally {
+      result.cleanup();
+    }
+  }
+});
+
+test('workflowはblockなのにcommand-created=trueの不整合resultを拒否する', async () => {
+  const { workflow } = await readWorkflow();
+  const result = runPublishScript(getPublishScript(workflow), JSON.stringify({
+    adapterAccepted: false,
+    commandCreated: true,
+    dryRun: true,
+    eligible: false,
+    executed: false,
+    reasonCodes: ['write_command_invalid'],
+    reportVersion: 'auto-merge-dry-run-executor.v1'
+  }));
+
+  try {
+    assert.notEqual(result.run.status, 0);
+    assert.equal(readFileSync(result.outputFile, 'utf8'), '');
+  } finally {
+    result.cleanup();
+  }
+});
+
+function getPublishScript(workflow) {
+  const publish = workflow.jobs['auto-merge-dry-run-executor'].steps.find(
+    (step) => step.name === 'Publish sanitized outputs'
+  );
+  const match = publish.run.match(/^node <<'NODE'\n([\s\S]+)\nNODE\n?$/);
+  assert.ok(match, 'Publish step must contain one Node heredoc.');
+  return match[1];
+}
+
+function runPublishScript(script, resultJson) {
+  const dir = mkdtempSync(join(tmpdir(), 'auto-merge-dry-run-workflow-'));
+  const resultFile = join(dir, 'auto-merge-dry-run-result.json');
+  const outputFile = join(dir, 'github-output.txt');
+  writeFileSync(outputFile, '');
+  if (resultJson !== undefined) {
+    writeFileSync(resultFile, resultJson);
+  }
+  const run = spawnSync(process.execPath, ['--eval', script], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GITHUB_OUTPUT: outputFile,
+      RUNNER_TEMP: dir
+    }
+  });
+  return {
+    cleanup: () => rmSync(dir, { force: true, recursive: true }),
+    outputFile,
+    run
+  };
+}
 
 function readPermissions() {
   return {

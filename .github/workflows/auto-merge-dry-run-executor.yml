@@ -184,12 +184,27 @@ jobs:
           node <<'NODE'
           const { appendFileSync, readFileSync } = require('node:fs');
           const result = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/auto-merge-dry-run-result.json`, 'utf8'));
+          const booleanFields = ['eligible', 'commandCreated', 'adapterAccepted', 'executed'];
+          if (
+            !result
+            || result.reportVersion !== 'auto-merge-dry-run-executor.v1'
+            || result.dryRun !== true
+            || booleanFields.some((field) => typeof result[field] !== 'boolean')
+            || !Array.isArray(result.reasonCodes)
+            || result.reasonCodes.length === 0
+            || result.reasonCodes.some((reasonCode) => typeof reasonCode !== 'string' || reasonCode.length === 0)
+            || result.commandCreated !== result.eligible
+            || result.adapterAccepted !== false
+            || result.executed !== false
+          ) {
+            throw new Error('Auto-merge dry-run result file is missing or invalid.');
+          }
           const lines = [
             `eligible=${result.eligible ? 'true' : 'false'}`,
             `command_created=${result.commandCreated ? 'true' : 'false'}`,
             `adapter_accepted=${result.adapterAccepted ? 'true' : 'false'}`,
             `executed=${result.executed ? 'true' : 'false'}`,
-            `reason_codes_json=${JSON.stringify(result.reasonCodes ?? [])}`,
+            `reason_codes_json=${JSON.stringify(result.reasonCodes)}`,
             'result_json<<JSON',
             JSON.stringify(result),
             'JSON'

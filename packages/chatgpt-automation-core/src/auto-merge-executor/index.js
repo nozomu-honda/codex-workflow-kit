@@ -225,7 +225,7 @@ export function executeAutoMergeDryRun(input = {}) {
     validatePullRequestSnapshot({ current, pullRequest, executionContext, blockers });
     validateReviewEvidence({ current, reviewEvidence, blockers });
     validateChecks({ checks, current, executionContext, blockers });
-    validateChangedFiles({ changedFiles, blockers });
+    validateChangedFiles({ changedFiles, current, blockers });
     validateAudits({ consumerAudit, protectionAudit, blockers });
     validateIdempotencyAndCooldown({ autoMergePlan, current, executionContext, blockers });
   }
@@ -250,6 +250,8 @@ export function executeAutoMergeDryRun(input = {}) {
       commandValidation = validateWriteCommand(command, candidate.validationContext);
       if (!commandValidation.ok) {
         addBlocker(blockers, 'write_command_invalid', 'Write command candidate failed fail-closed validation.', 'writeCommand');
+        command = null;
+        commandValidation = null;
       } else {
         adapterResult = new DisabledGitHubWriteAdapter().execute(command, candidate.validationContext);
       }
@@ -310,7 +312,16 @@ function validateSchema(context) {
   validateUnknownKeys(checks.raw, CHECK_SNAPSHOT_KEYS, blockers, 'checkSnapshot');
   validateUnknownKeys(changedFiles.raw, CHANGED_FILES_KEYS, blockers, 'changedFilesSnapshot');
 
-  requireFields(executionContext.raw, ['now', 'repository', 'pullRequestNumber'], blockers, 'executionContext');
+  requireFields(executionContext.raw, [
+    'actorContext',
+    'allowedBaseBranches',
+    'currentBaseSha',
+    'currentHeadSha',
+    'now',
+    'pullRequestNumber',
+    'repository',
+    'runStartedAt'
+  ], blockers, 'executionContext');
   requireFields(autoMergePlan.outputs, [
     'base_sha',
     'eligible',
@@ -320,11 +331,171 @@ function validateSchema(context) {
     'should_enable_auto_merge',
     'should_merge'
   ], blockers, 'autoMergePlan.outputs');
-  requireFields(reviewEvidence.raw, ['approved', 'headSha', 'pullRequestNumber', 'repository', 'reportVersion'], blockers, 'reviewEvidenceReport');
-  requireFields(consumerAudit.raw, ['ready', 'repository', 'reportVersion'], blockers, 'consumerAuditReport');
-  requireFields(protectionAudit.raw, ['auditedSha', 'defaultBranch', 'ready', 'repository', 'reportVersion'], blockers, 'protectionAuditReport');
-  requireFields(pullRequest.raw, ['baseBranch', 'baseSha', 'headSha', 'pullRequestNumber', 'repository', 'state'], blockers, 'pullRequestSnapshot');
-  requireFields(checks.raw, ['requiredChecks'], blockers, 'checkSnapshot');
+  requireFields(reviewEvidence.raw, [
+    'apiReadOk',
+    'approved',
+    'baseSha',
+    'blockers',
+    'changesRequested',
+    'checkedAt',
+    'currentRunEvidence',
+    'evidenceType',
+    'headSha',
+    'paginationComplete',
+    'pullRequestNumber',
+    'repository',
+    'reportVersion',
+    'requestedReviewers',
+    'requestedTeams',
+    'reviewedAt',
+    'unresolvedReviewThreads'
+  ], blockers, 'reviewEvidenceReport');
+  requireFields(consumerAudit.raw, [
+    'apiReadOk',
+    'blockers',
+    'checkedAt',
+    'manualReviewRequired',
+    'paginationComplete',
+    'pullRequestNumber',
+    'ready',
+    'repository',
+    'reportVersion',
+    'targetHeadSha'
+  ], blockers, 'consumerAuditReport');
+  requireFields(protectionAudit.raw, [
+    'apiReadOk',
+    'auditedSha',
+    'blockers',
+    'checkedAt',
+    'defaultBranch',
+    'manualReviewRequired',
+    'paginationComplete',
+    'pullRequestNumber',
+    'ready',
+    'repository',
+    'reportVersion'
+  ], blockers, 'protectionAuditReport');
+  requireFields(pullRequest.raw, [
+    'baseBranch',
+    'baseSha',
+    'draft',
+    'headSha',
+    'isFork',
+    'isSameRepository',
+    'mergeable',
+    'mergeStateStatus',
+    'pullRequestNumber',
+    'repository',
+    'requestedReviewers',
+    'requestedTeams',
+    'state'
+  ], blockers, 'pullRequestSnapshot');
+  requireFields(checks.raw, [
+    'apiReadOk',
+    'ciSuccessful',
+    'duplicateChecks',
+    'headSha',
+    'paginationComplete',
+    'requiredChecks',
+    'requiredChecksSuccessful',
+    'reviewEvidenceGateSuccessful'
+  ], blockers, 'checkSnapshot');
+  requireFields(changedFiles.raw, [
+    'apiReadOk',
+    'dangerousChange',
+    'files',
+    'headSha',
+    'pullRequestTarget',
+    'secretLikeChange',
+    'workflowPermissionIncrease'
+  ], blockers, 'changedFilesSnapshot');
+
+  validateBooleanFields(reviewEvidence.raw, [
+    'apiReadOk',
+    'approved',
+    'changesRequested',
+    'currentRunEvidence',
+    'paginationComplete'
+  ], blockers, 'reviewEvidenceReport');
+  validateBooleanFields(consumerAudit.raw, [
+    'apiReadOk',
+    'manualReviewRequired',
+    'paginationComplete',
+    'ready'
+  ], blockers, 'consumerAuditReport');
+  validateBooleanFields(protectionAudit.raw, [
+    'apiReadOk',
+    'manualReviewRequired',
+    'paginationComplete',
+    'ready'
+  ], blockers, 'protectionAuditReport');
+  validateBooleanFields(pullRequest.raw, [
+    'draft',
+    'isFork',
+    'isSameRepository',
+    'mergeable'
+  ], blockers, 'pullRequestSnapshot');
+  validateBooleanFields(checks.raw, [
+    'apiReadOk',
+    'ciSuccessful',
+    'duplicateChecks',
+    'paginationComplete',
+    'requiredChecksSuccessful',
+    'reviewEvidenceGateSuccessful'
+  ], blockers, 'checkSnapshot');
+  validateBooleanFields(changedFiles.raw, [
+    'apiReadOk',
+    'dangerousChange',
+    'pullRequestTarget',
+    'secretLikeChange',
+    'workflowPermissionIncrease'
+  ], blockers, 'changedFilesSnapshot');
+
+  validateArrayFields(executionContext.raw, ['allowedBaseBranches'], blockers, 'executionContext');
+  validateArrayFields(reviewEvidence.raw, ['blockers'], blockers, 'reviewEvidenceReport');
+  validateArrayFields(consumerAudit.raw, ['blockers'], blockers, 'consumerAuditReport');
+  validateArrayFields(protectionAudit.raw, ['blockers'], blockers, 'protectionAuditReport');
+  validateArrayFields(checks.raw, ['requiredChecks'], blockers, 'checkSnapshot');
+  validateArrayFields(changedFiles.raw, ['files'], blockers, 'changedFilesSnapshot');
+
+  validatePositiveIntegerFields(executionContext.raw, ['pullRequestNumber'], blockers, 'executionContext');
+  validatePositiveIntegerFields(reviewEvidence.raw, ['pullRequestNumber'], blockers, 'reviewEvidenceReport');
+  validatePositiveIntegerFields(consumerAudit.raw, ['pullRequestNumber'], blockers, 'consumerAuditReport');
+  validatePositiveIntegerFields(protectionAudit.raw, ['pullRequestNumber'], blockers, 'protectionAuditReport');
+  validatePositiveIntegerFields(pullRequest.raw, ['pullRequestNumber'], blockers, 'pullRequestSnapshot');
+  validateNonNegativeIntegerFields(reviewEvidence.raw, [
+    'requestedReviewers',
+    'requestedTeams',
+    'unresolvedReviewThreads'
+  ], blockers, 'reviewEvidenceReport');
+  validateNonNegativeIntegerFields(pullRequest.raw, [
+    'requestedReviewers',
+    'requestedTeams'
+  ], blockers, 'pullRequestSnapshot');
+
+  validateTimestampFields(executionContext.raw, ['now', 'runStartedAt'], blockers, 'executionContext');
+  validateTimestampFields(reviewEvidence.raw, ['checkedAt', 'reviewedAt'], blockers, 'reviewEvidenceReport');
+  validateTimestampFields(consumerAudit.raw, ['checkedAt'], blockers, 'consumerAuditReport');
+  validateTimestampFields(protectionAudit.raw, ['checkedAt'], blockers, 'protectionAuditReport');
+
+  validateShaFields(executionContext.raw, ['currentBaseSha', 'currentHeadSha'], blockers, 'executionContext');
+  validateShaFields(reviewEvidence.raw, ['baseSha', 'headSha'], blockers, 'reviewEvidenceReport');
+  validateShaFields(consumerAudit.raw, ['targetHeadSha'], blockers, 'consumerAuditReport');
+  validateShaFields(protectionAudit.raw, ['auditedSha'], blockers, 'protectionAuditReport');
+  validateShaFields(pullRequest.raw, ['baseSha', 'headSha'], blockers, 'pullRequestSnapshot');
+  validateShaFields(checks.raw, ['headSha'], blockers, 'checkSnapshot');
+  validateShaFields(changedFiles.raw, ['headSha'], blockers, 'changedFilesSnapshot');
+
+  validateRepositoryField(executionContext.raw, blockers, 'executionContext');
+  validateRepositoryField(reviewEvidence.raw, blockers, 'reviewEvidenceReport');
+  validateRepositoryField(consumerAudit.raw, blockers, 'consumerAuditReport');
+  validateRepositoryField(protectionAudit.raw, blockers, 'protectionAuditReport');
+  validateRepositoryField(pullRequest.raw, blockers, 'pullRequestSnapshot');
+
+  validateIssueArray(reviewEvidence.raw.blockers, blockers, 'reviewEvidenceReport.blockers');
+  validateIssueArray(consumerAudit.raw.blockers, blockers, 'consumerAuditReport.blockers');
+  validateIssueArray(protectionAudit.raw.blockers, blockers, 'protectionAuditReport.blockers');
+  validateRequiredChecks(checks.raw.requiredChecks, blockers);
 
   if (reviewEvidence.raw?.reportVersion !== REVIEW_EVIDENCE_REPORT_VERSION) {
     addBlocker(blockers, 'report_schema_invalid', 'Review evidence report version is unsupported.', 'reviewEvidenceReport.reportVersion');
@@ -372,8 +543,9 @@ function validateCurrentContext(current, blockers) {
 }
 
 function validateReportFreshness({ blockers, current, report, reportName }) {
-  const timestamp = report.checkedAt || report.createdAt || report.reviewedAt || '';
+  const timestamp = report.checkedAt;
   if (!timestamp) {
+    addBlocker(blockers, 'report_schema_invalid', 'Report timestamp is required.', `${reportName}.checkedAt`);
     return;
   }
   if (!isValidTimestamp(timestamp)) {
@@ -455,8 +627,11 @@ function validatePullRequestSnapshot({ blockers, current, executionContext, pull
 }
 
 function validateReviewEvidence({ blockers, current, reviewEvidence }) {
-  if (reviewEvidence.apiReadOk === false || reviewEvidence.paginationComplete === false) {
+  if (reviewEvidence.apiReadOk !== true || reviewEvidence.paginationComplete !== true) {
     addBlocker(blockers, 'review_evidence_missing', 'Review evidence could not be completely read.', 'reviewEvidenceReport');
+  }
+  if (reviewEvidence.blockers.length > 0) {
+    addBlocker(blockers, 'review_evidence_missing', 'Review evidence report contains blockers.', 'reviewEvidenceReport.blockers');
   }
   if (reviewEvidence.changesRequested === true) {
     addBlocker(blockers, 'changes_requested', 'Review evidence contains unresolved changes requested.', 'reviewEvidenceReport.changesRequested');
@@ -480,7 +655,7 @@ function validateChecks({ blockers, checks, current, executionContext }) {
   if (checks.headSha && checks.headSha !== current.currentHeadSha) {
     addBlocker(blockers, 'report_head_sha_mismatch', 'Check snapshot head does not match current head.', 'checkSnapshot.headSha');
   }
-  if (checks.apiReadOk === false || checks.paginationComplete === false) {
+  if (checks.apiReadOk !== true || checks.paginationComplete !== true) {
     addBlocker(blockers, 'ci_not_successful', 'CI/check API read did not complete.', 'checkSnapshot');
   }
   if (checks.ciSuccessful !== true || checks.requiredChecksSuccessful !== true) {
@@ -518,8 +693,11 @@ function validateChecks({ blockers, checks, current, executionContext }) {
   }
 }
 
-function validateChangedFiles({ blockers, changedFiles }) {
-  if (changedFiles.apiReadOk === false) {
+function validateChangedFiles({ blockers, changedFiles, current }) {
+  if (changedFiles.headSha !== current.currentHeadSha) {
+    addBlocker(blockers, 'report_head_sha_mismatch', 'Changed files snapshot head does not match current head.', 'changedFilesSnapshot.headSha');
+  }
+  if (changedFiles.apiReadOk !== true) {
     addBlocker(blockers, 'unknown_state', 'Changed files could not be read completely.', 'changedFilesSnapshot');
   }
   if (changedFiles.dangerousChange || changedFiles.workflowPermissionIncrease || changedFiles.pullRequestTarget) {
@@ -531,10 +709,10 @@ function validateChangedFiles({ blockers, changedFiles }) {
 }
 
 function validateAudits({ blockers, consumerAudit, protectionAudit }) {
-  if (consumerAudit.apiReadOk === false || consumerAudit.paginationComplete === false || consumerAudit.ready !== true || consumerAudit.manualReviewRequired === true || consumerAudit.blockers.length > 0) {
+  if (consumerAudit.apiReadOk !== true || consumerAudit.paginationComplete !== true || consumerAudit.ready !== true || consumerAudit.manualReviewRequired !== false || consumerAudit.blockers.length > 0) {
     addBlocker(blockers, 'consumer_audit_not_ready', 'Live consumer audit is not ready.', 'consumerAuditReport');
   }
-  if (protectionAudit.apiReadOk === false || protectionAudit.paginationComplete === false || protectionAudit.ready !== true || protectionAudit.manualReviewRequired === true || protectionAudit.blockers.length > 0) {
+  if (protectionAudit.apiReadOk !== true || protectionAudit.paginationComplete !== true || protectionAudit.ready !== true || protectionAudit.manualReviewRequired !== false || protectionAudit.blockers.length > 0) {
     addBlocker(blockers, 'protection_audit_not_ready', 'Repository protection audit is not ready.', 'protectionAuditReport');
   }
 }
@@ -611,7 +789,7 @@ function normalizeReviewEvidenceReport(value) {
   const raw = isPlainObject(value) ? value : {};
   return {
     raw,
-    apiReadOk: raw.apiReadOk !== false,
+    apiReadOk: raw.apiReadOk === true,
     approved: raw.approved === true,
     baseSha: cleanSha(raw.baseSha),
     blockers: normalizeIssues(raw.blockers),
@@ -622,7 +800,7 @@ function normalizeReviewEvidenceReport(value) {
     evidenceHeadSha: cleanSha(raw.evidenceHeadSha),
     evidenceType: cleanString(raw.evidenceType),
     headSha: cleanSha(raw.headSha),
-    paginationComplete: raw.paginationComplete !== false,
+    paginationComplete: raw.paginationComplete === true,
     pullRequestNumber: normalizePullRequestNumber(raw.pullRequestNumber),
     reasonCodes: normalizeStringArray(raw.reasonCodes),
     repository: cleanRepository(raw.repository),
@@ -639,14 +817,14 @@ function normalizeConsumerAuditReport(value) {
   const raw = isPlainObject(value) ? value : {};
   return {
     raw,
-    apiReadOk: raw.apiReadOk !== false,
+    apiReadOk: raw.apiReadOk === true,
     auditedCommitSha: cleanSha(raw.auditedCommitSha),
     baseSha: cleanSha(raw.baseSha),
     blockers: normalizeIssues(raw.blockers),
     checkedAt: cleanString(raw.checkedAt),
     headSha: cleanSha(raw.headSha),
     manualReviewRequired: raw.manualReviewRequired === true,
-    paginationComplete: raw.paginationComplete !== false,
+    paginationComplete: raw.paginationComplete === true,
     pullRequestNumber: normalizePullRequestNumber(raw.pullRequestNumber),
     ready: raw.ready === true,
     repository: cleanRepository(raw.repository),
@@ -659,14 +837,14 @@ function normalizeProtectionAuditReport(value) {
   const raw = isPlainObject(value) ? value : {};
   return {
     raw,
-    apiReadOk: raw.apiReadOk !== false,
+    apiReadOk: raw.apiReadOk === true,
     auditedSha: cleanSha(raw.auditedSha),
     baseSha: cleanSha(raw.baseSha),
     blockers: normalizeIssues(raw.blockers),
     checkedAt: cleanString(raw.checkedAt),
     defaultBranch: cleanString(raw.defaultBranch),
     manualReviewRequired: raw.manualReviewRequired === true,
-    paginationComplete: raw.paginationComplete !== false,
+    paginationComplete: raw.paginationComplete === true,
     pullRequestNumber: normalizePullRequestNumber(raw.pullRequestNumber),
     ready: raw.ready === true,
     repository: cleanRepository(raw.repository),
@@ -698,11 +876,11 @@ function normalizeCheckSnapshot(value) {
   const raw = isPlainObject(value) ? value : {};
   return {
     raw,
-    apiReadOk: raw.apiReadOk !== false,
+    apiReadOk: raw.apiReadOk === true,
     ciSuccessful: raw.ciSuccessful === true,
     duplicateChecks: raw.duplicateChecks === true,
     headSha: cleanSha(raw.headSha),
-    paginationComplete: raw.paginationComplete !== false,
+    paginationComplete: raw.paginationComplete === true,
     requiredChecks: Array.isArray(raw.requiredChecks) ? raw.requiredChecks.map(normalizeRequiredCheck).filter((check) => check.name) : [],
     requiredChecksSuccessful: raw.requiredChecksSuccessful === true,
     reviewEvidenceGateSuccessful: raw.reviewEvidenceGateSuccessful === true
@@ -714,7 +892,7 @@ function normalizeChangedFilesSnapshot(value) {
   const files = Array.isArray(raw.files) ? raw.files : [];
   return {
     raw,
-    apiReadOk: raw.apiReadOk !== false,
+    apiReadOk: raw.apiReadOk === true,
     dangerousChange: raw.dangerousChange === true || files.some((file) => file?.dangerous === true),
     headSha: cleanSha(raw.headSha),
     pullRequestTarget: raw.pullRequestTarget === true || files.some((file) => file?.pullRequestTarget === true),
@@ -822,9 +1000,84 @@ function requireFields(value, fields, blockers, path) {
     return;
   }
   for (const field of fields) {
-    if (!Object.hasOwn(value, field) || value[field] === null || value[field] === '') {
+    if (!Object.hasOwn(value, field) || value[field] === undefined || value[field] === null || value[field] === '') {
       addBlocker(blockers, 'report_schema_invalid', 'Report is missing a required field.', `${path}.${field}`);
     }
+  }
+}
+
+function validateBooleanFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, (entry) => typeof entry === 'boolean', 'boolean');
+}
+
+function validateArrayFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, Array.isArray, 'array');
+}
+
+function validatePositiveIntegerFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, (entry) => Number.isInteger(entry) && entry > 0, 'positive integer');
+}
+
+function validateNonNegativeIntegerFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, (entry) => Number.isInteger(entry) && entry >= 0, 'non-negative integer');
+}
+
+function validateTimestampFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, (entry) => typeof entry === 'string' && isValidTimestamp(entry), 'valid timestamp');
+}
+
+function validateShaFields(value, fields, blockers, path) {
+  validateFieldTypes(value, fields, blockers, path, (entry) => typeof entry === 'string' && SHA_PATTERN.test(entry), '40-character SHA');
+}
+
+function validateFieldTypes(value, fields, blockers, path, predicate, expectedType) {
+  if (!isPlainObject(value)) {
+    return;
+  }
+  for (const field of fields) {
+    if (!Object.hasOwn(value, field) || value[field] === undefined || value[field] === null || value[field] === '') {
+      continue;
+    }
+    if (!predicate(value[field])) {
+      addBlocker(blockers, 'report_schema_invalid', `Report field must be a ${expectedType}.`, `${path}.${field}`);
+    }
+  }
+}
+
+function validateRepositoryField(value, blockers, path) {
+  if (!isPlainObject(value) || !Object.hasOwn(value, 'repository')) {
+    return;
+  }
+  if (typeof value.repository !== 'string' || !REPOSITORY_PATTERN.test(value.repository)) {
+    addBlocker(blockers, 'report_schema_invalid', 'Report repository must use owner/name format.', `${path}.repository`);
+  }
+}
+
+function validateIssueArray(value, blockers, path) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    if (!isPlainObject(entry) || !cleanString(entry.reasonCode ?? entry.code)) {
+      addBlocker(blockers, 'report_schema_invalid', 'Report blocker must contain a reason code.', `${path}.${index}`);
+    }
+  }
+}
+
+function validateRequiredChecks(value, blockers) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const check = value[index];
+    const path = `checkSnapshot.requiredChecks.${index}`;
+    if (!isPlainObject(check)) {
+      addBlocker(blockers, 'report_schema_invalid', 'Required check must be an object.', path);
+      continue;
+    }
+    requireFields(check, ['conclusion', 'headSha', 'name', 'status'], blockers, path);
+    validateShaFields(check, ['headSha'], blockers, path);
   }
 }
 

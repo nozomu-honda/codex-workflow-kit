@@ -42,7 +42,7 @@ export async function runExecuteAutoMergeDryRunCli(argv = [], io = {}) {
     });
 
     stdout(args.json ? `${JSON.stringify(decision, null, 2)}\n` : formatAutoMergeDryRunDecision(decision));
-    return decision.ok ? 0 : 1;
+    return 0;
   } catch {
     stderr('Auto-merge dry-run executor failed without exposing stack trace.\n');
     return 1;

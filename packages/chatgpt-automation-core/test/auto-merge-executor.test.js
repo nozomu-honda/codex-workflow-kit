@@ -71,6 +71,121 @@ test('current-headの有効review evidenceだけを許可する', () => {
   assert.deepEqual(decision.blockers, []);
 });
 
+test('changed-files reportはcurrent headと完全一致する完全なschemaだけを許可する', () => {
+  assertBlocked(
+    baseInput({ changedFilesSnapshot: { headSha: FIXTURE_SHAS.before } }),
+    'report_head_sha_mismatch'
+  );
+  assertBlocked(
+    withoutField(baseInput(), 'changedFilesSnapshot', 'headSha'),
+    'report_schema_invalid'
+  );
+  assertBlocked(
+    withoutField(baseInput(), 'changedFilesSnapshot', 'apiReadOk'),
+    'report_schema_invalid'
+  );
+
+  const emptyChangedFiles = baseInput();
+  emptyChangedFiles.changedFilesSnapshot = {};
+  assertBlocked(emptyChangedFiles, 'report_schema_invalid');
+
+  assertBlocked(
+    baseInput({ changedFilesSnapshot: { apiReadOk: 'true' } }),
+    'report_schema_invalid'
+  );
+});
+
+test('review evidence reportのread・pagination・timestamp・blockersをfail closedに検証する', () => {
+  for (const field of ['apiReadOk', 'paginationComplete', 'checkedAt', 'reviewedAt']) {
+    assertBlocked(
+      withoutField(baseInput(), 'reviewEvidenceReport', field),
+      'report_schema_invalid'
+    );
+  }
+  assertBlocked(
+    baseInput({
+      reviewEvidenceReport: {
+        blockers: [{ reasonCode: 'changes_requested', message: 'Review remains unresolved.' }]
+      }
+    }),
+    'review_evidence_missing'
+  );
+  assertBlocked(
+    baseInput({ reviewEvidenceReport: { paginationComplete: 'true' } }),
+    'report_schema_invalid'
+  );
+});
+
+test('consumer audit reportのread・pagination・timestamp・manual review・blockersをrequiredにする', () => {
+  for (const field of [
+    'apiReadOk',
+    'paginationComplete',
+    'checkedAt',
+    'manualReviewRequired',
+    'blockers'
+  ]) {
+    assertBlocked(
+      withoutField(baseInput(), 'consumerAuditReport', field),
+      'report_schema_invalid'
+    );
+  }
+  assertBlocked(
+    baseInput({ consumerAuditReport: { apiReadOk: 'true' } }),
+    'report_schema_invalid'
+  );
+  assertBlocked(
+    baseInput({ consumerAuditReport: { manualReviewRequired: true } }),
+    'consumer_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      consumerAuditReport: {
+        blockers: [{ reasonCode: 'consumer_config_invalid', message: 'Consumer audit is blocked.' }]
+      }
+    }),
+    'consumer_audit_not_ready'
+  );
+});
+
+test('protection audit reportのread・pagination・timestamp・manual review・blockersをrequiredにする', () => {
+  for (const field of [
+    'apiReadOk',
+    'paginationComplete',
+    'checkedAt',
+    'manualReviewRequired',
+    'blockers'
+  ]) {
+    assertBlocked(
+      withoutField(baseInput(), 'protectionAuditReport', field),
+      'report_schema_invalid'
+    );
+  }
+  assertBlocked(
+    baseInput({ protectionAuditReport: { paginationComplete: 1 } }),
+    'report_schema_invalid'
+  );
+  assertBlocked(
+    baseInput({ protectionAuditReport: { manualReviewRequired: true } }),
+    'protection_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      protectionAuditReport: {
+        blockers: [{ reasonCode: 'required_check_missing', message: 'Protection audit is blocked.' }]
+      }
+    }),
+    'protection_audit_not_ready'
+  );
+});
+
+test('current headに一致する完全なreportだけがeligibleになる', () => {
+  const decision = executeAutoMergeDryRun(baseInput());
+
+  assert.equal(decision.eligible, true, JSON.stringify(decision, null, 2));
+  assert.deepEqual(decision.blockers, []);
+  assert.equal(decision.currentHeadSha, FIXTURE_SHAS.head);
+});
+
 test('plan / consumer / protection / base SHAの不一致をfail closedにする', () => {
   assertBlocked(
     baseInput({ autoMergePlanOutputs: { head_sha: FIXTURE_SHAS.after } }),
@@ -194,8 +309,7 @@ test('duplicate、attempt limit、cooldown、actor trust欠落、command validat
   );
   assertBlocked(
     baseInput({ executionContext: { requestedAt: '1970-01-01T00:00:00.000Z' } }),
-    'write_command_invalid',
-    { commandCreated: true }
+    'write_command_invalid'
   );
 });
 
@@ -338,6 +452,8 @@ function baseInput(overrides = {}) {
       apiReadOk: true,
       approved: true,
       baseSha: FIXTURE_SHAS.base,
+      blockers: [],
+      changesRequested: false,
       checkedAt: CHECKED_AT,
       currentRunEvidence: false,
       evidenceType: 'chatgpt-marker',
@@ -350,7 +466,6 @@ function baseInput(overrides = {}) {
       requestedTeams: 0,
       reviewedAt: REVIEWED_AT,
       unresolvedReviewThreads: 0,
-      blockers: [],
       warnings: [],
       ...(overrides.reviewEvidenceReport ?? {})
     }
@@ -383,6 +498,12 @@ function checks(overrides = []) {
 
 function expectedWriteIdempotencyKey() {
   return `write-v1:enable-auto-merge:${FIXTURE_REPOSITORY.fullName}#42:${FIXTURE_SHAS.head}:${FIXTURE_SHAS.base}`;
+}
+
+function withoutField(input, reportName, field) {
+  const result = structuredClone(input);
+  delete result[reportName][field];
+  return result;
 }
 
 function assertBlocked(input, reasonCode, expectations = {}) {

@@ -153,6 +153,7 @@ function input(overrides = {}) {
       approved: true,
       baseSha: FIXTURE_SHAS.base,
       blockers: [],
+      changesRequested: false,
       checkedAt: '2026-01-01T00:08:30.000Z',
       currentRunEvidence: false,
       evidenceType: 'chatgpt-marker',
