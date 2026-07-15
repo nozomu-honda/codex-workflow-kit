@@ -46,6 +46,12 @@ const PROTECTION_POLICY_ALLOWED_FIELDS = new Set([
   'requireSignedCommits'
 ]);
 const ALLOWED_MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
+const POLICY_ERROR_CODES = new Set([
+  'protection_policy_parse_failed',
+  'protection_policy_validation_failed'
+]);
+const SAFE_POLICY_PATH_PATTERN = /^policy(?:\.[A-Za-z0-9_-]+)*$/;
+const SECRET_LIKE_PATTERN = /ghp_|github_pat_|ghs_|gho_|authorization|cookie|begin .*private key|client_secret|private_key|\btoken\b/i;
 const BOOLEAN_POLICY_FIELDS = Object.freeze([
   'blockDeletion',
   'blockForcePush',
@@ -62,11 +68,12 @@ const BOOLEAN_POLICY_FIELDS = Object.freeze([
 ]);
 
 export function auditRepositoryProtection(input = {}) {
-  const policyValidation = Array.isArray(input.policyValidationErrors)
-    ? { errors: input.policyValidationErrors }
-    : validateProtectionPolicyObject(input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY);
-  const expectedPolicy = policyValidation.errors.length === 0
-    ? normalizePolicy(input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY)
+  const rawPolicy = input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY;
+  const corePolicyValidation = validateProtectionPolicyObject(rawPolicy);
+  const externalPolicyErrors = normalizeExternalPolicyErrors(input.policyValidationErrors);
+  const policyErrors = mergePolicyErrors(corePolicyValidation.errors, externalPolicyErrors);
+  const expectedPolicy = corePolicyValidation.errors.length === 0
+    ? normalizePolicy(rawPolicy)
     : normalizePolicy(DEFAULT_PROTECTION_POLICY);
   const repository = normalizeRepository(input.repository);
   const defaultBranch = cleanString(input.defaultBranch ?? repository.defaultBranch ?? expectedPolicy.defaultBranch);
@@ -89,7 +96,7 @@ export function auditRepositoryProtection(input = {}) {
   const blockers = [];
   const warnings = [];
 
-  addPolicyValidationFailures(blockers, policyValidation.errors);
+  addPolicyValidationFailures(blockers, policyErrors);
   addTokenCapabilityFailures(blockers, tokenSource);
   addApiFailures(blockers, input.apiErrors);
   addPaginationFailures(blockers, input.pagination);
@@ -811,11 +818,58 @@ function addPolicyValidationFailures(blockers, errors = []) {
   for (const error of Array.isArray(errors) ? errors : []) {
     addBlocker(
       blockers,
-      cleanString(error.code) || 'protection_policy_validation_failed',
-      cleanString(error.message) || 'Protection policy validation failed.',
-      cleanString(error.path) || 'policy'
+      normalizePolicyErrorCode(error.code),
+      normalizePolicyErrorMessage(error.code),
+      sanitizePolicyPath(error.path)
     );
   }
+}
+
+function normalizeExternalPolicyErrors(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry) => {
+    if (!isPlainObject(entry)) {
+      return policyIssue('protection_policy_validation_failed', normalizePolicyErrorMessage('protection_policy_validation_failed'), 'policy');
+    }
+
+    const code = normalizePolicyErrorCode(entry.code);
+    return policyIssue(code, normalizePolicyErrorMessage(code), sanitizePolicyPath(entry.path));
+  });
+}
+
+function mergePolicyErrors(coreErrors = [], externalErrors = []) {
+  const deduped = new Map();
+  for (const error of [...coreErrors, ...externalErrors]) {
+    const code = normalizePolicyErrorCode(error.code);
+    const path = sanitizePolicyPath(error.path);
+    const key = `${code}\0${path}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, policyIssue(code, normalizePolicyErrorMessage(code), path));
+    }
+  }
+  return sortIssues([...deduped.values()]);
+}
+
+function normalizePolicyErrorCode(value) {
+  const code = cleanString(value);
+  return POLICY_ERROR_CODES.has(code) ? code : 'protection_policy_validation_failed';
+}
+
+function normalizePolicyErrorMessage(code) {
+  return normalizePolicyErrorCode(code) === 'protection_policy_parse_failed'
+    ? 'Protection policy could not be parsed.'
+    : 'Protection policy validation failed.';
+}
+
+function sanitizePolicyPath(value) {
+  const path = cleanString(value);
+  if (!path || !SAFE_POLICY_PATH_PATTERN.test(path) || SECRET_LIKE_PATTERN.test(path)) {
+    return 'policy';
+  }
+  return path;
 }
 
 function addTokenCapabilityFailures(blockers, tokenSource) {
@@ -1032,7 +1086,7 @@ function issue(code, message, path, manualReviewRequired) {
 }
 
 function policyIssue(code, message, path) {
-  return issue(code, message, path, true);
+  return issue(normalizePolicyErrorCode(code), message, sanitizePolicyPath(path), true);
 }
 
 function sortIssues(issues) {

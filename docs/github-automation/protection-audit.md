@@ -54,6 +54,8 @@ policy schemaは `schemas/protection-policy.schema.json`、例は `release/prote
 
 CLIは監査開始前にこのJSON Schemaでpolicy YAMLをruntime検証します。YAML parse error、root object以外、required field不足、unknown property、`requiredStatusChecks: []`、`minimumApprovals: 0`、不正なmerge methodはAPI request前にfail closedになります。不正policyで `DEFAULT_PROTECTION_POLICY` へ暗黙fallbackしません。
 
+coreの `auditRepositoryProtection()` もraw policyを常に検証します。呼出元が渡す `policyValidationErrors` はcore validationの代替ではなく、追加の外部検証結果として扱います。外部errorは許可済みreason code、固定message、sanitized field pathへ正規化し、`code + path` で重複排除します。未知code、自由文message、不正path、token / Authorization / Cookie / Secret-like値はreportへ出しません。
+
 初期推奨:
 
 - `CI` と `Review evidence gate` をrequired checkにする

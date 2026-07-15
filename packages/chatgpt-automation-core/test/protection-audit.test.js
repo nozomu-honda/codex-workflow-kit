@@ -128,6 +128,21 @@ function withPolicyChange(basePolicy, mutate) {
   return next;
 }
 
+function invalidProtectionPolicy() {
+  return {
+    ...DEFAULT_PROTECTION_POLICY,
+    allowedBypassActors: [''],
+    allowedMergeMethods: ['squash', 'squash'],
+    defaultBranch: 123,
+    enforceAdmins: 0,
+    minimumApprovals: 0,
+    requireLastPushApproval: null,
+    requireRuleset: 'false',
+    requiredStatusChecks: [],
+    unexpectedField: 'ghp_redacted-placeholder-secret'
+  };
+}
+
 function ajvPolicyPaths(errors = []) {
   return errors.map((error) => {
     const parts = error.instancePath
@@ -693,6 +708,138 @@ test('invalid direct policy is fail-closed and does not influence audit output',
   assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true);
   assert.equal(serialized.includes('redacted-placeholder-value'), false);
   assert.equal(serialized.includes('leaky-branch-name'), false);
+});
+
+test('policyValidationErrors cannot bypass core policy validation', () => {
+  const cases = [
+    { name: 'external empty errors', policyValidationErrors: [] },
+    { name: 'external null errors', policyValidationErrors: null },
+    { name: 'external omitted errors' },
+    {
+      name: 'external unrelated error',
+      policyValidationErrors: [{ code: 'unrelated_external_code', message: 'everything is fine', path: 'policy.external' }]
+    },
+    {
+      name: 'external duplicate valid-looking error',
+      policyValidationErrors: [
+        { code: 'ok', message: 'valid policy', path: 'policy.minimumApprovals' },
+        { code: 'ok', message: 'valid policy duplicate', path: 'policy.minimumApprovals' }
+      ]
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditRepositoryProtection(safeInput({
+      expectedPolicy: invalidProtectionPolicy(),
+      ...(Object.prototype.hasOwnProperty.call(entry, 'policyValidationErrors')
+        ? { policyValidationErrors: entry.policyValidationErrors }
+        : {})
+    }));
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.ready, false, entry.name);
+    assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.minimumApprovals'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.enforceAdmins'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requireLastPushApproval'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requireRuleset'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requiredStatusChecks'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.allowedMergeMethods'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.allowedBypassActors.0'), true, entry.name);
+    assert.equal(result.defaultBranch, 'master', entry.name);
+    assert.equal(serialized.includes('ghp_redacted-placeholder-secret'), false, entry.name);
+    assert.equal(serialized.includes('everything is fine'), false, entry.name);
+    assert.equal(serialized.includes('valid policy'), false, entry.name);
+  }
+});
+
+test('policyValidationErrors are sanitized, deduplicated, and deterministic', () => {
+  const externalErrors = [
+    {
+      code: 'unknown_external_code',
+      message: 'Authorization: Bearer ghp_redacted-placeholder-token',
+      path: 'policy.minimumApprovals'
+    },
+    {
+      code: 'unknown_external_code',
+      message: 'Cookie: secret=value',
+      path: 'policy.minimumApprovals'
+    },
+    {
+      code: 'protection_policy_parse_failed',
+      message: 'stack trace with token ghp_redacted-placeholder-token',
+      path: 'policy.requiredStatusChecks[0]'
+    },
+    'not an object'
+  ];
+  const result = auditRepositoryProtection(safeInput({
+    policyValidationErrors: externalErrors
+  }));
+  const repeated = auditRepositoryProtection(safeInput({
+    policyValidationErrors: externalErrors
+  }));
+  const serialized = JSON.stringify(result);
+  const externalPolicyBlockers = result.blockers.filter((blocker) =>
+    blocker.code === 'protection_policy_parse_failed'
+    || blocker.code === 'protection_policy_validation_failed');
+
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.blockers, repeated.blockers);
+  assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true);
+  assert.equal(resultCodes(result).includes('protection_policy_parse_failed'), true);
+  assert.equal(
+    externalPolicyBlockers.filter((blocker) => blocker.code === 'protection_policy_validation_failed' && blocker.path === 'policy.minimumApprovals').length,
+    1
+  );
+  assert.equal(
+    externalPolicyBlockers.filter((blocker) => blocker.code === 'protection_policy_parse_failed' && blocker.path === 'policy').length,
+    1
+  );
+  assert.equal(serialized.includes('Authorization'), false);
+  assert.equal(serialized.includes('Cookie'), false);
+  assert.equal(serialized.includes('ghp_redacted-placeholder-token'), false);
+  assert.equal(serialized.includes('stack trace'), false);
+});
+
+test('valid policy with external validation errors follows sanitized additive behavior', () => {
+  const noExternalError = auditRepositoryProtection(safeInput({
+    policyValidationErrors: []
+  }));
+  const externalValidationError = auditRepositoryProtection(safeInput({
+    policyValidationErrors: [{
+      code: 'protection_policy_validation_failed',
+      message: 'do not echo this token ghp_redacted-placeholder-token',
+      path: 'policy.allowedMergeMethods'
+    }]
+  }));
+
+  assert.equal(noExternalError.ready, true, JSON.stringify(noExternalError, null, 2));
+  assert.equal(externalValidationError.ready, false);
+  assert.equal(resultCodes(externalValidationError).includes('protection_policy_validation_failed'), true);
+  assert.equal(externalValidationError.blockers.some((blocker) => blocker.path === 'policy.allowedMergeMethods'), true);
+  assert.equal(JSON.stringify(externalValidationError).includes('ghp_redacted-placeholder-token'), false);
+});
+
+test('policy validation hardening preserves existing independent blockers', () => {
+  const invalidPolicyWithGithubToken = auditRepositoryProtection(safeInput({
+    expectedPolicy: invalidProtectionPolicy(),
+    policyValidationErrors: [],
+    tokenSource: 'github-token'
+  }));
+  const hiddenBypass = safeRuleset();
+  delete hiddenBypass.bypass_actors;
+  const hiddenBypassResult = auditRepositoryProtection(safeInput({
+    rulesetDetails: [hiddenBypass]
+  }));
+  const changedRuleset = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [hiddenBypass],
+    endRulesets: []
+  }));
+
+  assert.equal(resultCodes(invalidPolicyWithGithubToken).includes('protection_policy_validation_failed'), true);
+  assert.equal(resultCodes(invalidPolicyWithGithubToken).includes('administration_read_token_required'), true);
+  assert.equal(resultCodes(hiddenBypassResult).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(resultCodes(changedRuleset).includes('protection_changed_during_audit'), true);
 });
 
 test('policy schema validates the example policy', async () => {
