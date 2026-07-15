@@ -176,6 +176,9 @@ JSON reportはdeterministicで、絶対path、token、Cookie、Authorization、S
 - `repository`
 - `defaultBranch`
 - `auditedCommitSha`
+- `apiReadOk`
+- `paginationComplete`
+- `checkedAt`
 - `expectedKitRef`
 - `detectedKitRefs`
 - `capabilities`
@@ -219,11 +222,15 @@ Issue #41のauto-merge dry-run executorは、live consumer audit reportを事前
 
 - `reportVersion: live-consumer-audit.v1`
 - `ready=true`
-- repositoryと必要なtarget head SHAがcurrent PRと一致すること
+- `apiReadOk=true` と `paginationComplete=true`
+- `checkedAt` が有効で、executorのfreshness window内であること
+- `repository` がcurrent PR repositoryと一致すること
+- `defaultBranch` がPR base branchと一致すること
+- `auditedCommitSha` が監査開始・終了で安定していたdefault branch SHAであり、current PR base SHAと一致すること
 - API read failure、pagination未完了、blocker、manual review requiredがないこと
 - Secret-like構成やwrite permission拡大がないこと
 
-consumer audit reportが不足、不正、stale、またはreadyでない場合は `consumer_audit_not_ready` でblockします。executorはconsumer repositoryを変更せず、PR、Issue、comment、label、branch、Secret、Variable、workflow dispatchも行いません。
+consumer audit reportはPR番号やPR headを監査しません。current PR head固有の検証はreview evidence、changed files、checks、PR snapshot側で行います。consumer audit reportが不足、不正、stale、またはreadyでない場合は `consumer_audit_not_ready` でblockします。executorはconsumer repositoryを変更せず、PR、Issue、comment、label、branch、Secret、Variable、workflow dispatchも行いません。
 
 ## Validation
 

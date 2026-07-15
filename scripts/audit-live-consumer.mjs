@@ -59,6 +59,7 @@ export async function runAuditLiveConsumerCli(argv = process.argv.slice(2), io =
   try {
     const consumer = await resolveConsumerInventory(parsed);
     const token = dependencies.token ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '';
+    const checkedAt = dependencies.now ?? new Date().toISOString();
     const snapshot = await collectLiveConsumerSnapshot({
       apiUrl: parsed.githubApiUrl,
       consumer,
@@ -66,6 +67,7 @@ export async function runAuditLiveConsumerCli(argv = process.argv.slice(2), io =
       token
     });
     const report = auditLiveConsumerInstallation({
+      checkedAt,
       consumer,
       snapshot,
       kitRepository: parsed.kitRepository
@@ -177,6 +179,7 @@ export async function collectLiveConsumerSnapshot(options) {
   const repository = options.consumer.repository;
   const files = {};
   const apiErrors = [];
+  let paginationIncomplete = false;
 
   try {
     const metadata = await api.get(`/repos/${repository}`);
@@ -184,6 +187,7 @@ export async function collectLiveConsumerSnapshot(options) {
     const start = await getDefaultBranchSha(api, repository, defaultBranch);
     const tree = await api.get(`/repos/${repository}/git/trees/${start}?recursive=1`);
     if (tree.truncated === true) {
+      paginationIncomplete = true;
       apiErrors.push({ code: 'pagination_incomplete', path: '/git/trees' });
     }
 
@@ -200,7 +204,11 @@ export async function collectLiveConsumerSnapshot(options) {
     try {
       workflowMetadata = await api.list(`/repos/${repository}/actions/workflows?per_page=100`);
     } catch (error) {
-      apiErrors.push({ code: normalizeApiErrorCode(error), path: '/actions/workflows' });
+      const code = normalizeApiErrorCode(error);
+      if (isPaginationCode(code)) {
+        paginationIncomplete = true;
+      }
+      apiErrors.push({ code, path: '/actions/workflows' });
     }
 
     const end = await getDefaultBranchSha(api, repository, defaultBranch);
@@ -211,17 +219,23 @@ export async function collectLiveConsumerSnapshot(options) {
       defaultBranchEndSha: end,
       files,
       workflowMetadata: sanitizeWorkflowMetadata(workflowMetadata),
-      apiErrors
+      apiErrors,
+      paginationIncomplete
     };
   } catch (error) {
-    apiErrors.push({ code: normalizeApiErrorCode(error), path: error?.path ?? 'repository' });
+    const code = normalizeApiErrorCode(error);
+    if (isPaginationCode(code)) {
+      paginationIncomplete = true;
+    }
+    apiErrors.push({ code, path: error?.path ?? 'repository' });
     return {
       repository,
       defaultBranch: options.consumer.defaultBranch ?? '',
       defaultBranchStartSha: '',
       defaultBranchEndSha: '',
       files,
-      apiErrors
+      apiErrors,
+      paginationIncomplete
     };
   }
 }
@@ -523,6 +537,13 @@ function normalizeApiErrorCode(error) {
     return error.code;
   }
   return statusCode(error?.status);
+}
+
+function isPaginationCode(code) {
+  const normalized = String(code ?? '');
+  return normalized === 'pagination_incomplete'
+    || normalized === 'invalid_link_header'
+    || normalized.startsWith('pagination_');
 }
 
 function statusCode(status) {

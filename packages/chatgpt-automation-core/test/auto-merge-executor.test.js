@@ -1,9 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   executeAutoMergeDryRun,
   REVIEW_EVIDENCE_REPORT_VERSION
 } from '../src/auto-merge-executor/index.js';
+import {
+  LIVE_CONSUMER_WORKFLOW_SPECS,
+  auditLiveConsumerInstallation
+} from '../src/consumer-audit/index.js';
+import {
+  DEFAULT_PROTECTION_POLICY,
+  auditRepositoryProtection
+} from '../src/protection-audit/index.js';
 import {
   FIXTURE_REPOSITORY,
   FIXTURE_SHAS
@@ -13,6 +22,10 @@ const NOW = '2026-01-01T00:10:00.000Z';
 const RUN_STARTED_AT = '2026-01-01T00:09:00.000Z';
 const REVIEWED_AT = '2026-01-01T00:08:00.000Z';
 const CHECKED_AT = '2026-01-01T00:08:30.000Z';
+const KIT_REF = FIXTURE_SHAS.base;
+const CONFIG_SOURCE = readFileSync(new URL('../../../templates/chatgpt-automation.yml', import.meta.url), 'utf8');
+const VALIDATE_CONFIG_WORKFLOW_SOURCE = readFileSync(new URL('../../../templates/workflows/validate-config.yml', import.meta.url), 'utf8')
+  .replaceAll('REPLACE_WITH_40_CHAR_COMMIT_SHA', KIT_REF);
 const ACTOR_CONTEXT = Object.freeze({
   actor: 'github-actions[bot]',
   isFork: false,
@@ -186,14 +199,82 @@ test('current headに一致する完全なreportだけがeligibleになる', () 
   assert.equal(decision.currentHeadSha, FIXTURE_SHAS.head);
 });
 
+test('producer由来のconsumer/protection audit reportをexecutorへ直接渡せる', () => {
+  const input = baseInput({
+    consumerAuditReport: producerConsumerAuditReport(),
+    protectionAuditReport: producerProtectionAuditReport()
+  });
+  const decision = executeAutoMergeDryRun(input);
+
+  assert.equal(input.consumerAuditReport.apiReadOk, true);
+  assert.equal(input.consumerAuditReport.paginationComplete, true);
+  assert.equal(input.consumerAuditReport.auditedCommitSha, FIXTURE_SHAS.base);
+  assert.equal(input.protectionAuditReport.apiReadOk, true);
+  assert.equal(input.protectionAuditReport.paginationComplete, true);
+  assert.equal(input.protectionAuditReport.auditedSha, FIXTURE_SHAS.base);
+  assert.equal(decision.eligible, true, JSON.stringify(decision, null, 2));
+  assert.equal(decision.reasonCodes.includes('write_disabled'), true);
+});
+
+test('producer由来audit reportのAPI failure、pagination、audited SHA不一致をblockする', () => {
+  assertBlocked(
+    baseInput({
+      consumerAuditReport: producerConsumerAuditReport({
+        snapshot: { apiErrors: [{ code: 'api_permission_denied', path: '/actions/workflows' }] }
+      })
+    }),
+    'consumer_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      consumerAuditReport: producerConsumerAuditReport({
+        snapshot: { paginationIncomplete: true }
+      })
+    }),
+    'consumer_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      consumerAuditReport: producerConsumerAuditReport({
+        auditedCommitSha: FIXTURE_SHAS.after
+      })
+    }),
+    'report_base_sha_mismatch'
+  );
+  assertBlocked(
+    baseInput({
+      protectionAuditReport: producerProtectionAuditReport({
+        apiErrors: [{ code: 'protection_api_forbidden', message: 'forbidden', path: 'rulesets' }]
+      })
+    }),
+    'protection_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      protectionAuditReport: producerProtectionAuditReport({
+        pagination: { rulesetsComplete: false }
+      })
+    }),
+    'protection_audit_not_ready'
+  );
+  assertBlocked(
+    baseInput({
+      protectionAuditReport: producerProtectionAuditReport({
+        defaultBranchSha: FIXTURE_SHAS.after
+      })
+    }),
+    'report_base_sha_mismatch'
+  );
+});
+
 test('plan / consumer / protection / base SHAの不一致をfail closedにする', () => {
   assertBlocked(
     baseInput({ autoMergePlanOutputs: { head_sha: FIXTURE_SHAS.after } }),
     'report_head_sha_mismatch'
   );
   assertBlocked(
-    baseInput({ consumerAuditReport: { targetHeadSha: FIXTURE_SHAS.after } }),
-    'report_head_sha_mismatch'
+    baseInput({ consumerAuditReport: { auditedCommitSha: FIXTURE_SHAS.after } }),
+    'report_base_sha_mismatch'
   );
   assertBlocked(
     baseInput({ protectionAuditReport: { auditedSha: FIXTURE_SHAS.after } }),
@@ -404,14 +485,14 @@ function baseInput(overrides = {}) {
     },
     consumerAuditReport: {
       apiReadOk: true,
+      auditedCommitSha: FIXTURE_SHAS.base,
       checkedAt: CHECKED_AT,
+      defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
       manualReviewRequired: false,
       paginationComplete: true,
-      pullRequestNumber: 42,
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 'live-consumer-audit.v1',
-      targetHeadSha: FIXTURE_SHAS.head,
       blockers: [],
       warnings: [],
       ...(overrides.consumerAuditReport ?? {})
@@ -424,7 +505,6 @@ function baseInput(overrides = {}) {
       defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
       manualReviewRequired: false,
       paginationComplete: true,
-      pullRequestNumber: 42,
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 1,
@@ -469,6 +549,158 @@ function baseInput(overrides = {}) {
       warnings: [],
       ...(overrides.reviewEvidenceReport ?? {})
     }
+  };
+}
+
+function producerConsumerAuditReport(options = {}) {
+  const auditedCommitSha = options.auditedCommitSha ?? FIXTURE_SHAS.base;
+  const consumer = {
+    repository: FIXTURE_REPOSITORY.fullName,
+    defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
+    configPath: '.github/chatgpt-automation.yml',
+    callerWorkflowPaths: ['.github/workflows/validate-config.yml'],
+    expectedKitRef: KIT_REF,
+    desiredCapabilitySet: ['config-validation'],
+    expectedWorkflowNames: ['Validate ChatGPT automation config'],
+    manualReviewRequired: false
+  };
+  const snapshot = {
+    repository: FIXTURE_REPOSITORY.fullName,
+    defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
+    defaultBranchStartSha: auditedCommitSha,
+    defaultBranchEndSha: auditedCommitSha,
+    files: {
+      '.github/chatgpt-automation.yml': {
+        status: 'ok',
+        content: CONFIG_SOURCE,
+        sha: 'configsha',
+        size: CONFIG_SOURCE.length
+      },
+      '.github/workflows/validate-config.yml': {
+        status: 'ok',
+        content: VALIDATE_CONFIG_WORKFLOW_SOURCE,
+        sha: 'workflowsha',
+        size: VALIDATE_CONFIG_WORKFLOW_SOURCE.length
+      }
+    },
+    workflowMetadata: [
+      {
+        id: 1,
+        name: 'Validate ChatGPT automation config',
+        path: LIVE_CONSUMER_WORKFLOW_SPECS['config-validation'].path,
+        state: 'active'
+      }
+    ],
+    apiErrors: [],
+    ...(options.snapshot ?? {})
+  };
+  return auditLiveConsumerInstallation({
+    checkedAt: CHECKED_AT,
+    consumer,
+    snapshot
+  });
+}
+
+function producerProtectionAuditReport(options = {}) {
+  const defaultBranch = options.defaultBranch ?? FIXTURE_REPOSITORY.defaultBranch;
+  const defaultBranchSha = options.defaultBranchSha ?? FIXTURE_SHAS.base;
+  return auditRepositoryProtection({
+    branchProtection: safeBranchProtection(options.branchProtection),
+    checkedAt: CHECKED_AT,
+    defaultBranch,
+    defaultBranchSha,
+    expectedPolicy: {
+      ...DEFAULT_PROTECTION_POLICY,
+      defaultBranch
+    },
+    mergeSettings: {
+      allow_auto_merge: true,
+      allow_merge_commit: false,
+      allow_rebase_merge: false,
+      allow_squash_merge: true,
+      delete_branch_on_merge: true,
+      merge_queue_enabled: false
+    },
+    repository: {
+      default_branch: defaultBranch,
+      full_name: FIXTURE_REPOSITORY.fullName
+    },
+    rulesetDetails: [safeRuleset(options.ruleset)],
+    rulesets: [],
+    startSnapshot: {
+      defaultBranch,
+      defaultBranchSha
+    },
+    endSnapshot: {
+      defaultBranch,
+      defaultBranchSha
+    },
+    ...options
+  });
+}
+
+function safeBranchProtection(overrides = {}) {
+  return {
+    allow_deletions: { enabled: false },
+    allow_force_pushes: { enabled: false },
+    enforce_admins: { enabled: true },
+    required_conversation_resolution: { enabled: true },
+    required_linear_history: { enabled: false },
+    required_pull_request_reviews: {
+      dismiss_stale_reviews: true,
+      require_code_owner_reviews: false,
+      require_last_push_approval: true,
+      required_approving_review_count: 1
+    },
+    required_signatures: { enabled: false },
+    required_status_checks: {
+      checks: [],
+      contexts: ['CI', 'Review evidence gate'],
+      strict: true
+    },
+    ...overrides
+  };
+}
+
+function safeRuleset(overrides = {}) {
+  return {
+    bypass_actors: [],
+    conditions: {
+      ref_name: {
+        exclude: [],
+        include: ['~DEFAULT_BRANCH']
+      }
+    },
+    enforcement: 'active',
+    id: 101,
+    name: 'protect-default-branch',
+    rules: [
+      {
+        parameters: {
+          required_status_checks: [
+            { context: 'CI', integration_id: 1 },
+            { context: 'Review evidence gate', integration_id: 1 }
+          ],
+          strict_required_status_checks_policy: true
+        },
+        type: 'required_status_checks'
+      },
+      {
+        parameters: {
+          dismiss_stale_reviews_on_push: true,
+          require_code_owner_review: false,
+          require_last_push_approval: true,
+          required_approving_review_count: 1,
+          required_review_thread_resolution: true
+        },
+        type: 'pull_request'
+      },
+      { type: 'deletion' },
+      { type: 'non_fast_forward' }
+    ],
+    target: 'branch',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides
   };
 }
 

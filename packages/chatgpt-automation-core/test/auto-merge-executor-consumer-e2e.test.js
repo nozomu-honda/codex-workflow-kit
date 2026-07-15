@@ -87,15 +87,15 @@ function input(overrides = {}) {
     },
     consumerAuditReport: {
       apiReadOk: true,
+      auditedCommitSha: FIXTURE_SHAS.base,
       blockers: [],
       checkedAt: '2026-01-01T00:08:30.000Z',
+      defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
       manualReviewRequired: false,
       paginationComplete: true,
-      pullRequestNumber: 42,
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 'live-consumer-audit.v1',
-      targetHeadSha: FIXTURE_SHAS.head,
       warnings: []
     },
     executionContext: {
@@ -127,7 +127,6 @@ function input(overrides = {}) {
       defaultBranch: FIXTURE_REPOSITORY.defaultBranch,
       manualReviewRequired: false,
       paginationComplete: true,
-      pullRequestNumber: 42,
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 1,

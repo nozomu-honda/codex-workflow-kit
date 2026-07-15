@@ -31,6 +31,9 @@ test('valid live consumer snapshot produces sanitized deterministic report', asy
   assert.equal(first.ok, true, JSON.stringify(first, null, 2));
   assert.equal(first.ready, true);
   assert.equal(first.reportVersion, 'live-consumer-audit.v1');
+  assert.equal(first.apiReadOk, true);
+  assert.equal(first.paginationComplete, true);
+  assert.equal(first.checkedAt, '2026-01-01T00:00:00.000Z');
   assert.deepEqual(first.detectedKitRefs, [SHA]);
   assert.equal(first.workflowsAudited.length, 5);
   assert.deepEqual(first.blockers, []);
@@ -488,6 +491,7 @@ async function validSnapshot(options = {}) {
     defaultBranch: 'main',
     defaultBranchStartSha: SHA,
     defaultBranchEndSha: SHA,
+    checkedAt: '2026-01-01T00:00:00.000Z',
     files,
     workflowMetadata,
     apiErrors: []

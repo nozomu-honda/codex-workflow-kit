@@ -68,26 +68,23 @@ const REVIEW_EVIDENCE_KEYS = new Set([
 const CONSUMER_AUDIT_KEYS = new Set([
   'apiReadOk',
   'auditedCommitSha',
-  'baseSha',
   'blockers',
   'capabilities',
   'checkedAt',
+  'checks',
   'configStatus',
   'defaultBranch',
   'detectedKitRefs',
   'dryRun',
   'expectedKitRef',
-  'headSha',
   'manualReviewRequired',
   'ok',
   'paginationComplete',
   'permissionSummary',
-  'pullRequestNumber',
   'ready',
   'reasonCodes',
   'repository',
   'reportVersion',
-  'targetHeadSha',
   'triggerSummary',
   'warnings',
   'workflowsAudited'
@@ -106,7 +103,6 @@ const PROTECTION_AUDIT_KEYS = new Set([
   'mergeSettings',
   'ok',
   'paginationComplete',
-  'pullRequestNumber',
   'ready',
   'reasonCodes',
   'repository',
@@ -220,8 +216,24 @@ export function executeAutoMergeDryRun(input = {}) {
     validateReportFreshness({ current, report: protectionAudit, reportName: 'protectionAuditReport', blockers });
     validateReportIdentity({ current, report: autoMergePlan, reportName: 'autoMergePlan', blockers });
     validateReportIdentity({ current, report: reviewEvidence, reportName: 'reviewEvidenceReport', blockers, staleReview: true });
-    validateReportIdentity({ current, report: consumerAudit, reportName: 'consumerAuditReport', blockers });
-    validateReportIdentity({ current, report: protectionAudit, reportName: 'protectionAuditReport', blockers, branchReport: true });
+    validateDefaultBranchAuditIdentity({
+      auditedSha: consumerAudit.auditedCommitSha,
+      blockers,
+      current,
+      defaultBranch: consumerAudit.defaultBranch,
+      report: consumerAudit,
+      reportName: 'consumerAuditReport',
+      shaPath: 'auditedCommitSha'
+    });
+    validateDefaultBranchAuditIdentity({
+      auditedSha: protectionAudit.auditedSha,
+      blockers,
+      current,
+      defaultBranch: protectionAudit.defaultBranch,
+      report: protectionAudit,
+      reportName: 'protectionAuditReport',
+      shaPath: 'auditedSha'
+    });
     validatePullRequestSnapshot({ current, pullRequest, executionContext, blockers });
     validateReviewEvidence({ current, reviewEvidence, blockers });
     validateChecks({ checks, current, executionContext, blockers });
@@ -352,15 +364,15 @@ function validateSchema(context) {
   ], blockers, 'reviewEvidenceReport');
   requireFields(consumerAudit.raw, [
     'apiReadOk',
+    'auditedCommitSha',
     'blockers',
     'checkedAt',
+    'defaultBranch',
     'manualReviewRequired',
     'paginationComplete',
-    'pullRequestNumber',
     'ready',
     'repository',
-    'reportVersion',
-    'targetHeadSha'
+    'reportVersion'
   ], blockers, 'consumerAuditReport');
   requireFields(protectionAudit.raw, [
     'apiReadOk',
@@ -370,7 +382,6 @@ function validateSchema(context) {
     'defaultBranch',
     'manualReviewRequired',
     'paginationComplete',
-    'pullRequestNumber',
     'ready',
     'repository',
     'reportVersion'
@@ -460,8 +471,6 @@ function validateSchema(context) {
 
   validatePositiveIntegerFields(executionContext.raw, ['pullRequestNumber'], blockers, 'executionContext');
   validatePositiveIntegerFields(reviewEvidence.raw, ['pullRequestNumber'], blockers, 'reviewEvidenceReport');
-  validatePositiveIntegerFields(consumerAudit.raw, ['pullRequestNumber'], blockers, 'consumerAuditReport');
-  validatePositiveIntegerFields(protectionAudit.raw, ['pullRequestNumber'], blockers, 'protectionAuditReport');
   validatePositiveIntegerFields(pullRequest.raw, ['pullRequestNumber'], blockers, 'pullRequestSnapshot');
   validateNonNegativeIntegerFields(reviewEvidence.raw, [
     'requestedReviewers',
@@ -480,7 +489,7 @@ function validateSchema(context) {
 
   validateShaFields(executionContext.raw, ['currentBaseSha', 'currentHeadSha'], blockers, 'executionContext');
   validateShaFields(reviewEvidence.raw, ['baseSha', 'headSha'], blockers, 'reviewEvidenceReport');
-  validateShaFields(consumerAudit.raw, ['targetHeadSha'], blockers, 'consumerAuditReport');
+  validateShaFields(consumerAudit.raw, ['auditedCommitSha'], blockers, 'consumerAuditReport');
   validateShaFields(protectionAudit.raw, ['auditedSha'], blockers, 'protectionAuditReport');
   validateShaFields(pullRequest.raw, ['baseSha', 'headSha'], blockers, 'pullRequestSnapshot');
   validateShaFields(checks.raw, ['headSha'], blockers, 'checkSnapshot');
@@ -563,7 +572,7 @@ function validateReportFreshness({ blockers, current, report, reportName }) {
   }
 }
 
-function validateReportIdentity({ blockers, branchReport = false, current, report, reportName, staleReview = false }) {
+function validateReportIdentity({ blockers, current, report, reportName, staleReview = false }) {
   if (report.repository && report.repository !== current.repository) {
     addBlocker(blockers, 'report_repository_mismatch', 'Report repository does not match current PR.', `${reportName}.repository`);
   }
@@ -571,7 +580,7 @@ function validateReportIdentity({ blockers, branchReport = false, current, repor
     addBlocker(blockers, 'report_pull_request_mismatch', 'Report pull request number does not match current PR.', `${reportName}.pullRequestNumber`);
   }
 
-  const reportHeadSha = report.targetHeadSha || report.evidenceHeadSha || report.headSha;
+  const reportHeadSha = report.evidenceHeadSha || report.headSha;
   if (reportHeadSha && reportHeadSha !== current.currentHeadSha) {
     addBlocker(
       blockers,
@@ -581,9 +590,20 @@ function validateReportIdentity({ blockers, branchReport = false, current, repor
     );
   }
 
-  const reportBaseSha = branchReport ? (report.baseSha || report.auditedSha) : report.baseSha;
-  if (reportBaseSha && reportBaseSha !== current.currentBaseSha) {
+  if (report.baseSha && report.baseSha !== current.currentBaseSha) {
     addBlocker(blockers, 'report_base_sha_mismatch', 'Report base SHA does not match current PR base.', `${reportName}.baseSha`);
+  }
+}
+
+function validateDefaultBranchAuditIdentity({ auditedSha, blockers, current, defaultBranch, report, reportName, shaPath }) {
+  if (report.repository && report.repository !== current.repository) {
+    addBlocker(blockers, 'report_repository_mismatch', 'Audit report repository does not match current PR.', `${reportName}.repository`);
+  }
+  if (defaultBranch && defaultBranch !== current.baseBranch) {
+    addBlocker(blockers, 'report_base_sha_mismatch', 'Audit report default branch does not match PR base branch.', `${reportName}.defaultBranch`);
+  }
+  if (auditedSha && auditedSha !== current.currentBaseSha) {
+    addBlocker(blockers, 'report_base_sha_mismatch', 'Audit report default branch SHA does not match current PR base.', `${reportName}.${shaPath}`);
   }
 }
 
@@ -819,16 +839,13 @@ function normalizeConsumerAuditReport(value) {
     raw,
     apiReadOk: raw.apiReadOk === true,
     auditedCommitSha: cleanSha(raw.auditedCommitSha),
-    baseSha: cleanSha(raw.baseSha),
     blockers: normalizeIssues(raw.blockers),
     checkedAt: cleanString(raw.checkedAt),
-    headSha: cleanSha(raw.headSha),
+    defaultBranch: cleanString(raw.defaultBranch),
     manualReviewRequired: raw.manualReviewRequired === true,
     paginationComplete: raw.paginationComplete === true,
-    pullRequestNumber: normalizePullRequestNumber(raw.pullRequestNumber),
     ready: raw.ready === true,
     repository: cleanRepository(raw.repository),
-    targetHeadSha: cleanSha(raw.targetHeadSha),
     warnings: normalizeIssues(raw.warnings)
   };
 }
@@ -845,7 +862,6 @@ function normalizeProtectionAuditReport(value) {
     defaultBranch: cleanString(raw.defaultBranch),
     manualReviewRequired: raw.manualReviewRequired === true,
     paginationComplete: raw.paginationComplete === true,
-    pullRequestNumber: normalizePullRequestNumber(raw.pullRequestNumber),
     ready: raw.ready === true,
     repository: cleanRepository(raw.repository),
     warnings: normalizeIssues(raw.warnings)

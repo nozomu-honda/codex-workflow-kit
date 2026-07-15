@@ -51,6 +51,7 @@ export async function runAuditRepositoryProtectionCli(argv = process.argv.slice(
       githubApiUrl: parsed.githubApiUrl,
       githubToken: token,
       maxPages: parsed.maxPages,
+      now: deps.now,
       policy,
       repository: parsed.repository
     });
@@ -73,6 +74,7 @@ export async function fetchRepositoryProtectionAudit({
   githubApiUrl = DEFAULT_GITHUB_API_URL,
   githubToken = '',
   maxPages = 10,
+  now = new Date().toISOString(),
   policy = DEFAULT_PROTECTION_POLICY,
   repository
 }) {
@@ -84,6 +86,7 @@ export async function fetchRepositoryProtectionAudit({
   if (!normalizedRepository) {
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: 'Repository must be owner/repo.', path: 'repository' }],
+      checkedAt: now,
       expectedPolicy: policy,
       repository: { full_name: '' }
     });
@@ -93,6 +96,7 @@ export async function fetchRepositoryProtectionAudit({
   if (!githubToken) {
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: 'GitHub token for read-only API access is unavailable.', path: 'githubToken' }],
+      checkedAt: now,
       expectedPolicy: policy,
       repository: { full_name: normalizedRepository }
     });
@@ -102,6 +106,7 @@ export async function fetchRepositoryProtectionAudit({
   if (!baseUrl.ok) {
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: baseUrl.message, path: 'githubApiUrl' }],
+      checkedAt: now,
       expectedPolicy: policy,
       repository: { full_name: normalizedRepository }
     });
@@ -185,6 +190,7 @@ export async function fetchRepositoryProtectionAudit({
     apiErrors,
     branch,
     branchProtection,
+    checkedAt: now,
     defaultBranch: repositoryMetadata.default_branch,
     defaultBranchSha: branch?.commit?.sha,
     endSnapshot,
