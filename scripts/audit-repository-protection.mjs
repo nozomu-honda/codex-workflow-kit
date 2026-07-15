@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import Ajv2020 from 'ajv/dist/2020.js';
 import YAML from 'yaml';
 import {
   DEFAULT_PROTECTION_POLICY,
+  PROTECTION_AUDIT_REPORT_VERSION,
   auditRepositoryProtection,
   formatProtectionAuditResult
 } from '../packages/chatgpt-automation-core/src/protection-audit/index.js';
@@ -11,6 +13,8 @@ import {
 const USER_AGENT = 'codex-workflow-kit-protection-audit';
 const DEFAULT_POLICY_FILE = 'release/protection-policy.example.yml';
 const DEFAULT_GITHUB_API_URL = 'https://api.github.com';
+const PROTECTION_POLICY_SCHEMA_FILE = new URL('../schemas/protection-policy.schema.json', import.meta.url);
+const TOKEN_SOURCES = new Set(['github-token', 'external-read-token']);
 
 const USAGE = `Usage:
   node scripts/audit-repository-protection.mjs --repository <owner/repo> [options]
@@ -20,6 +24,7 @@ Options:
   --policy <path>           Expected policy YAML. Defaults to ${DEFAULT_POLICY_FILE}.
   --github-api-url <url>    GitHub API URL. Defaults to ${DEFAULT_GITHUB_API_URL}.
   --max-pages <number>      Pagination page limit. Defaults to 10.
+  --token-source <source>   github-token or external-read-token. Defaults to github-token.
   --json                    Print stable sanitized JSON.
   --help, -h                Show this help.
 
@@ -43,8 +48,23 @@ export async function runAuditRepositoryProtectionCli(argv = process.argv.slice(
     return 0;
   }
 
+  let policy;
   try {
-    const policy = await readPolicyFile(parsed.policy, deps.readFile ?? readFile);
+    policy = await readPolicyFile(parsed.policy, deps.readFile ?? readFile);
+  } catch (error) {
+    const result = createPolicyFailureResult({
+      error,
+      repository: parsed.repository
+    });
+    if (parsed.json) {
+      io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      io.stdout(formatProtectionAuditResult(result));
+    }
+    return 1;
+  }
+
+  try {
     const token = deps.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '';
     const { result } = await fetchRepositoryProtectionAudit({
       fetchImpl: deps.fetchImpl ?? fetch,
@@ -52,7 +72,8 @@ export async function runAuditRepositoryProtectionCli(argv = process.argv.slice(
       githubToken: token,
       maxPages: parsed.maxPages,
       policy,
-      repository: parsed.repository
+      repository: parsed.repository,
+      tokenSource: parsed.tokenSource
     });
 
     if (parsed.json) {
@@ -74,18 +95,25 @@ export async function fetchRepositoryProtectionAudit({
   githubToken = '',
   maxPages = 10,
   policy = DEFAULT_PROTECTION_POLICY,
-  repository
+  repository,
+  tokenSource = 'github-token'
 }) {
   const apiErrors = [];
-  const pagination = { rulesetsComplete: true };
+  const pagination = {
+    rulesetsComplete: true,
+    rulesetsEndComplete: true,
+    rulesetsStartComplete: true
+  };
   const baseUrl = validateGitHubApiUrl(githubApiUrl);
   const normalizedRepository = normalizeRepositoryName(repository);
+  const normalizedTokenSource = normalizeTokenSource(tokenSource);
 
   if (!normalizedRepository) {
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: 'Repository must be owner/repo.', path: 'repository' }],
       expectedPolicy: policy,
-      repository: { full_name: '' }
+      repository: { full_name: '' },
+      tokenSource: normalizedTokenSource
     });
     return { result };
   }
@@ -94,7 +122,8 @@ export async function fetchRepositoryProtectionAudit({
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: 'GitHub token for read-only API access is unavailable.', path: 'githubToken' }],
       expectedPolicy: policy,
-      repository: { full_name: normalizedRepository }
+      repository: { full_name: normalizedRepository },
+      tokenSource: normalizedTokenSource
     });
     return { result };
   }
@@ -103,7 +132,8 @@ export async function fetchRepositoryProtectionAudit({
     const result = auditRepositoryProtection({
       apiErrors: [{ code: 'protection_api_failed', message: baseUrl.message, path: 'githubApiUrl' }],
       expectedPolicy: policy,
-      repository: { full_name: normalizedRepository }
+      repository: { full_name: normalizedRepository },
+      tokenSource: normalizedTokenSource
     });
     return { result };
   }
@@ -122,8 +152,9 @@ export async function fetchRepositoryProtectionAudit({
   let endBranchProtectionRead = false;
   let rulesets = [];
   let rulesetDetails = [];
+  let endRulesets = [];
+  let endRulesetDetails = [];
   let endSnapshot = {};
-  let rulesetsChangedDuringAudit = false;
 
   try {
     repositoryMetadata = await githubGet(client, `/repos/${normalizedRepository}`);
@@ -147,6 +178,7 @@ export async function fetchRepositoryProtectionAudit({
       const list = await githubList(client, `/repos/${normalizedRepository}/rulesets?targets=branch&per_page=100`);
       rulesets = list.items;
       pagination.rulesetsComplete = list.complete;
+      pagination.rulesetsStartComplete = list.complete;
     } catch (error) {
       apiErrors.push(toApiIssue(error, 'rulesets'));
     }
@@ -171,11 +203,23 @@ export async function fetchRepositoryProtectionAudit({
       });
       endBranchProtectionRead = true;
       const finalRulesets = await githubList(client, `/repos/${normalizedRepository}/rulesets?targets=branch&per_page=100`);
+      endRulesets = finalRulesets.items;
+      pagination.rulesetsEndComplete = finalRulesets.complete;
+      for (const ruleset of endRulesets) {
+        const id = ruleset.id;
+        if (id === undefined || id === null) {
+          continue;
+        }
+        try {
+          endRulesetDetails.push(await githubGet(client, `/repos/${normalizedRepository}/rulesets/${encodeURIComponent(id)}`));
+        } catch (error) {
+          apiErrors.push(toApiIssue(error, 'rulesets.end'));
+        }
+      }
       endSnapshot = {
         defaultBranch: finalRepository.default_branch,
         defaultBranchSha: finalBranch?.commit?.sha
       };
-      rulesetsChangedDuringAudit = rulesetFingerprint(rulesets) !== rulesetFingerprint(finalRulesets.items);
     } catch (error) {
       apiErrors.push(toApiIssue(error, 'tocTou'));
     }
@@ -189,13 +233,15 @@ export async function fetchRepositoryProtectionAudit({
     defaultBranchSha: branch?.commit?.sha,
     endSnapshot,
     expectedPolicy: policy,
+    endRulesetDetails,
+    endRulesets,
     mergeSettings: repositoryMetadata,
     pagination,
     repository: repositoryMetadata,
     rulesetDetails,
     rulesets,
-    rulesetsChangedDuringAudit,
     startSnapshot,
+    tokenSource: normalizedTokenSource,
     ...(endBranchProtectionRead ? { endBranchProtection } : {})
   });
 
@@ -210,7 +256,8 @@ export function parseArgs(argv) {
     json: false,
     maxPages: 10,
     policy: DEFAULT_POLICY_FILE,
-    repository: ''
+    repository: '',
+    tokenSource: 'github-token'
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -226,7 +273,7 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (['--repository', '--policy', '--github-api-url', '--max-pages'].includes(arg)) {
+    if (['--repository', '--policy', '--github-api-url', '--max-pages', '--token-source'].includes(arg)) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
         return { ok: false, message: `${arg} requires a value.` };
@@ -238,6 +285,11 @@ export function parseArgs(argv) {
         options.policy = value;
       } else if (arg === '--github-api-url') {
         options.githubApiUrl = value;
+      } else if (arg === '--token-source') {
+        if (!TOKEN_SOURCES.has(value)) {
+          return { ok: false, message: '--token-source must be github-token or external-read-token.' };
+        }
+        options.tokenSource = value;
       } else {
         const number = Number(value);
         if (!Number.isInteger(number) || number < 1 || number > 100) {
@@ -263,11 +315,164 @@ export function parseArgs(argv) {
 }
 
 async function readPolicyFile(path, readFileImpl) {
-  const source = await readFileImpl(path, 'utf8');
-  const parsed = YAML.parse(source);
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed
-    : DEFAULT_PROTECTION_POLICY;
+  let source;
+  try {
+    source = await readFileImpl(path, 'utf8');
+  } catch {
+    throw policyError('protection_policy_parse_failed', 'Protection policy could not be read.', ['policy']);
+  }
+
+  let parsed;
+  try {
+    parsed = YAML.parse(source);
+  } catch {
+    throw policyError('protection_policy_parse_failed', 'Protection policy YAML could not be parsed.', ['policy']);
+  }
+
+  if (!isPlainObject(parsed)) {
+    throw policyError('protection_policy_validation_failed', 'Protection policy root must be an object.', ['policy']);
+  }
+
+  const schema = JSON.parse(await readFileImpl(PROTECTION_POLICY_SCHEMA_FILE, 'utf8'));
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  const validate = ajv.compile(schema);
+  if (!validate(parsed)) {
+    throw policyError(
+      'protection_policy_validation_failed',
+      'Protection policy schema validation failed.',
+      sanitizeAjvErrors(validate.errors)
+    );
+  }
+
+  return parsed;
+}
+
+function createPolicyFailureResult({ error, repository }) {
+  const blockers = (Array.isArray(error?.issues) && error.issues.length > 0
+    ? error.issues
+    : [{
+        code: 'protection_policy_validation_failed',
+        manualReviewRequired: true,
+        message: 'Protection policy validation failed.',
+        path: 'policy'
+      }])
+    .map((issue) => ({
+      code: cleanString(issue.code) || 'protection_policy_validation_failed',
+      manualReviewRequired: true,
+      message: cleanString(issue.message) || 'Protection policy validation failed.',
+      path: cleanString(issue.path) || 'policy'
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code) || a.path.localeCompare(b.path));
+
+  return {
+    auditedSha: '',
+    blockers,
+    bypassSummary: [],
+    bypassVisibility: [],
+    defaultBranch: '',
+    effectiveProtections: {
+      activeRulesetCount: 0,
+      branchProtectionPresent: false,
+      deletionBlocked: false,
+      dismissStaleApprovals: false,
+      enforceAdmins: false,
+      forcePushBlocked: false,
+      minimumApprovals: 0,
+      pullRequestRequired: false,
+      requireCodeOwnerReview: false,
+      requireConversationResolution: false,
+      requireLastPushApproval: false,
+      requireLinearHistory: false,
+      requireSignedCommits: false,
+      strictStatusChecks: false
+    },
+    manualReviewRequired: true,
+    mergeSettings: {
+      autoMergeAllowed: false,
+      branchAutoDelete: false,
+      mergeCommitAllowed: false,
+      mergeQueueEnabled: false,
+      rebaseMergeAllowed: false,
+      squashMergeAllowed: false
+    },
+    ok: false,
+    ready: false,
+    reasonCodes: [...new Set(blockers.map((issue) => issue.code))].sort(),
+    reportVersion: PROTECTION_AUDIT_REPORT_VERSION,
+    repository: normalizeRepositoryName(repository),
+    requiredChecks: [],
+    requiredReviews: {
+      dismissStaleApprovals: false,
+      minimumApprovals: 0,
+      pullRequestRequired: false,
+      requireCodeOwnerReview: false,
+      requireConversationResolution: false,
+      requireLastPushApproval: false
+    },
+    warnings: []
+  };
+}
+
+function policyError(code, message, paths) {
+  const error = new Error(code);
+  error.code = code;
+  error.issues = (Array.isArray(paths) && paths.length > 0 ? paths : ['policy'])
+    .map((path) => ({
+      code,
+      manualReviewRequired: true,
+      message,
+      path: sanitizePolicyPath(path)
+    }));
+  return error;
+}
+
+function sanitizeAjvErrors(errors = []) {
+  return (Array.isArray(errors) ? errors : [])
+    .map((error) => {
+      const base = jsonPointerToPolicyPath(error.instancePath);
+      if (error.keyword === 'required' && typeof error.params?.missingProperty === 'string') {
+        return `${base}.${sanitizePathSegment(error.params.missingProperty)}`;
+      }
+      if (error.keyword === 'additionalProperties' && typeof error.params?.additionalProperty === 'string') {
+        return `${base}.${sanitizePathSegment(error.params.additionalProperty)}`;
+      }
+      return base;
+    })
+    .map(sanitizePolicyPath)
+    .filter(Boolean)
+    .sort();
+}
+
+function jsonPointerToPolicyPath(pointer) {
+  const text = cleanString(pointer);
+  if (!text || text === '/') {
+    return 'policy';
+  }
+  const segments = text
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
+    .map(sanitizePathSegment);
+  return ['policy', ...segments].filter(Boolean).join('.');
+}
+
+function sanitizePolicyPath(path) {
+  const text = cleanString(path).replaceAll('[', '.').replaceAll(']', '');
+  const parts = text
+    .split('.')
+    .map(sanitizePathSegment)
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join('.') : 'policy';
+}
+
+function sanitizePathSegment(value) {
+  const text = cleanString(value);
+  return /^[A-Za-z0-9_-]+$/.test(text) ? text : 'field';
+}
+
+function normalizeTokenSource(value) {
+  const tokenSource = cleanString(value);
+  return TOKEN_SOURCES.has(tokenSource) ? tokenSource : 'github-token';
 }
 
 async function githubGet(client, path, options = {}) {
@@ -368,6 +573,14 @@ function validateGitHubApiUrl(value) {
 function normalizeRepositoryName(value) {
   const text = typeof value === 'string' ? value.trim() : '';
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(text) ? text : '';
+}
+
+function cleanString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function rulesetFingerprint(rulesets) {

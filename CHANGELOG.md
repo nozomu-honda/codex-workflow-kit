@@ -20,6 +20,7 @@
 
 - Recorded PR #32 and PR #33 plan-only capabilities in the release process before enabling any write workflow.
 - Release readiness now blocks nonexistent or mismatched manifest SHAs, non-ancestor rollback/previous SHAs, and manifest file lists that differ from repository inventory.
+- Repository protection audit now fails closed for unknown Ruleset bypass actor visibility, incomplete end-of-audit Ruleset pagination, insufficient standard `github.token` capability, and invalid protection policy files.
 
 ### Security
 

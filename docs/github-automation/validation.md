@@ -82,10 +82,13 @@ npm run audit:template
 - Branch protectionなし、Rulesetなし、CIなし、Review evidence gateなしを検出する
 - approval 0、stale approval dismissalなし、conversation resolutionなしを検出する
 - force push許可、deletion許可、unexpected bypass actorを検出する
+- `bypass_actors: []` と `bypass_actors` 省略を区別し、可視性不明を `ruleset_bypass_visibility_unknown` でfail closedにする
 - inactive ruleset、branch pattern不一致、duplicate check名を検出する
 - merge queue有効時にmanual review warningを出す
-- API 403 / 404、pagination未完了、監査中の設定変更をfail closedにする
-- policy schemaとexample policyが一致する
+- API 403 / 404、開始時と終了時のpagination未完了、監査中のBranch protection / Ruleset detail変更をfail closedにする
+- policy schemaとexample policyが一致し、CLI runtimeでも不正policyをAPI request前にfail closedにする
+- 標準 `github-token` sourceでは完全監査を `ready=true` にしない
+- external read token contextでもAPI 403やRuleset bypass可視性不明はfail closedにする
 - CLIがGETだけを使い、tokenやAuthorizationを出力しない
 - workflowが `workflow_dispatch` only、`contents: read` only、Secretなしである
 
@@ -102,10 +105,12 @@ live consumerをread-onlyで確認する場合:
 GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
   --repository nozomu-honda/oshi-management-app \
   --policy release/protection-policy.example.yml \
+  --token-source external-read-token \
   --json
 ```
 
 このlive確認はGitHub API readだけを行い、Ruleset / Branch protection / Secret / Variables / labels / comments / deploy / releaseを変更しません。
+標準 `github.token` を使うworkflow実行はread-only診断であり、完全監査の成功証跡として扱いません。
 
 導入先を直接監査する場合:
 
@@ -121,8 +126,14 @@ npm run audit:consumer -- --root ../consumer-repo --expected-ref 0123456789abcde
 
 - inventory validationがURL repository、path traversal、重複path、unknown key、mutable ref、short SHA、version tag、placeholderをfail closedにする
 - fixed SHA、mixed refs、trigger、permission、`pull_request_target`、`secrets: inherit`、Secret-like構成を検出する
+- caller jobのreusable workflow参照先が、期待kit repository、期待workflow path、期待40桁SHAと完全一致する
+- local reusable workflow参照、別repository、prefix偽装、別workflow path、kit-ref不一致をfail closedにする
+- capabilityごとの必須 `with` input、`dry-run: true`、`kit-ref` と `uses` refの一致、unexpected input拒否をfail closedにする
+- Secret-like keyと具体値、`${{ secrets }}`、`${{ toJSON(secrets) }}`、`${{ secrets.* }}`、`${{ secrets['NAME'] }}`、`${{ secrets[inputs.name] }}`、`${{ github }}`、`${{ toJSON(github) }}`、`${{ github.token }}`、`${{ github['token'] }}`、`${{ github[inputs.name] }}`、wrapper関数内のSecret/runtime token転送をfail closedにし、reportへ値、Secret名、式全文を出さない
+- `toJson(github.event)`、`github.repository`、`github.repository_owner`、`github.actor`、`github.event_name` は既存caller契約として許可する
+- 期待jobが正確に1つだけ存在し、余分なjobや重複reusable workflow呼び出しをfail closedにする
 - config / capability / caller workflow不一致を検出する
-- API read失敗、pagination不完了、branch SHA変化、binary / submodule / symlink / oversized fileをfail closedにする
+- API read失敗、pagination不完了、branch SHA変化、binary / submodule / symlink / oversized file、GHES API base path逸脱、未許可hostへのtoken転送をfail closedにする
 - JSON reportがdeterministicで、token、Cookie、Authorization、Secret値、API response全文、絶対pathを含まない
 - GitHub API write、workflow dispatch、consumer mutationが0回である
 

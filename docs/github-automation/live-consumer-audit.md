@@ -52,6 +52,8 @@ node scripts/audit-live-consumer.mjs \
 
 認証が必要なprivate repositoryを監査する場合は、環境変数 `GITHUB_TOKEN` または `GH_TOKEN` にread-only tokenを設定します。token値は引数に渡さず、ログやreportへ出しません。
 
+GitHub Enterprise Serverを監査する場合は、`--github-api-url https://github.example.com/api/v3` のようにAPI base URLを指定できます。`/api/v3` のbase pathはpaginationを含めて保持されます。`api.github.com` 以外のhostへtokenを送る場合は、`--allow-token-host github.example.com` を明示します。HTTP、username/password付きURL、query/hash付きURL、base path外へ逸脱するpagination URLはfail closedです。
+
 ## Inventory
 
 live consumer audit inventoryは `schemas/live-consumer-audit-inventory.schema.json` を正とします。例は `release/live-consumers.example.yml` です。
@@ -75,7 +77,22 @@ unknown key、path traversal、重複path、URL形式repository、mutable ref、
 
 ### Fixed SHA
 
-consumer内のkit参照は40桁小文字commit SHAだけを許可します。
+consumer内のkit参照は、capabilityごとに期待する共通キットrepository、reusable workflow path、40桁小文字commit SHAの完全一致だけを許可します。
+
+許可する形:
+
+```text
+nozomu-honda/codex-workflow-kit/.github/workflows/<expected>.yml@0123456789abcdef0123456789abcdef01234567
+```
+
+BLOCKする例:
+
+- 共通キット以外のrepository
+- 同一ownerの別repository
+- repository prefix偽装
+- capabilityと異なるreusable workflow path
+- expected SHAと異なるSHA
+- local `./.github/workflows/*.yml` 参照
 
 BLOCKする例:
 
@@ -89,7 +106,7 @@ BLOCKする例:
 - `REPLACE_WITH_40_CHAR_COMMIT_SHA`
 - 同じconsumer内のmixed refs
 
-external Actionも原則40桁SHA固定です。local `./` 参照は許可します。
+live consumer caller workflowでは、明示的なinventory契約なしのlocal reusable workflow参照は許可しません。
 
 ### Caller workflow scope
 
@@ -134,7 +151,30 @@ inventoryの `expectedWorkflowNames` が指定されている場合、caller wor
 BLOCKする例:
 
 - `secrets: inherit`
+- `${{ secrets }}`
+- `${{ toJSON(secrets) }}`
+- `${{ format('{0}', secrets) }}`
 - `${{ secrets.* }}`
+- `${{ secrets['NAME'] }}` / `${{ secrets["NAME"] }}`
+- `${{ secrets[inputs.name] }}` のようなdynamic secret参照
+- `${{ github }}`
+- `${{ toJSON(github) }}`
+- `${{ format('{0}', github) }}`
+- Secret-likeなkeyへの具体値または式の設定
+  - `api-token`
+  - `access-token`
+  - `refresh-token`
+  - `client-secret`
+  - `authorization`
+  - `cookie`
+  - `password`
+  - `private-key`
+  - `webhook-secret`
+  - `gas-url`
+  - `gas-web-app-url`
+- Secret-like inputへの `${{ github.token }}` 転送
+- Secret-likeではないinputやenvでも、wrapper関数内のSecretまたはruntime token参照
+- `${{ github['token'] }}` / `${{ github["token"] }}` / `${{ github[inputs.name] }}` のbracket notation
 - workflow_call Secret input
 - workflow_dispatch Secret-like input
 - Authorization、token、Cookieをenvやshellへ展開する構成
@@ -143,7 +183,39 @@ BLOCKする例:
 - PR head codeやevent payloadをshellへ直接展開する構成
 - `eval`
 
-Secret名と値はreportへ出しません。検出結果はcode、path、fileだけに正規化します。
+Secret名、runtime token参照、式全文、値はreportへ出しません。検出結果はcode、file、sanitized pathだけに正規化します。dummy、example、placeholder、redacted、空値はfixture用途として許可します。
+
+### Job structure
+
+既知capabilityのcaller workflowは、期待jobを1つだけ持つ必要があります。
+
+BLOCKする例:
+
+- `jobs` がobjectではない
+- 期待job名がない
+- job名がcapability契約と異なる
+- 余分なjobがある
+- 同じreusable workflowを複数jobで呼ぶ
+- `runs-on`、`steps`、`run`、`shell` がある
+- job-level `secrets` がある
+- job-level permissionが契約と異なる
+- `dry-run: true` がない
+- capability契約で必須の `with` inputがない
+- `kit-ref` が必要なcapabilityで未指定、40桁SHAではない、または `uses` のrefと一致しない
+- capability契約にない `with` inputがある
+- `with` がobjectではない
+
+### Caller input contract
+
+Live consumer auditは、caller workflowの `with` をcapabilityごとの契約として検証します。
+
+- `config-validation`: `config-file` と `dry-run: true` が必須です。`config-file` はinventoryの `configPath` と一致する必要があります。このcapabilityのreusable workflowはshared kit checkoutを行わないため、`kit-ref` inputは使いません。
+- `event-normalization`: event/repository/actor系input、`permission-mode: read-only`、`requested-capability: normalize-only`、`repository-config-json`、`dry-run: true`、`kit-ref` が必須です。
+- `review-routing-plan` / `auto-merge-plan` / `main-follow-up-plan`: event/repository/actor系input、`repository-config-json`、`dry-run: true`、`kit-ref` が必須です。dedupeやtimestamp系inputは、各planの契約内ではoptionalです。
+
+input名は完全一致だけを許可します。大文字小文字違い、別名、追加input、`with: null`、配列、scalarはfail closedです。`kit-ref` はレビュー済み40桁小文字commit SHAで、job-level `uses` のrefと同一でなければなりません。
+
+unexpected inputのkeyがSecret-likeな名前の場合、reportのpathでは `<secret-like-key>` に置換します。Secret-like key名、Secret名、式全文、具体値はJSON reportにもhuman reportにも出しません。通常の追加input名は監査対象を特定できるようにpathへ残します。
 
 ### Config / capability
 

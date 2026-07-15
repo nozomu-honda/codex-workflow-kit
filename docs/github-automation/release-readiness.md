@@ -151,6 +151,8 @@ Release readiness confirms fixed-SHA rollout inputs, but it does not inspect liv
 
 The protection audit checks required checks, required reviews, bypass actors, force push / deletion rules, merge settings, and TOCTOU changes. It still does not modify consumer repositories or create Issues / PRs.
 
+The repository protection workflow uses the standard `github.token` only as a read-only diagnostic path. That token source cannot prove complete Administration read visibility, so its result must not be treated as a complete live protection audit. A complete live audit requires a manually prepared external read token with Administration read capability, passed to the CLI with `--token-source external-read-token`. Token creation and Secret registration are manual follow-up work, not release readiness automation.
+
 Live consumer audit is the read-only follow-up check for real consumers. It verifies that a consumer repository actually uses reviewed 40-character kit refs, matching capabilities, read-only permissions, safe triggers, and no Secret-bearing workflow structure. It does not update the consumer and is documented in [live-consumer-audit.md](live-consumer-audit.md).
 
 ## Release readiness workflow
