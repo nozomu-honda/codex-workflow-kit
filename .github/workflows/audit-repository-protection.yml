@@ -47,4 +47,5 @@ jobs:
           node scripts/audit-repository-protection.mjs \
             --repository "${{ inputs.repository || github.repository }}" \
             --policy "${{ inputs['policy-file'] || 'release/protection-policy.example.yml' }}" \
+            --token-source github-token \
             --json

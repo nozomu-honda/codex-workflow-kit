@@ -59,6 +59,7 @@ test('repository protection audit workflow uses pinned external actions and runs
   assert.match(runCommands[1], /node scripts\/audit-repository-protection\.mjs/);
   assert.match(runCommands[1], /--repository/);
   assert.match(runCommands[1], /--policy/);
+  assert.match(runCommands[1], /--token-source github-token/);
   assert.match(runCommands[1], /inputs\['policy-file'\]/);
   assert.match(runCommands[1], /--json/);
 });

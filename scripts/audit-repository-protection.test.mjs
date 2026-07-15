@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   fetchRepositoryProtectionAudit,
   parseArgs,
@@ -28,37 +29,98 @@ allowedBypassActors: []
 requireReviewEvidenceGate: true
 requireRuleset: false
 `;
+const POLICY_SCHEMA_FILE = new URL('../schemas/protection-policy.schema.json', import.meta.url);
+
+async function readPolicyFixture(path) {
+  if (String(path).includes('protection-policy.schema.json')) {
+    return readFile(POLICY_SCHEMA_FILE, 'utf8');
+  }
+  return POLICY_YAML;
+}
+
+function readPolicyFixtureWith(source) {
+  return async (path) => {
+    if (String(path).includes('protection-policy.schema.json')) {
+      return readFile(POLICY_SCHEMA_FILE, 'utf8');
+    }
+    return source;
+  };
+}
 
 test('parseArgs validates repository and page limit', () => {
   assert.equal(parseArgs(['--repository', 'owner/example-repo']).ok, true);
+  assert.equal(parseArgs(['--repository', 'owner/example-repo', '--token-source', 'external-read-token']).ok, true);
+  assert.equal(parseArgs(['--repository', 'owner/example-repo', '--token-source', 'unknown']).ok, false);
   assert.equal(parseArgs(['--repository', 'owner']).ok, false);
   assert.equal(parseArgs(['--repository', 'owner/example-repo', '--max-pages', '0']).ok, false);
   assert.equal(parseArgs(['--repository', 'owner/example-repo', '--unknown']).ok, false);
 });
 
-test('fetchRepositoryProtectionAudit reads GitHub settings with GET only and returns sanitized ready report', async () => {
+test('github-token source cannot produce a complete ready audit', async () => {
+  const { result } = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([]),
+    githubToken: 'secret-token-value',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'github-token'
+  });
+
+  assert.equal(result.ready, false);
+  assert.equal(result.reasonCodes.includes('administration_read_token_required'), true);
+  assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
+});
+
+test('external token still fails closed when ruleset bypass actors are not visible', async () => {
   const requests = [];
   const { result } = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch(requests),
     githubToken: 'secret-token-value',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
+  const defaultRulesetVisibility = result.bypassVisibility[0];
 
-  assert.equal(result.ready, true, JSON.stringify(result, null, 2));
+  assert.equal(result.ready, false, JSON.stringify(result, null, 2));
+  assert.equal(result.reasonCodes.includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(result.requiredChecks.some((check) => check.name === 'CI'), true);
+  assert.equal(result.effectiveProtections.branchProtectionPresent, true);
+  assert.equal(defaultRulesetVisibility.bypassActorsVisible, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(defaultRulesetVisibility, 'bypassActorCount'), false);
   assert.equal(requests.length > 0, true);
   assert.equal(requests.every((request) => request.method === 'GET'), true);
   assert.equal(requests.filter((request) => request.path === '/repos/owner/example-repo/branches/master/protection').length, 2);
   assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
 });
 
+test('fetchRepositoryProtectionAudit is ready only when bypass actors are explicitly visible', async () => {
+  const requests = [];
+  const { result } = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch(requests, { includeBypassActors: true }),
+    githubToken: 'secret-token-value',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+  const defaultRulesetVisibility = result.bypassVisibility[0];
+
+  assert.equal(result.ready, true, JSON.stringify(result, null, 2));
+  assert.equal(defaultRulesetVisibility.bypassActorsVisible, true);
+  assert.equal(defaultRulesetVisibility.bypassActorCount, 0);
+  assert.equal(result.bypassSummary.length, 0);
+  assert.equal(requests.length > 0, true);
+  assert.equal(requests.every((request) => request.method === 'GET'), true);
+  assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
+});
+
 test('fetchRepositoryProtectionAudit refetches branch protection and blocks TOCTOU changes', async () => {
   const requests = [];
   const { result } = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch(requests, { changedBranchProtectionOnSecondRead: true }),
+    fetchImpl: fakeFetch(requests, { changedBranchProtectionOnSecondRead: true, includeBypassActors: true }),
     githubToken: 'secret-token-value',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
   const serialized = JSON.stringify(result);
 
@@ -75,14 +137,16 @@ test('CLI prints stable JSON and does not expose token values', async () => {
   const exitCode = await runAuditRepositoryProtectionCli([
     '--repository',
     'owner/example-repo',
+    '--token-source',
+    'external-read-token',
     '--json'
   ], {
     stderr: (message) => { output.stderr += message; },
     stdout: (message) => { output.stdout += message; }
   }, {
-    fetchImpl: fakeFetch([]),
+    fetchImpl: fakeFetch([], { includeBypassActors: true }),
     githubToken: 'another-secret-token',
-    readFile: async () => POLICY_YAML
+    readFile: readPolicyFixture
   });
   const parsed = JSON.parse(output.stdout);
 
@@ -98,7 +162,8 @@ test('missing token fails closed without making API requests', async () => {
     fetchImpl: fakeFetch(requests),
     githubToken: '',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
 
   assert.equal(result.ready, false);
@@ -111,26 +176,30 @@ test('redirects, 403, 404, and pagination loops are normalized safely', async ()
     fetchImpl: fakeFetch([], { redirectRulesets: true }),
     githubToken: 'token',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
   const forbidden = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch([], { forbiddenRulesets: true }),
     githubToken: 'token',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
   const missingRepo = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch([], { missingRepository: true }),
     githubToken: 'token',
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
   const pagination = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch([], { paginatedRulesets: true }),
     githubToken: 'token',
     maxPages: 1,
     policy: policy(),
-    repository: 'owner/example-repo'
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
   });
 
   assert.equal(redirect.result.reasonCodes.includes('protection_api_failed'), true);
@@ -139,10 +208,60 @@ test('redirects, 403, 404, and pagination loops are normalized safely', async ()
   assert.equal(pagination.result.reasonCodes.includes('ruleset_pagination_incomplete'), true);
 });
 
-test('CLI help and unexpected errors return documented exit codes', async () => {
+test('external token context still fails closed on hidden bypass actors and final pagination issues', async () => {
+  const hiddenBypass = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([]),
+    githubToken: 'token',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+  const endPagination = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([], { includeBypassActors: true, paginatedRulesetsOnSecondRead: true }),
+    githubToken: 'token',
+    maxPages: 1,
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+  const endLoop = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([], { includeBypassActors: true, loopRulesetsOnSecondRead: true }),
+    githubToken: 'token',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+
+  assert.equal(hiddenBypass.result.reasonCodes.includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(endPagination.result.reasonCodes.includes('ruleset_pagination_incomplete'), true);
+  assert.equal(endPagination.result.blockers.some((blocker) => blocker.path === 'rulesets.end'), true);
+  assert.equal(endLoop.result.reasonCodes.includes('ruleset_pagination_incomplete'), true);
+  assert.equal(JSON.stringify(endLoop.result).includes('rel="next"'), false);
+});
+
+test('fetchRepositoryProtectionAudit detects final ruleset detail TOCTOU changes', async () => {
+  const changedRuleset = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([], { changedRulesetDetailOnSecondRead: true, includeBypassActors: true }),
+    githubToken: 'token',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+  const hiddenBypassAtEnd = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch([], { includeBypassActors: true, omitBypassActorsOnSecondRead: true }),
+    githubToken: 'token',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+
+  assert.equal(changedRuleset.result.reasonCodes.includes('protection_changed_during_audit'), true);
+  assert.equal(hiddenBypassAtEnd.result.reasonCodes.includes('protection_changed_during_audit'), true);
+});
+
+test('CLI help and usage errors return documented exit codes', async () => {
   const help = { stderr: '', stdout: '' };
   const usage = { stderr: '', stdout: '' };
-  const unexpected = { stderr: '', stdout: '' };
 
   assert.equal(await runAuditRepositoryProtectionCli(['--help'], {
     stderr: (message) => { help.stderr += message; },
@@ -152,18 +271,82 @@ test('CLI help and unexpected errors return documented exit codes', async () => 
     stderr: (message) => { usage.stderr += message; },
     stdout: (message) => { usage.stdout += message; }
   }), 2);
-  assert.equal(await runAuditRepositoryProtectionCli(['--repository', 'owner/example-repo'], {
-    stderr: (message) => { unexpected.stderr += message; },
-    stdout: (message) => { unexpected.stdout += message; }
-  }, {
-    fetchImpl: fakeFetch([]),
-    githubToken: 'token',
-    readFile: async () => { throw new Error('do not leak stack'); }
-  }), 1);
   assert.match(help.stdout, /--repository/);
   assert.match(usage.stderr, /Unknown option/);
-  assert.match(unexpected.stderr, /failed unexpectedly/);
-  assert.equal(unexpected.stderr.includes('Error:'), false);
+});
+
+test('invalid policy fails closed before API requests with sanitized paths', async () => {
+  const cases = [
+    {
+      code: 'protection_policy_parse_failed',
+      name: 'YAML syntax error',
+      path: 'policy',
+      source: 'requiredStatusChecks: ['
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'root array',
+      path: 'policy',
+      source: '- CI'
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'empty required checks',
+      path: 'policy.requiredStatusChecks',
+      source: POLICY_YAML.replace('  - CI\n  - Review evidence gate', '')
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'minimum approval zero',
+      path: 'policy.minimumApprovals',
+      source: POLICY_YAML.replace('minimumApprovals: 1', 'minimumApprovals: 0')
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'missing required field',
+      path: 'policy.requirePullRequest',
+      source: POLICY_YAML.replace('requirePullRequest: true\n', '')
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'unknown property',
+      path: 'policy.unexpectedField',
+      source: `${POLICY_YAML}unexpectedField: redacted-placeholder-value\n`
+    },
+    {
+      code: 'protection_policy_validation_failed',
+      name: 'invalid merge method',
+      path: 'policy.allowedMergeMethods.0',
+      source: POLICY_YAML.replace('  - squash', '  - octopus')
+    }
+  ];
+
+  for (const entry of cases) {
+    const requests = [];
+    const output = { stderr: '', stdout: '' };
+    const exitCode = await runAuditRepositoryProtectionCli([
+      '--repository',
+      'owner/example-repo',
+      '--token-source',
+      'external-read-token',
+      '--json'
+    ], {
+      stderr: (message) => { output.stderr += message; },
+      stdout: (message) => { output.stdout += message; }
+    }, {
+      fetchImpl: fakeFetch(requests),
+      githubToken: 'token',
+      readFile: readPolicyFixtureWith(entry.source)
+    });
+    const parsed = JSON.parse(output.stdout);
+
+    assert.equal(exitCode, 1, entry.name);
+    assert.equal(requests.length, 0, entry.name);
+    assert.equal(parsed.reasonCodes.includes(entry.code), true, entry.name);
+    assert.equal(parsed.blockers.some((blocker) => blocker.path === entry.path), true, entry.name);
+    assert.equal(output.stdout.includes('redacted-placeholder-value'), false, entry.name);
+    assert.equal(output.stderr, '', entry.name);
+  }
 });
 
 function policy() {
@@ -190,6 +373,8 @@ function policy() {
 
 function fakeFetch(requests, options = {}) {
   let branchProtectionReads = 0;
+  let rulesetDetailReads = 0;
+  let rulesetsListReads = 0;
   return async (url, init = {}) => {
     const parsed = new URL(url);
     requests.push({
@@ -209,9 +394,22 @@ function fakeFetch(requests, options = {}) {
     if (options.forbiddenRulesets && path.startsWith('/repos/owner/example-repo/rulesets')) {
       return response({}, 403);
     }
+    if (path === '/repos/owner/example-repo/rulesets?targets=branch&per_page=100') {
+      rulesetsListReads += 1;
+    }
     if (options.paginatedRulesets && path === '/repos/owner/example-repo/rulesets?targets=branch&per_page=100') {
       return response([rulesetSummary()], 200, {
         link: '<https://api.github.com/repos/owner/example-repo/rulesets?page=2>; rel="next"'
+      });
+    }
+    if (options.paginatedRulesetsOnSecondRead && rulesetsListReads === 2 && path === '/repos/owner/example-repo/rulesets?targets=branch&per_page=100') {
+      return response([rulesetSummary()], 200, {
+        link: '<https://api.github.com/repos/owner/example-repo/rulesets?page=2>; rel="next"'
+      });
+    }
+    if (options.loopRulesetsOnSecondRead && rulesetsListReads === 2 && path === '/repos/owner/example-repo/rulesets?targets=branch&per_page=100') {
+      return response([rulesetSummary()], 200, {
+        link: '<https://api.github.com/repos/owner/example-repo/rulesets?targets=branch&per_page=100>; rel="next"'
       });
     }
     if (path === '/repos/owner/example-repo') {
@@ -231,6 +429,24 @@ function fakeFetch(requests, options = {}) {
       return response([rulesetSummary()]);
     }
     if (path === '/repos/owner/example-repo/rulesets/101') {
+      rulesetDetailReads += 1;
+      if (options.changedRulesetDetailOnSecondRead && rulesetDetailReads === 2) {
+        return response(rulesetDetail({
+          ...(options.includeBypassActors ? { bypass_actors: [] } : {}),
+          rules: rulesetDetail().rules.map((rule) => rule.type === 'pull_request'
+            ? {
+                ...rule,
+                parameters: {
+                  ...rule.parameters,
+                  required_approving_review_count: 2
+                }
+              }
+            : rule)
+        }));
+      }
+      if (options.includeBypassActors && !(options.omitBypassActorsOnSecondRead && rulesetDetailReads === 2)) {
+        return response(rulesetDetail({ bypass_actors: [] }));
+      }
       return response(rulesetDetail());
     }
     if (path === '/repos/owner/example-repo/rulesets?page=2') {
@@ -292,10 +508,9 @@ function rulesetSummary() {
   };
 }
 
-function rulesetDetail() {
+function rulesetDetail(overrides = {}) {
   return {
     ...rulesetSummary(),
-    bypass_actors: [],
     conditions: {
       ref_name: {
         exclude: [],
@@ -324,6 +539,7 @@ function rulesetDetail() {
       },
       { type: 'deletion' },
       { type: 'non_fast_forward' }
-    ]
+    ],
+    ...overrides
   };
 }

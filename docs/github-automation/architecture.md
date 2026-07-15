@@ -77,9 +77,11 @@ CLI wrapperとcore moduleを分け、将来JavaScript Actionやnpm packageへ再
 - Branch protectionやRulesetを変更しない
 - required checkやCheck Runを作成しない
 - Secret、token、Authorization、API response全文、不要なactor内部IDをreportへ出さない
+- 標準 `github.token` のworkflow結果を完全監査済みとして扱わず、Administration read相当のexternal read tokenが必要な範囲を明示する
 - Branch protectionとRulesetをeffective policyとして合成する
 - Branch protection / Ruleset / default branchのTOCTOUを監査終了時の再取得で検知する
-- API failure、pagination未完了、TOCTOU検知、状態不明はfail closedまたはmanual reviewにする
+- Ruleset bypass actorの可視性不明を0件として扱わず、active default branch rulesetではfail closedにする
+- API failure、開始時/終了時pagination未完了、TOCTOU検知、状態不明、policy validation failureはfail closedまたはmanual reviewにする
 
 詳細は [protection-audit.md](protection-audit.md) を参照します。
 
