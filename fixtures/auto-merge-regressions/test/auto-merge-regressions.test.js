@@ -6,6 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Ajv from 'ajv';
 import {
+  createExecutorDecisionAdapter,
+  createLegacyPlanDecisionAdapter,
   createReplaySnapshot,
   replayScenario,
   replayScenarios,
@@ -59,7 +61,11 @@ test('scenario collection is valid and contains required regression coverage', a
     'duplicate-check-name',
     'consumer-audit-failure',
     'consumer-audit-sha-mismatch',
+    'consumer-audit-api-read-failure',
+    'consumer-audit-pagination-incomplete',
     'protection-audit-failure',
+    'protection-audit-api-read-failure',
+    'protection-audit-pagination-incomplete',
     'ruleset-missing',
     'bypass-actor-unknown',
     'force-push-allowed',
@@ -68,6 +74,8 @@ test('scenario collection is valid and contains required regression coverage', a
     'workflow-permission-increase',
     'pull-request-target',
     'secret-like-addition',
+    'changed-files-head-mismatch',
+    'changed-files-api-read-failure',
     'binary-file',
     'submodule-change',
     'duplicate-idempotency-key',
@@ -75,6 +83,8 @@ test('scenario collection is valid and contains required regression coverage', a
     'attempt-limit-exceeded',
     'command-expired',
     'future-timestamp',
+    'review-report-expired',
+    'review-report-from-future',
     'safe-candidate-write-disabled'
   ], scenarios);
 
@@ -96,6 +106,41 @@ test('replay scenarios are deterministic and match expected decisions', () => {
   assert.equal(first.summary.failed, 0);
 });
 
+test('default replay path uses executor adapter and tracks intended legacy decision differences', () => {
+  const scenarios = buildAutoMergeRegressionScenarios();
+  const defaultReplay = replayScenarios(scenarios);
+  const executorReplay = replayScenarios(scenarios, {
+    decisionAdapter: createExecutorDecisionAdapter()
+  });
+  assert.deepEqual(defaultReplay, executorReplay);
+
+  const decisionKeys = ['eligible', 'commandCreated', 'adapterCalled', 'executed', 'dryRun'];
+  const legacyAdapter = createLegacyPlanDecisionAdapter();
+  const executorAdapter = createExecutorDecisionAdapter();
+  const decisionDifferences = scenarios
+    .filter((entry) => {
+      const legacy = replayScenario(entry, legacyAdapter).result;
+      const executor = replayScenario(entry, executorAdapter).result;
+      return decisionKeys.some((key) => legacy[key] !== executor[key]);
+    })
+    .map((entry) => entry.id)
+    .sort();
+
+  assert.deepEqual(decisionDifferences, [
+    'attempt-limit-exceeded',
+    'changed-files-api-read-failure',
+    'changed-files-head-mismatch',
+    'command-expired',
+    'consumer-audit-api-read-failure',
+    'consumer-audit-pagination-incomplete',
+    'future-timestamp',
+    'protection-audit-api-read-failure',
+    'protection-audit-pagination-incomplete',
+    'review-report-expired',
+    'review-report-from-future'
+  ].sort());
+});
+
 test('snapshot contains only stable replay fields', async () => {
   const replay = replayScenarios(buildAutoMergeRegressionScenarios());
   const snapshot = createReplaySnapshot(replay);
@@ -113,72 +158,108 @@ test('specific review and safety regressions keep expected reason codes', () => 
     adapterCalled: false,
     commandCreated: false,
     eligible: false,
-    reasonCodes: ['review_evidence_missing', 'reviewed_by_chatgpt_label_missing']
+    reasonCodes: ['review_evidence_missing']
   });
   assertResult(byId['stale-human-approval'], {
     eligible: false,
-    reasonCodes: ['review_not_current']
+    reasonCodes: ['stale_review_head']
   });
   assertResult(byId['same-run-review-evidence'], {
     adapterCalled: true,
     commandCreated: true,
     eligible: true,
     executed: false,
-    reasonCodes: ['eligible_enable_auto_merge', 'write_disabled']
+    reasonCodes: ['write_disabled']
   });
   assertResult(byId['same-run-review-evidence-after-run-start'], {
     eligible: false,
-    reasonCodes: ['same_run_review_evidence_after_run_start']
+    reasonCodes: ['review_evidence_from_current_run']
   });
   assertResult(byId['same-run-review-evidence-same-second'], {
     eligible: false,
-    reasonCodes: ['same_run_review_evidence_indeterminate']
+    reasonCodes: ['review_evidence_from_current_run']
   });
   assertResult(byId['same-run-review-evidence-id-mismatch'], {
     eligible: false,
-    reasonCodes: ['same_run_review_evidence_id_mismatch']
+    reasonCodes: ['review_evidence_from_current_run']
   });
   assertResult(byId['same-run-review-evidence-actor-mismatch'], {
     eligible: false,
-    reasonCodes: ['same_run_review_evidence_actor_mismatch']
+    reasonCodes: ['review_evidence_from_current_run']
   });
   assertResult(byId['same-run-review-evidence-stale-head'], {
     eligible: false,
-    reasonCodes: ['same_run_review_evidence_head_mismatch']
+    reasonCodes: ['review_evidence_from_current_run', 'stale_review_head']
   });
   assertResult(byId['unresolved-review-thread'], {
     eligible: false,
-    reasonCodes: ['unresolved_review_threads']
+    reasonCodes: ['unresolved_review_thread']
   });
   assertResult(byId['head-sha-changed'], {
     eligible: false,
-    reasonCodes: ['head_sha_mismatch']
+    reasonCodes: ['report_head_sha_mismatch']
   });
   assertResult(byId['ci-failure'], {
     eligible: false,
-    reasonCodes: ['required_ci_failed']
+    reasonCodes: ['ci_not_successful']
   });
   assertResult(byId['consumer-audit-failure'], {
     eligible: false,
-    reasonCodes: ['consumer_audit_failed']
+    reasonCodes: ['consumer_audit_not_ready']
+  });
+  assertResult(byId['consumer-audit-api-read-failure'], {
+    eligible: false,
+    reasonCodes: ['consumer_audit_not_ready']
+  });
+  assertResult(byId['consumer-audit-pagination-incomplete'], {
+    eligible: false,
+    reasonCodes: ['consumer_audit_not_ready']
+  });
+  assertResult(byId['protection-audit-api-read-failure'], {
+    eligible: false,
+    reasonCodes: ['protection_audit_not_ready']
+  });
+  assertResult(byId['protection-audit-pagination-incomplete'], {
+    eligible: false,
+    reasonCodes: ['protection_audit_not_ready']
   });
   assertResult(byId['dangerous-file'], {
     eligible: false,
-    reasonCodes: ['workflow_change_requires_manual_merge']
+    reasonCodes: ['dangerous_change_detected']
+  });
+  assertResult(byId['changed-files-head-mismatch'], {
+    eligible: false,
+    reasonCodes: ['report_head_sha_mismatch']
+  });
+  assertResult(byId['changed-files-api-read-failure'], {
+    eligible: false,
+    reasonCodes: ['unknown_state']
   });
   assertResult(byId['duplicate-idempotency-key'], {
     eligible: false,
-    reasonCodes: ['duplicate_suppressed']
+    reasonCodes: ['duplicate_operation']
   });
   assertResult(byId['cooldown-active'], {
     eligible: false,
     reasonCodes: ['cooldown_active']
   });
   assertResult(byId['attempt-limit-exceeded'], {
-    adapterCalled: true,
-    commandCreated: true,
-    eligible: true,
+    adapterCalled: false,
+    commandCreated: false,
+    eligible: false,
     reasonCodes: ['attempt_limit_exceeded']
+  });
+  assertResult(byId['review-report-expired'], {
+    adapterCalled: false,
+    commandCreated: false,
+    eligible: false,
+    reasonCodes: ['report_expired']
+  });
+  assertResult(byId['review-report-from-future'], {
+    adapterCalled: false,
+    commandCreated: false,
+    eligible: false,
+    reasonCodes: ['report_from_future']
   });
   assertResult(byId['safe-candidate-write-disabled'], {
     adapterCalled: true,

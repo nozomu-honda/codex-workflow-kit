@@ -194,7 +194,7 @@ Issue #37ではwrite command modelとadapter境界だけを追加し、auto-merg
 
 ### Auto-merge regression replay
 
-`fixtures/auto-merge-regressions/` と `scripts/replay-auto-merge-scenarios.mjs` は、auto-merge planとGitHub write adapter境界を使ったoffline regression replay layerです。
+`fixtures/auto-merge-regressions/` と `scripts/replay-auto-merge-scenarios.mjs` は、auto-merge dry-run executorを使ったoffline regression replay layerです。
 
 - sanitized scenario fixtureだけを入力にする
 - 既存の `createAutoMergePlan()` を呼び、判定ロジックを再実装しない
@@ -202,7 +202,7 @@ Issue #37ではwrite command modelとadapter境界だけを追加し、auto-merg
 - consumer audit / protection audit snapshotが失敗している場合はwrite command生成前にfail closedにする
 - snapshotはstable reason codeとdry-run結果だけを固定する
 
-このlayerはIssue #41のdry-run executorを実装しません。executorが追加された後は、replay adapterを差し替えて同じscenarioを再利用します。
+このlayerはIssue #41のdry-run executorを再実装しません。scenario fixtureをexecutorの実入力契約へ変換し、既定では `executeAutoMergeDryRun()` に同じscenario群を通します。legacy plan adapterは、executorとの差分比較と移行時fallback testに限定します。
 
 ### Auto-merge dry-run executor
 

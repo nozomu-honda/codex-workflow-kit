@@ -1,4 +1,5 @@
 import { createAutoMergePlan } from '../auto-merge/index.js';
+import { executeAutoMergeDryRun } from '../auto-merge-executor/index.js';
 import {
   createWriteCommandCandidateFromAutoMergePlan,
   DisabledGitHubWriteAdapter,
@@ -46,7 +47,7 @@ const FORBIDDEN_EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const FORBIDDEN_TOKEN_PATTERN = /\b(?:gh[pousr]_|github_pat_|AKIA|ASIA)[A-Za-z0-9_=-]+/i;
 const FORBIDDEN_PRIVATE_KEY_PATTERN = /BEGIN [A-Z ]*PRIVATE KEY/i;
 
-export function replayScenario(scenario, decisionAdapter = createLegacyPlanDecisionAdapter()) {
+export function replayScenario(scenario, decisionAdapter = createExecutorDecisionAdapter()) {
   const before = stableJson(scenario);
   const validation = validateScenario(scenario);
   if (!validation.ok) {
@@ -105,7 +106,7 @@ export function replayScenarios(scenarios, options = {}) {
     .map((scenario) => ({
       id: scenario.id,
       category: scenario.category,
-      ...replayScenario(scenario, options.decisionAdapter ?? createLegacyPlanDecisionAdapter())
+      ...replayScenario(scenario, options.decisionAdapter ?? createExecutorDecisionAdapter())
     }));
   const passed = scenarioResults.filter((entry) => entry.ok).length;
 
@@ -162,6 +163,48 @@ export function createLegacyPlanDecisionAdapter() {
         ])
       });
     }
+  };
+}
+
+export function createExecutorDecisionAdapter() {
+  return {
+    decide(scenario) {
+      const input = createAutoMergeDryRunInputFromScenario(scenario);
+      const executorDecision = executeAutoMergeDryRun(input);
+      const adapterCalled = executorDecision.commandCreated === true
+        && executorDecision.reasonCodes.includes(WRITE_REASON_CODES.writeDisabled);
+
+      return decision({
+        adapterCalled,
+        commandCreated: executorDecision.commandCreated === true,
+        dryRun: executorDecision.dryRun !== false,
+        eligible: executorDecision.eligible === true,
+        executed: executorDecision.executed === true,
+        plan: input.autoMergePlan,
+        reasonCodes: executorDecision.reasonCodes
+      });
+    }
+  };
+}
+
+export function createAutoMergeDryRunInputFromScenario(scenario) {
+  const planInput = createAutoMergePlanInput(scenario);
+  const autoMergePlan = createAutoMergePlan({
+    ...planInput,
+    existingDedupeKeys: [],
+    lastPlannedAt: ''
+  });
+  const current = createExecutorCurrentContext(scenario, autoMergePlan);
+
+  return {
+    autoMergePlan,
+    changedFilesSnapshot: createExecutorChangedFilesSnapshot(scenario, current),
+    checkSnapshot: createExecutorCheckSnapshot(scenario, current),
+    consumerAuditReport: createExecutorConsumerAuditReport(scenario, current),
+    executionContext: createExecutorExecutionContext(scenario, current),
+    protectionAuditReport: createExecutorProtectionAuditReport(scenario, current),
+    pullRequestSnapshot: createExecutorPullRequestSnapshot(scenario),
+    reviewEvidenceReport: createExecutorReviewEvidenceReport(scenario, autoMergePlan, current)
   };
 }
 
@@ -342,6 +385,235 @@ function createAutoMergePlanInput(scenario) {
   };
 }
 
+function createExecutorCurrentContext(scenario, autoMergePlan) {
+  const pullRequest = scenario.pullRequestSnapshot ?? {};
+  const executionContext = scenario.executionContext ?? {};
+
+  return {
+    baseBranch: pullRequest.base?.ref ?? pullRequest.baseBranch ?? 'main',
+    currentBaseSha: executionContext.currentBaseSha
+      ?? scenario.normalizedEvent?.base_sha
+      ?? autoMergePlan.outputs?.base_sha
+      ?? pullRequest.base?.sha
+      ?? pullRequest.baseSha,
+    currentHeadSha: executionContext.currentHeadSha
+      ?? scenario.normalizedEvent?.head_sha
+      ?? autoMergePlan.outputs?.head_sha
+      ?? pullRequest.head?.sha
+      ?? pullRequest.headSha,
+    now: executionContext.now,
+    pullRequestNumber: Number(executionContext.pullRequestNumber
+      ?? scenario.normalizedEvent?.pull_request_number
+      ?? pullRequest.number
+      ?? pullRequest.pullRequestNumber),
+    repository: executionContext.repository
+      ?? scenario.normalizedEvent?.repository
+      ?? pullRequest.base?.repo?.full_name
+      ?? autoMergePlan.outputs?.repository,
+    runStartedAt: executionContext.runStartedAt ?? executionContext.now
+  };
+}
+
+function createExecutorExecutionContext(scenario, current) {
+  const context = scenario.executionContext ?? {};
+  const config = context.config ?? {};
+  const autoMergeConfig = config.autoMerge ?? {};
+  const operation = autoMergeConfig.mode === 'merge'
+    ? 'merge-pull-request'
+    : 'enable-auto-merge';
+  const idempotencyKey = `write-v1:${operation}:${current.repository}#${current.pullRequestNumber}:${current.currentHeadSha}:${current.currentBaseSha}`;
+  const legacyDedupeKey = `${current.repository}#${current.pullRequestNumber}:${current.currentHeadSha}:enable-auto-merge:v1`;
+  const existingKeys = normalizeStringList(context.existingDedupeKeys);
+  const existingIdempotencyKeys = existingKeys.includes(legacyDedupeKey)
+    ? sortReasonCodes([...existingKeys, idempotencyKey])
+    : existingKeys;
+
+  return {
+    actorContext: context.actorContext,
+    allowedBaseBranches: autoMergeConfig.allowedBaseBranches ?? [current.baseBranch],
+    attemptCount: Number.isInteger(context.attemptCount) ? context.attemptCount : 0,
+    cooldownSeconds: Number.isInteger(context.cooldownSeconds)
+      ? context.cooldownSeconds
+      : Number(autoMergeConfig.cooldownSeconds ?? 0),
+    currentBaseSha: current.currentBaseSha,
+    currentHeadSha: current.currentHeadSha,
+    existingIdempotencyKeys,
+    lastAttemptedAt: context.lastAttemptedAt ?? context.lastPlannedAt ?? '',
+    maxAttempts: Number.isInteger(context.maxAttempts)
+      ? context.maxAttempts
+      : Number.isInteger(context.fakeAdapter?.maxAttempts)
+        ? context.fakeAdapter.maxAttempts
+        : 3,
+    now: current.now,
+    pullRequestNumber: current.pullRequestNumber,
+    repository: current.repository,
+    requestedAt: context.requestedAt ?? current.now,
+    requiredChecks: autoMergeConfig.requiredWorkflows?.includes('Review evidence gate')
+      ? autoMergeConfig.requiredWorkflows
+      : ['CI', 'Review evidence gate'],
+    runStartedAt: current.runStartedAt
+  };
+}
+
+function createExecutorPullRequestSnapshot(scenario) {
+  const pullRequest = scenario.pullRequestSnapshot ?? {};
+  const headRepository = pullRequest.head?.repo?.full_name ?? pullRequest.headRepository ?? '';
+  const baseRepository = pullRequest.base?.repo?.full_name ?? pullRequest.repository ?? '';
+
+  return {
+    baseBranch: pullRequest.base?.ref ?? pullRequest.baseBranch ?? 'main',
+    baseSha: pullRequest.base?.sha ?? pullRequest.baseSha,
+    draft: pullRequest.draft === true,
+    headSha: pullRequest.head?.sha ?? pullRequest.headSha,
+    isFork: pullRequest.head?.repo?.fork === true || scenario.normalizedEvent?.is_fork === 'true',
+    isSameRepository: headRepository === baseRepository && scenario.normalizedEvent?.is_same_repository !== 'false',
+    mergeable: pullRequest.mergeable === true,
+    mergeStateStatus: pullRequest.mergeable_state ?? pullRequest.mergeStateStatus ?? '',
+    pullRequestNumber: Number(pullRequest.number ?? pullRequest.pullRequestNumber),
+    repository: baseRepository || scenario.normalizedEvent?.repository,
+    requestedReviewers: Array.isArray(pullRequest.requested_reviewers)
+      ? pullRequest.requested_reviewers.length
+      : Number(pullRequest.requestedReviewers ?? 0),
+    requestedTeams: Array.isArray(pullRequest.requested_teams)
+      ? pullRequest.requested_teams.length
+      : Number(pullRequest.requestedTeams ?? 0),
+    state: pullRequest.state ?? ''
+  };
+}
+
+function createExecutorReviewEvidenceReport(scenario, autoMergePlan, current) {
+  const evidence = scenario.reviewEvidenceSnapshot ?? {};
+  const reviews = Array.isArray(evidence.reviews) ? evidence.reviews : [];
+  const comments = Array.isArray(evidence.issueComments) ? evidence.issueComments : [];
+  const threads = Array.isArray(evidence.reviewThreads) ? evidence.reviewThreads : [];
+  const fallbackReviewedAt = timestampBefore(current.runStartedAt, 60 * 1000) || current.now;
+  const reviewedAt = latestTimestamp([
+    ...reviews.map((entry) => entry.submitted_at),
+    ...comments.map((entry) => entry.created_at)
+  ]) || fallbackReviewedAt;
+  const evidenceHeadSha = findEvidenceHeadSha({ comments, current, reviews });
+  const changesRequested = hasChangesRequestedEvidence({ comments, reviews });
+  const unresolvedThreads = threads.filter((entry) => entry?.isResolved !== true).length;
+  const requestedReviewers = createExecutorPullRequestSnapshot(scenario).requestedReviewers;
+  const requestedTeams = createExecutorPullRequestSnapshot(scenario).requestedTeams;
+  const skipReason = autoMergePlan.outputs?.skip_reason ?? '';
+  const hasEvidence = comments.length > 0 || reviews.length > 0 || threads.length > 0;
+  const approved = hasEvidence
+    && !changesRequested
+    && ![
+      'chatgpt_review_missing',
+      'review_evidence_missing',
+      'reviewed_by_chatgpt_label_missing'
+    ].includes(skipReason);
+  const currentRunEvidence = skipReason.startsWith('same_run_review_evidence_')
+    || evidence.currentRunEvidence === true;
+
+  return {
+    apiReadOk: evidence.apiReadOk !== false,
+    approved,
+    baseSha: current.currentBaseSha,
+    blockers: normalizeBlockers(evidence.blockers),
+    changesRequested,
+    checkedAt: evidence.checkedAt ?? current.now,
+    currentRunEvidence,
+    evidenceHeadSha,
+    evidenceType: currentRunEvidence ? 'same-run' : 'latest-review',
+    headSha: current.currentHeadSha,
+    paginationComplete: evidence.paginationComplete !== false,
+    pullRequestNumber: current.pullRequestNumber,
+    reasonCodes: normalizeStringList(evidence.reasonCodes),
+    reportVersion: 'review-evidence.v1',
+    repository: current.repository,
+    requestedReviewers,
+    requestedTeams,
+    reviewedAt: evidence.reviewedAt ?? reviewedAt,
+    runStartedAt: current.runStartedAt,
+    unresolvedReviewThreads: unresolvedThreads,
+    warnings: normalizeBlockers(evidence.warnings)
+  };
+}
+
+function createExecutorConsumerAuditReport(scenario, current) {
+  const audit = scenario.consumerAuditSnapshot ?? {};
+  return {
+    apiReadOk: audit.apiReadOk !== false,
+    auditedCommitSha: audit.auditedCommitSha ?? (audit.reasonCodes?.includes('audited_sha_mismatch') ? scenario.pullRequestSnapshot?.base?.sha : current.currentBaseSha),
+    blockers: audit.ready === false ? blockersFromReasonCodes(audit.reasonCodes, 'consumer_audit_failed') : normalizeBlockers(audit.blockers),
+    checkedAt: audit.checkedAt ?? current.now,
+    defaultBranch: audit.defaultBranch ?? current.baseBranch,
+    manualReviewRequired: audit.manualReviewRequired === true,
+    paginationComplete: audit.paginationComplete !== false,
+    ready: audit.ready === true,
+    repository: audit.repository ?? current.repository,
+    reportVersion: 'live-consumer-audit.v1',
+    warnings: normalizeBlockers(audit.warnings)
+  };
+}
+
+function createExecutorProtectionAuditReport(scenario, current) {
+  const audit = scenario.protectionAuditSnapshot ?? {};
+  return {
+    apiReadOk: audit.apiReadOk !== false,
+    auditedSha: audit.auditedSha ?? (audit.reasonCodes?.includes('audited_sha_mismatch') ? scenario.pullRequestSnapshot?.base?.sha : current.currentBaseSha),
+    blockers: audit.ready === false ? blockersFromReasonCodes(audit.reasonCodes, 'protection_audit_failed') : normalizeBlockers(audit.blockers),
+    checkedAt: audit.checkedAt ?? current.now,
+    defaultBranch: audit.defaultBranch ?? current.baseBranch,
+    manualReviewRequired: audit.manualReviewRequired === true,
+    paginationComplete: audit.paginationComplete !== false,
+    ready: audit.ready === true,
+    repository: audit.repository ?? current.repository,
+    reportVersion: 1,
+    warnings: normalizeBlockers(audit.warnings)
+  };
+}
+
+function createExecutorCheckSnapshot(scenario, current) {
+  const ci = scenario.ciSnapshot ?? {};
+  const workflowRuns = Array.isArray(ci.workflowRuns) ? ci.workflowRuns : [];
+  const ciRun = workflowRuns.find((entry) => entry.name === 'CI') ?? workflowRuns[0];
+  const ciStatus = ciRun?.status ?? 'completed';
+  const ciConclusion = ciRun?.conclusion || (ciStatus === 'completed' ? 'success' : 'pending');
+  const ciHeadSha = ciRun?.head_sha ?? current.currentHeadSha;
+  const ciSuccessful = ciStatus === 'completed' && ciConclusion === 'success';
+  const reviewGateMissing = workflowRuns.length === 0
+    || scenario.id === 'review-evidence-gate-missing';
+  const requiredChecks = workflowRuns.length === 0
+    ? []
+    : [
+        requiredCheck('CI', {
+          conclusion: ciConclusion,
+          headSha: ciHeadSha,
+          status: ciStatus
+        }),
+        ...reviewGateMissing ? [] : [requiredCheck('Review evidence gate', { headSha: current.currentHeadSha })]
+      ];
+
+  return {
+    apiReadOk: ci.apiReadOk !== false,
+    ciSuccessful,
+    duplicateChecks: ci.duplicateChecks === true || scenario.id === 'duplicate-check-name',
+    headSha: ci.headSha ?? current.currentHeadSha,
+    paginationComplete: ci.paginationComplete !== false,
+    requiredChecks,
+    requiredChecksSuccessful: requiredChecks.length > 0 && requiredChecks.every((entry) => entry.status === 'completed' && entry.conclusion === 'success'),
+    reviewEvidenceGateSuccessful: !reviewGateMissing
+  };
+}
+
+function createExecutorChangedFilesSnapshot(scenario, current) {
+  const snapshot = scenario.changedFilesSnapshot ?? {};
+  const files = Array.isArray(snapshot.files) ? snapshot.files : [];
+  return {
+    apiReadOk: snapshot.apiReadOk !== false,
+    dangerousChange: snapshot.dangerousChange === true || files.some(isDangerousFile),
+    files,
+    headSha: snapshot.headSha ?? current.currentHeadSha,
+    pullRequestTarget: snapshot.pullRequestTarget === true || files.some(hasPullRequestTarget),
+    secretLikeChange: snapshot.secretLikeChange === true || files.some(hasSecretLikeAddition),
+    workflowPermissionIncrease: snapshot.workflowPermissionIncrease === true || files.some(hasWorkflowPermissionIncrease)
+  };
+}
+
 function collectAuditBlockers(scenario) {
   const reasonCodes = [];
   if (scenario.consumerAuditSnapshot?.ready !== true) {
@@ -375,6 +647,88 @@ function hasNoReviewEvidence(scenario) {
   return (evidence.issueComments?.length ?? 0) === 0
     && (evidence.reviews?.length ?? 0) === 0
     && (evidence.reviewThreads?.length ?? 0) === 0;
+}
+
+function requiredCheck(name, { conclusion = 'success', headSha, status = 'completed' } = {}) {
+  return {
+    conclusion,
+    headSha,
+    name,
+    status
+  };
+}
+
+function findEvidenceHeadSha({ comments, current, reviews }) {
+  const reviewHead = reviews.find((entry) => entry?.commit_id)?.commit_id;
+  const commentHead = comments.find((entry) => entry?.headSha)?.headSha;
+  return reviewHead ?? commentHead ?? current.currentHeadSha;
+}
+
+function hasChangesRequestedEvidence({ comments, reviews }) {
+  return reviews.some((entry) => String(entry?.state ?? '').toUpperCase() === 'CHANGES_REQUESTED')
+    || comments.some((entry) => /chatgpt-review:\s*changes_requested/i.test(String(entry?.body ?? '')));
+}
+
+function latestTimestamp(values) {
+  return values
+    .filter((value) => Number.isFinite(Date.parse(String(value ?? ''))))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? '';
+}
+
+function timestampBefore(value, milliseconds) {
+  const time = Date.parse(String(value ?? ''));
+  return Number.isFinite(time) ? new Date(time - milliseconds).toISOString() : '';
+}
+
+function normalizeBlockers(value) {
+  return Array.isArray(value)
+    ? value.map((entry) => ({
+        message: String(entry?.message ?? ''),
+        reasonCode: String(entry?.reasonCode ?? entry?.code ?? '').trim()
+      })).filter((entry) => entry.reasonCode)
+    : [];
+}
+
+function blockersFromReasonCodes(reasonCodes, fallbackReasonCode) {
+  return sortReasonCodes([fallbackReasonCode, ...normalizeStringList(reasonCodes)])
+    .map((reasonCode) => ({
+      message: `Fixture blocker: ${reasonCode}`,
+      reasonCode
+    }));
+}
+
+function normalizeStringList(value) {
+  return Array.isArray(value)
+    ? value.map((entry) => String(entry ?? '').trim()).filter(Boolean)
+    : [];
+}
+
+function isDangerousFile(file) {
+  const filename = String(file?.filename ?? '');
+  return file?.dangerous === true
+    || filename.startsWith('.github/')
+    || filename === '.gitmodules'
+    || filename === 'package.json'
+    || filename === 'package-lock.json'
+    || filename.endsWith('.png')
+    || filename.includes('/node_modules/')
+    || filename.startsWith('actions/')
+    || filename.startsWith('scripts/');
+}
+
+function hasWorkflowPermissionIncrease(file) {
+  return /\bpermissions:\s*\n(?:\+|\s)*\s*(?:contents|pull-requests|issues|actions|checks|statuses):\s*write\b/i.test(String(file?.patch ?? ''))
+    || /\b(?:contents|pull-requests|issues|actions|checks|statuses):\s*write\b/i.test(String(file?.patch ?? ''));
+}
+
+function hasPullRequestTarget(file) {
+  return /\bpull_request_target\b/.test(String(file?.patch ?? ''));
+}
+
+function hasSecretLikeAddition(file) {
+  return String(file?.patch ?? '')
+    .split('\n')
+    .some((line) => line.startsWith('+') && /(secret|token|cookie|oauth|authorization|bearer|script\.google\.com\/macros\/s\/)/i.test(line));
 }
 
 function compareExpectedDecision(expected, result) {

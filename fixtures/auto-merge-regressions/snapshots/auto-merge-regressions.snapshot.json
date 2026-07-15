@@ -4,14 +4,13 @@
       "id": "attempt-limit-exceeded",
       "category": "replay-prevention",
       "result": {
-        "adapterCalled": true,
-        "commandCreated": true,
+        "adapterCalled": false,
+        "commandCreated": false,
         "dryRun": true,
-        "eligible": true,
+        "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "attempt_limit_exceeded",
-          "eligible_enable_auto_merge"
+          "attempt_limit_exceeded"
         ]
       }
     },
@@ -25,7 +24,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "stale_head"
+          "report_base_sha_mismatch"
         ]
       }
     },
@@ -39,7 +38,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "binary_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -53,8 +52,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "deletion_allowed",
-          "protection_audit_failed"
+          "protection_audit_not_ready"
         ]
       }
     },
@@ -68,8 +66,35 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "protection_audit_failed",
-          "unexpected_bypass_actor"
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "changed-files-api-read-failure",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "changed-files-head-mismatch",
+      "category": "diff",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_head_sha_mismatch"
         ]
       }
     },
@@ -83,7 +108,8 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "changes_requested"
+          "changes_requested",
+          "review_evidence_missing"
         ]
       }
     },
@@ -97,7 +123,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "required_ci_pending"
+          "report_head_sha_mismatch"
         ]
       }
     },
@@ -111,7 +137,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "required_ci_failed"
+          "ci_not_successful"
         ]
       }
     },
@@ -125,7 +151,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "required_ci_pending"
+          "ci_not_successful"
         ]
       }
     },
@@ -139,7 +165,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "pr_not_open"
+          "unknown_state"
         ]
       }
     },
@@ -147,14 +173,13 @@
       "id": "command-expired",
       "category": "replay-prevention",
       "result": {
-        "adapterCalled": true,
-        "commandCreated": true,
+        "adapterCalled": false,
+        "commandCreated": false,
         "dryRun": true,
-        "eligible": true,
+        "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "command_expired",
-          "eligible_enable_auto_merge"
+          "write_command_invalid"
         ]
       }
     },
@@ -168,7 +193,21 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "merge_conflict"
+          "unknown_state"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-api-read-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
         ]
       }
     },
@@ -182,7 +221,21 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "consumer_audit_failed"
+          "consumer_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "consumer-audit-pagination-incomplete",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "consumer_audit_not_ready"
         ]
       }
     },
@@ -196,8 +249,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "audited_sha_mismatch",
-          "consumer_audit_failed"
+          "consumer_audit_not_ready"
         ]
       }
     },
@@ -225,7 +277,6 @@
         "eligible": true,
         "executed": false,
         "reasonCodes": [
-          "eligible_enable_auto_merge",
           "write_disabled"
         ]
       }
@@ -240,7 +291,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "workflow_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -254,7 +305,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "dependency_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -268,7 +319,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "draft_pr"
+          "unknown_state"
         ]
       }
     },
@@ -282,8 +333,8 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "duplicate_check_name",
-          "protection_audit_failed"
+          "protection_audit_not_ready",
+          "required_check_missing"
         ]
       }
     },
@@ -297,7 +348,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "duplicate_suppressed"
+          "duplicate_operation"
         ]
       }
     },
@@ -311,7 +362,8 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "not_same_repository"
+          "report_repository_mismatch",
+          "unknown_state"
         ]
       }
     },
@@ -325,8 +377,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "force_push_allowed",
-          "protection_audit_failed"
+          "protection_audit_not_ready"
         ]
       }
     },
@@ -340,7 +391,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "not_same_repository"
+          "unknown_state"
         ]
       }
     },
@@ -348,14 +399,13 @@
       "id": "future-timestamp",
       "category": "replay-prevention",
       "result": {
-        "adapterCalled": true,
-        "commandCreated": true,
+        "adapterCalled": false,
+        "commandCreated": false,
         "dryRun": true,
-        "eligible": true,
+        "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "command_from_future",
-          "eligible_enable_auto_merge"
+          "write_command_invalid"
         ]
       }
     },
@@ -369,7 +419,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "generated_dist_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -383,7 +433,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "head_sha_mismatch"
+          "report_head_sha_mismatch"
         ]
       }
     },
@@ -397,7 +447,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "mergeable_unknown"
+          "unknown_state"
         ]
       }
     },
@@ -411,7 +461,6 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "chatgpt_review_missing",
           "review_evidence_missing"
         ]
       }
@@ -426,8 +475,21 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "review_evidence_missing",
-          "reviewed_by_chatgpt_label_missing"
+          "review_evidence_missing"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-api-read-failure",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
         ]
       }
     },
@@ -441,7 +503,21 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "protection_audit_failed"
+          "protection_audit_not_ready"
+        ]
+      }
+    },
+    {
+      "id": "protection-audit-pagination-incomplete",
+      "category": "audit",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "protection_audit_not_ready"
         ]
       }
     },
@@ -455,7 +531,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "workflow_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -469,7 +545,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "requested_reviewers_remaining"
+          "requested_reviewer_remaining"
         ]
       }
     },
@@ -483,7 +559,8 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "required_ci_pending"
+          "ci_not_successful",
+          "required_check_missing"
         ]
       }
     },
@@ -497,7 +574,35 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "required_ci_pending"
+          "required_check_missing"
+        ]
+      }
+    },
+    {
+      "id": "review-report-expired",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_expired"
+        ]
+      }
+    },
+    {
+      "id": "review-report-from-future",
+      "category": "replay-prevention",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "report_from_future"
         ]
       }
     },
@@ -511,8 +616,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "protection_audit_failed",
-          "ruleset_missing"
+          "protection_audit_not_ready"
         ]
       }
     },
@@ -526,7 +630,6 @@
         "eligible": true,
         "executed": false,
         "reasonCodes": [
-          "eligible_enable_auto_merge",
           "write_disabled"
         ]
       }
@@ -541,7 +644,6 @@
         "eligible": true,
         "executed": false,
         "reasonCodes": [
-          "eligible_enable_auto_merge",
           "write_disabled"
         ]
       }
@@ -556,7 +658,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "same_run_review_evidence_actor_mismatch"
+          "review_evidence_from_current_run"
         ]
       }
     },
@@ -570,7 +672,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "same_run_review_evidence_after_run_start"
+          "review_evidence_from_current_run"
         ]
       }
     },
@@ -584,7 +686,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "same_run_review_evidence_id_mismatch"
+          "review_evidence_from_current_run"
         ]
       }
     },
@@ -598,7 +700,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "same_run_review_evidence_indeterminate"
+          "review_evidence_from_current_run"
         ]
       }
     },
@@ -612,7 +714,8 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "same_run_review_evidence_head_mismatch"
+          "review_evidence_from_current_run",
+          "stale_review_head"
         ]
       }
     },
@@ -626,7 +729,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "secret_like_added_line"
+          "secret_like_change_detected"
         ]
       }
     },
@@ -640,7 +743,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "chatgpt_review_missing"
+          "review_evidence_missing"
         ]
       }
     },
@@ -654,7 +757,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "review_not_current"
+          "stale_review_head"
         ]
       }
     },
@@ -668,7 +771,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "submodule_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     },
@@ -682,7 +785,7 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "unresolved_review_threads"
+          "unresolved_review_thread"
         ]
       }
     },
@@ -696,14 +799,14 @@
         "eligible": false,
         "executed": false,
         "reasonCodes": [
-          "workflow_change_requires_manual_merge"
+          "dangerous_change_detected"
         ]
       }
     }
   ],
   "summary": {
     "failed": 0,
-    "passed": 49,
-    "total": 49
+    "passed": 57,
+    "total": 57
   }
 }

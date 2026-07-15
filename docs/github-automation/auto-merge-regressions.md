@@ -2,7 +2,7 @@
 
 Issue #42では、Reviewed PR auto-merge planの安全性回帰を完全offlineで再現するリプレイ基盤を追加します。
 
-この基盤は、実GitHub repository、GitHub API write、Secret、token、Ruleset変更、consumer repository変更を使いません。sanitized fixtureを既存の `createAutoMergePlan()` と GitHub write command境界へ通し、期待する `eligible`、reason code、command生成有無、adapter結果をsnapshotで固定します。
+この基盤は、実GitHub repository、GitHub API write、Secret、token、Ruleset変更、consumer repository変更を使いません。sanitized fixtureを `executeAutoMergeDryRun()` の実入力契約へ変換し、期待する `eligible`、reason code、command生成有無、adapter結果をsnapshotで固定します。
 
 ## 目的
 
@@ -48,17 +48,39 @@ scenario IDはstableなkebab-caseです。fixture値は `owner/example-repo`、`
 
 `replayScenario(scenario, decisionAdapter)` はscenarioを検証し、adapterへ渡し、実結果と期待値を比較します。
 
-既定の `createLegacyPlanDecisionAdapter()` は次を行います。
+既定の `createExecutorDecisionAdapter()` は次を行います。
 
-1. consumer / protection audit snapshotが失敗ならfail closed。
-2. 既存の `createAutoMergePlan()` を呼び、plan outputを取得。
-3. eligibleな場合だけ `createWriteCommandCandidateFromAutoMergePlan()` でcommand候補を作る。
-4. `DisabledGitHubWriteAdapter` またはfixture用 `FakeGitHubWriteAdapter` へ渡す。
-5. `executed=false` を維持した結果をsnapshot用に正規化する。
+1. sanitized scenarioから `autoMergePlan`、`reviewEvidenceReport`、`consumerAuditReport`、`protectionAuditReport`、`pullRequestSnapshot`、`checkSnapshot`、`changedFilesSnapshot`、`executionContext` を作る。
+2. `executeAutoMergeDryRun()` にそのまま渡す。
+3. executorのreason code、command生成有無、`DisabledGitHubWriteAdapter` の `write_disabled` をsnapshot用に正規化する。
+4. `executed=false` を維持する。
 
-このlayerはauto-merge判定ロジックを再実装しません。Issue #41でdry-run executorが導入された後は、`decisionAdapter` を差し替えて同じscenario群を再利用できます。
+このlayerはexecutorの安全判定ロジックを再実装しません。scenario fixtureをexecutorの実report契約へ変換するだけに留め、report schema validation、current head/base/default branch照合、report freshness、changed-files head照合、block時のcommand生成抑止、sanitized reason code契約は `executeAutoMergeDryRun()` 側で検証します。
+
+`createLegacyPlanDecisionAdapter()` は残していますが、既定経路では使いません。用途は次に限定します。
+
+- executor adapterとの差分比較
+- 移行時の互換性確認
+- executor未提供環境を想定した明示的なfallback test
+
+legacy adapterは、`createAutoMergePlan()`、`createWriteCommandCandidateFromAutoMergePlan()`、`DisabledGitHubWriteAdapter`、fixture用 `FakeGitHubWriteAdapter` を直接組み合わせます。このため、Issue #41で追加されたreport契約やexecutor境界を検証する目的では使いません。
 
 未知のadapter結果、scenario mutation、schema不備、snapshot差分はfail closedです。
+
+## Executor input contract
+
+executor adapterは、各scenarioを次の入力へ変換します。
+
+- `autoMergePlan`: `createAutoMergePlan()` の実plan output。executor側のdedupe / cooldownを確認するため、legacy plan専用のdedupe / cooldown入力はここでは渡しません。
+- `reviewEvidenceReport`: current-head review evidenceの集約結果。`apiReadOk`、`paginationComplete`、`checkedAt`、`reviewedAt`、`currentRunEvidence`、`requestedReviewers`、`requestedTeams`、`unresolvedReviewThreads` を含みます。
+- `consumerAuditReport`: live consumer audit producer相当のread-only report。`auditedCommitSha`、`defaultBranch`、`ready`、`manualReviewRequired`、`paginationComplete` を含みます。
+- `protectionAuditReport`: repository protection audit producer相当のread-only report。`auditedSha`、`defaultBranch`、`ready`、`manualReviewRequired`、`paginationComplete` を含みます。
+- `pullRequestSnapshot`: open / draft / fork / same-repo / mergeable state / requested reviewer情報をflatにしたPR snapshot。
+- `checkSnapshot`: CI、Review evidence gate、required check、head SHA、paginationのsnapshot。
+- `changedFilesSnapshot`: changed files、dangerous change、workflow permission increase、`pull_request_target`、secret-like addition、head SHAのsnapshot。
+- `executionContext`: repository、PR番号、current head/base SHA、allowed base branch、runStartedAt、now、actor context、dedupe key、cooldown、attempt countを含みます。
+
+fixture専用の架空fieldをsuccess reportへ足すのではなく、executorが本番で受け取るreport契約に近い形へ寄せます。Secret値、token値、実URL、実repository、実メール、Cookie、Authorization headerは含めません。
 
 ## Scenario categories
 
@@ -69,7 +91,7 @@ scenario IDはstableなkebab-caseです。fixture値は `owner/example-repo`、`
 - `ci`: pending、failure、required check missing、review evidence gate missing、check head SHA mismatch、duplicate check name
 - `audit`: consumer audit failure、consumer audit SHA mismatch、protection audit failure、ruleset missing、unexpected bypass actor、force push allowed、branch deletion allowed
 - `diff`: dangerous file、workflow permission increase、`pull_request_target`、secret-like addition、binary、submodule、dependency、generated dist
-- `replay-prevention`: duplicate idempotency key、cooldown、attempt limit、command expired、future timestamp
+- `replay-prevention`: duplicate idempotency key、cooldown、attempt limit、command expired、future timestamp、review report expired、review report from future
 - `success`: current-head reviewed、same repository、CI success、audit success、dangerous changeなし、command candidate生成、Disabled adapterで `write_disabled`
 
 PR #130相当の回帰は `no-review-evidence-regression` として固定しています。このscenarioはCI successやmergeable条件が揃っていても、review submissions、threads、approved marker、`reviewed-by-chatgpt` labelがなく、`commandCreated=false` / `adapterCalled=false` で停止することを確認します。
@@ -141,13 +163,31 @@ snapshotに固定する値は次だけです。
 - scenario inputがmutationされない
 - CLIのsnapshot差分はnon-zeroになる
 
-## Issue #41との境界
+## Snapshot differences
 
-Issue #41はauto-merge dry-run executorの実行計画を扱います。Issue #42は、そのexecutorがなくても既存plan / write command境界を使って回帰scenarioをリプレイできるところまでを責務にします。
+Issue #41のexecutor統合後、snapshotはexecutorのreason codeを正とします。legacy adapterとexecutor adapterのdecision差分はテストで固定します。
 
-Issue #41が先に入った場合は、`decisionAdapter` をexecutor adapterへ差し替えます。Issue #42が先の場合は、既定adapterのままDraft PRを作成し、#41統合は後続対応として残します。
+意図したdecision差分は次です。
 
-どちらの場合も、このsuiteはGitHub API write、auto-merge有効化、merge、merge queue投入、PR branch update、comment投稿、label操作、Queue Issue更新を行いません。
+- `attempt-limit-exceeded`: legacyはfixture Fake adapterまで進みますが、executorはcommand生成前に `attempt_limit_exceeded` で止めます。
+- `changed-files-api-read-failure`: legacy adapterにはchanged-files API read完了reportがないため進みますが、executorは `unknown_state` で止めます。
+- `changed-files-head-mismatch`: legacy adapterにはchanged-files current-head照合reportがないため進みますが、executorは `report_head_sha_mismatch` で止めます。
+- `command-expired`: legacyはadapter validationの結果として扱いますが、executorはwrite command validation失敗として `write_command_invalid` で止めます。
+- `consumer-audit-api-read-failure`: legacy adapterはsimpleなready flagだけを見るため進みますが、executorは `consumer_audit_not_ready` で止めます。
+- `consumer-audit-pagination-incomplete`: legacy adapterはpagination完了reportを持たないため進みますが、executorは `consumer_audit_not_ready` で止めます。
+- `future-timestamp`: legacyはadapter validationの結果として扱いますが、executorはwrite command validation失敗として `write_command_invalid` で止めます。
+- `protection-audit-api-read-failure`: legacy adapterはsimpleなready flagだけを見るため進みますが、executorは `protection_audit_not_ready` で止めます。
+- `protection-audit-pagination-incomplete`: legacy adapterはpagination完了reportを持たないため進みますが、executorは `protection_audit_not_ready` で止めます。
+- `review-report-expired`: legacy adapterにはreport freshnessがないため進みますが、executorは `report_expired` で止めます。
+- `review-report-from-future`: legacy adapterにはreport freshnessがないため進みますが、executorは `report_from_future` で止めます。
+
+その他のscenarioでは、executorとlegacyでreason codeの粒度や名前が異なる場合があります。ただし、既定snapshotはexecutor reason codeを固定します。
+
+## Issue #41との統合状態
+
+Issue #41のauto-merge dry-run executorはmasterへ統合済みです。Issue #42の既定replay pathは `createExecutorDecisionAdapter()` を使い、同じscenario群を `executeAutoMergeDryRun()` へ通します。
+
+このsuiteはGitHub API write、auto-merge有効化、merge、merge queue投入、PR branch update、comment投稿、label操作、Queue Issue更新を行いません。
 
 ## 手動確認との境界
 

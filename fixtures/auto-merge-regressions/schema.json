@@ -58,13 +58,40 @@
         "reviewThreads"
       ],
       "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "blockers": {
+          "type": "array"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "currentRunEvidence": {
+          "type": "boolean"
+        },
         "issueComments": {
           "type": "array"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewedAt": {
+          "type": "string"
         },
         "reviews": {
           "type": "array"
         },
         "reviewThreads": {
+          "type": "array"
+        },
+        "warnings": {
           "type": "array"
         }
       }
@@ -96,8 +123,14 @@
         "files"
       ],
       "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
         "files": {
           "type": "array"
+        },
+        "headSha": {
+          "type": "string"
         }
       }
     },
@@ -109,6 +142,24 @@
         "reasonCodes"
       ],
       "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "auditedCommitSha": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "manualReviewRequired": {
+          "type": "boolean"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
         "ready": {
           "type": "boolean"
         },
@@ -122,12 +173,31 @@
     },
     "protectionAuditSnapshot": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "ready",
         "reasonCodes",
         "repositorySettings"
       ],
       "properties": {
+        "apiReadOk": {
+          "type": "boolean"
+        },
+        "auditedSha": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "manualReviewRequired": {
+          "type": "boolean"
+        },
+        "paginationComplete": {
+          "type": "boolean"
+        },
         "ready": {
           "type": "boolean"
         },

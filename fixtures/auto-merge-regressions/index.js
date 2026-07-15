@@ -9,8 +9,8 @@ import {
 } from '../github-events/index.js';
 import { AUTO_MERGE_REGRESSION_SCENARIO_VERSION } from '../../packages/chatgpt-automation-core/src/auto-merge-regressions/index.js';
 
-export const REGRESSION_NOW = '2026-01-01T00:00:00.000Z';
-export const REGRESSION_REQUESTED_AT = '2026-01-01T00:00:00.000Z';
+export const REGRESSION_NOW = '2026-01-01T00:02:00.000Z';
+export const REGRESSION_REQUESTED_AT = '2026-01-01T00:02:00.000Z';
 export const SAME_RUN_REVIEW_ACTOR = 'chatgpt-reviewer';
 export const SAME_RUN_REVIEW_ID = 'same-run-review-9001';
 export const SAME_RUN_REVIEW_SUBMITTED_AT = '2025-12-31T23:59:00.000Z';
@@ -21,7 +21,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'PR #130 regression: CI success but no review evidence and no reviewed label must not create a command.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['review_evidence_missing', 'reviewed_by_chatgpt_label_missing'],
+    expectedReasonCodes: ['review_evidence_missing'],
     id: 'no-review-evidence-regression',
     overrides: {
       pullRequestSnapshot: pullRequest({ labels: ['auto-merge-after-ci'] }),
@@ -36,7 +36,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Missing review evidence is blocked even when the reviewed label remains present.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['chatgpt_review_missing', 'review_evidence_missing'],
+    expectedReasonCodes: ['review_evidence_missing'],
     id: 'no-review-evidence',
     overrides: {
       reviewEvidenceSnapshot: reviewEvidence({
@@ -50,7 +50,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Stale human approval does not satisfy current-head review requirements.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['review_not_current'],
+    expectedReasonCodes: ['stale_review_head'],
     id: 'stale-human-approval',
     overrides: {
       executionContext: executionContext({
@@ -66,7 +66,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Stale ChatGPT marker is ignored for the current head.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['chatgpt_review_missing'],
+    expectedReasonCodes: ['review_evidence_missing'],
     id: 'stale-chatgpt-marker',
     overrides: {
       reviewEvidenceSnapshot: reviewEvidence({
@@ -79,7 +79,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT marker and human approval on the current head produce a write-disabled command candidate.',
     expectedDecision: successDecision(),
-    expectedReasonCodes: ['eligible_enable_auto_merge', 'write_disabled'],
+    expectedReasonCodes: ['write_disabled'],
     id: 'same-run-review-evidence',
     overrides: sameRunReviewEvidenceOverrides()
   }),
@@ -87,7 +87,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT evidence created after the current run started is rejected.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['same_run_review_evidence_after_run_start'],
+    expectedReasonCodes: ['review_evidence_from_current_run'],
     id: 'same-run-review-evidence-after-run-start',
     overrides: sameRunReviewEvidenceOverrides({
       reviewSubmittedAt: '2026-01-01T00:00:01.000Z'
@@ -97,7 +97,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT evidence in the same second as the run start is rejected as indeterminate.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['same_run_review_evidence_indeterminate'],
+    expectedReasonCodes: ['review_evidence_from_current_run'],
     id: 'same-run-review-evidence-same-second',
     overrides: sameRunReviewEvidenceOverrides({
       reviewSubmittedAt: '2025-12-31T23:59:59.900Z',
@@ -108,7 +108,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT trigger review ID must match the API review evidence ID.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['same_run_review_evidence_id_mismatch'],
+    expectedReasonCodes: ['review_evidence_from_current_run'],
     id: 'same-run-review-evidence-id-mismatch',
     overrides: sameRunReviewEvidenceOverrides({
       apiReviewId: 'same-run-review-9002'
@@ -118,7 +118,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT trigger actor must match the API review evidence actor.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['same_run_review_evidence_actor_mismatch'],
+    expectedReasonCodes: ['review_evidence_from_current_run'],
     id: 'same-run-review-evidence-actor-mismatch',
     overrides: sameRunReviewEvidenceOverrides({
       apiActor: 'other-chatgpt-reviewer'
@@ -128,7 +128,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Same-run ChatGPT trigger evidence for a stale head SHA is rejected.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['same_run_review_evidence_head_mismatch'],
+    expectedReasonCodes: ['review_evidence_from_current_run', 'stale_review_head'],
     id: 'same-run-review-evidence-stale-head',
     overrides: sameRunReviewEvidenceOverrides({
       evidenceHeadSha: FIXTURE_SHAS.before
@@ -138,7 +138,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Latest ChatGPT changes_requested marker blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['changes_requested'],
+    expectedReasonCodes: ['changes_requested', 'review_evidence_missing'],
     id: 'changes-requested',
     overrides: {
       reviewEvidenceSnapshot: reviewEvidence({
@@ -150,7 +150,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Unresolved review thread blocks auto-merge even with approval.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['unresolved_review_threads'],
+    expectedReasonCodes: ['unresolved_review_thread'],
     id: 'unresolved-review-thread',
     overrides: {
       reviewEvidenceSnapshot: reviewEvidence({
@@ -162,7 +162,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Remaining requested reviewer blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['requested_reviewers_remaining'],
+    expectedReasonCodes: ['requested_reviewer_remaining'],
     id: 'requested-reviewer-remaining',
     overrides: {
       pullRequestSnapshot: pullRequest({ requestedReviewers: 1 })
@@ -172,7 +172,7 @@ const BASE_SCENARIOS = [
     category: 'review',
     description: 'Current-head valid review remains eligible and dry-run only.',
     expectedDecision: successDecision(),
-    expectedReasonCodes: ['eligible_enable_auto_merge', 'write_disabled'],
+    expectedReasonCodes: ['write_disabled'],
     id: 'current-head-valid-review',
     overrides: {
       eventPayload: workflowRunEventPayload()
@@ -183,7 +183,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Closed PR is not eligible.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['pr_not_open'],
+    expectedReasonCodes: ['unknown_state'],
     id: 'closed-pr',
     overrides: { pullRequestSnapshot: pullRequest({ state: 'closed' }) }
   }),
@@ -191,7 +191,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Draft PR is not eligible.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['draft_pr'],
+    expectedReasonCodes: ['unknown_state'],
     id: 'draft-pr',
     overrides: { pullRequestSnapshot: pullRequest({ draft: true }) }
   }),
@@ -199,7 +199,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Fork PR is fail-closed.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['not_same_repository'],
+    expectedReasonCodes: ['unknown_state'],
     id: 'fork-pr',
     overrides: {
       normalizedEvent: normalizedEvent({
@@ -217,7 +217,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'External repository mismatch is fail-closed.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['not_same_repository'],
+    expectedReasonCodes: ['report_repository_mismatch', 'unknown_state'],
     id: 'external-repository',
     overrides: {
       normalizedEvent: normalizedEvent({
@@ -231,7 +231,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Head SHA mismatch between event and PR snapshot blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['head_sha_mismatch'],
+    expectedReasonCodes: ['report_head_sha_mismatch'],
     id: 'head-sha-changed',
     overrides: {
       pullRequestSnapshot: pullRequest({ headSha: FIXTURE_SHAS.after })
@@ -241,7 +241,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Base branch SHA mismatch is represented as stale head comparison.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['stale_head'],
+    expectedReasonCodes: ['report_base_sha_mismatch'],
     id: 'base-sha-changed',
     overrides: {
       pullRequestSnapshot: pullRequest({
@@ -254,7 +254,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Unknown mergeability blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['mergeable_unknown'],
+    expectedReasonCodes: ['unknown_state'],
     id: 'mergeability-unknown',
     overrides: {
       pullRequestSnapshot: pullRequest({ mergeable: null })
@@ -264,7 +264,7 @@ const BASE_SCENARIOS = [
     category: 'pr-state',
     description: 'Dirty merge state blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['merge_conflict'],
+    expectedReasonCodes: ['unknown_state'],
     id: 'conflict-dirty',
     overrides: {
       pullRequestSnapshot: pullRequest({ mergeable: false, mergeableStateStatus: 'dirty' })
@@ -275,7 +275,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Pending CI blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['required_ci_pending'],
+    expectedReasonCodes: ['ci_not_successful'],
     id: 'ci-pending',
     overrides: { ciSnapshot: ci({ workflowRuns: [workflowRun({ status: 'in_progress', conclusion: '' })] }) }
   }),
@@ -283,7 +283,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Failing CI blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['required_ci_failed'],
+    expectedReasonCodes: ['ci_not_successful'],
     id: 'ci-failure',
     overrides: { ciSnapshot: ci({ workflowRuns: [workflowRun({ conclusion: 'failure' })] }) }
   }),
@@ -291,7 +291,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Missing required check blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['required_ci_pending'],
+    expectedReasonCodes: ['ci_not_successful', 'required_check_missing'],
     id: 'required-check-missing',
     overrides: { ciSnapshot: ci({ workflowRuns: [] }) }
   }),
@@ -299,7 +299,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Review evidence gate missing is surfaced as required CI pending.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['required_ci_pending'],
+    expectedReasonCodes: ['required_check_missing'],
     id: 'review-evidence-gate-missing',
     overrides: {
       ciSnapshot: ci({ workflowRuns: [workflowRun()] }),
@@ -314,7 +314,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Required check on a stale head SHA does not satisfy the current head.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['required_ci_pending'],
+    expectedReasonCodes: ['report_head_sha_mismatch'],
     id: 'check-head-sha-mismatch',
     overrides: {
       ciSnapshot: ci({ workflowRuns: [workflowRun({ headSha: FIXTURE_SHAS.before })] })
@@ -324,7 +324,7 @@ const BASE_SCENARIOS = [
     category: 'ci',
     description: 'Duplicate check name from policy audit blocks outside the plan layer.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['duplicate_check_name', 'protection_audit_failed'],
+    expectedReasonCodes: ['protection_audit_not_ready', 'required_check_missing'],
     id: 'duplicate-check-name',
     overrides: {
       protectionAuditSnapshot: protectionAudit({
@@ -338,7 +338,7 @@ const BASE_SCENARIOS = [
     category: 'audit',
     description: 'Consumer audit failure blocks replay before write command creation.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['consumer_audit_failed'],
+    expectedReasonCodes: ['consumer_audit_not_ready'],
     id: 'consumer-audit-failure',
     overrides: { consumerAuditSnapshot: consumerAudit({ ready: false }) }
   }),
@@ -346,23 +346,55 @@ const BASE_SCENARIOS = [
     category: 'audit',
     description: 'Consumer audit SHA mismatch blocks replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['audited_sha_mismatch', 'consumer_audit_failed'],
+    expectedReasonCodes: ['consumer_audit_not_ready'],
     id: 'consumer-audit-sha-mismatch',
     overrides: { consumerAuditSnapshot: consumerAudit({ ready: false, reasonCodes: ['audited_sha_mismatch'] }) }
   }),
   scenario({
     category: 'audit',
+    description: 'Consumer audit API read failure blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['consumer_audit_not_ready'],
+    id: 'consumer-audit-api-read-failure',
+    overrides: { consumerAuditSnapshot: consumerAudit({ apiReadOk: false }) }
+  }),
+  scenario({
+    category: 'audit',
+    description: 'Consumer audit pagination incompleteness blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['consumer_audit_not_ready'],
+    id: 'consumer-audit-pagination-incomplete',
+    overrides: { consumerAuditSnapshot: consumerAudit({ paginationComplete: false }) }
+  }),
+  scenario({
+    category: 'audit',
     description: 'Protection audit failure blocks replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['protection_audit_failed'],
+    expectedReasonCodes: ['protection_audit_not_ready'],
     id: 'protection-audit-failure',
     overrides: { protectionAuditSnapshot: protectionAudit({ ready: false }) }
   }),
   scenario({
     category: 'audit',
+    description: 'Protection audit API read failure blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['protection_audit_not_ready'],
+    id: 'protection-audit-api-read-failure',
+    overrides: { protectionAuditSnapshot: protectionAudit({ apiReadOk: false }) }
+  }),
+  scenario({
+    category: 'audit',
+    description: 'Protection audit pagination incompleteness blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['protection_audit_not_ready'],
+    id: 'protection-audit-pagination-incomplete',
+    overrides: { protectionAuditSnapshot: protectionAudit({ paginationComplete: false }) }
+  }),
+  scenario({
+    category: 'audit',
     description: 'Missing ruleset blocks replay through protection audit.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['protection_audit_failed', 'ruleset_missing'],
+    expectedReasonCodes: ['protection_audit_not_ready'],
     id: 'ruleset-missing',
     overrides: { protectionAuditSnapshot: protectionAudit({ ready: false, reasonCodes: ['ruleset_missing'] }) }
   }),
@@ -370,7 +402,7 @@ const BASE_SCENARIOS = [
     category: 'audit',
     description: 'Unknown bypass actor blocks replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['protection_audit_failed', 'unexpected_bypass_actor'],
+    expectedReasonCodes: ['protection_audit_not_ready'],
     id: 'bypass-actor-unknown',
     overrides: { protectionAuditSnapshot: protectionAudit({ ready: false, reasonCodes: ['unexpected_bypass_actor'] }) }
   }),
@@ -378,7 +410,7 @@ const BASE_SCENARIOS = [
     category: 'audit',
     description: 'Allowed force push blocks replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['force_push_allowed', 'protection_audit_failed'],
+    expectedReasonCodes: ['protection_audit_not_ready'],
     id: 'force-push-allowed',
     overrides: { protectionAuditSnapshot: protectionAudit({ ready: false, reasonCodes: ['force_push_allowed'] }) }
   }),
@@ -386,7 +418,7 @@ const BASE_SCENARIOS = [
     category: 'audit',
     description: 'Allowed branch deletion blocks replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['deletion_allowed', 'protection_audit_failed'],
+    expectedReasonCodes: ['protection_audit_not_ready'],
     id: 'branch-deletion-allowed',
     overrides: { protectionAuditSnapshot: protectionAudit({ ready: false, reasonCodes: ['deletion_allowed'] }) }
   }),
@@ -395,7 +427,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Sensitive changed file blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['workflow_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'dangerous-file',
     overrides: { changedFilesSnapshot: changedFiles([workflowChangeFile()]) }
   }),
@@ -403,7 +435,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Workflow permission increase remains a workflow manual-merge change.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['workflow_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'workflow-permission-increase',
     overrides: { changedFilesSnapshot: changedFiles([workflowChangeFile({ patch: '+permissions:\n+  contents: write' })]) }
   }),
@@ -411,7 +443,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'pull_request_target addition is blocked as a workflow change.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['workflow_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'pull-request-target',
     overrides: { changedFilesSnapshot: changedFiles([workflowChangeFile({ patch: '+on:\n+  pull_request_target:' })]) }
   }),
@@ -419,15 +451,31 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Secret-like added line blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['secret_like_added_line'],
+    expectedReasonCodes: ['secret_like_change_detected'],
     id: 'secret-like-addition',
     overrides: { changedFilesSnapshot: changedFiles([changedFile('docs/example.md', '+const token = "dummy";')]) }
   }),
   scenario({
     category: 'diff',
+    description: 'Changed-files snapshot from a stale head SHA blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['report_head_sha_mismatch'],
+    id: 'changed-files-head-mismatch',
+    overrides: { changedFilesSnapshot: { ...changedFiles(), headSha: FIXTURE_SHAS.before } }
+  }),
+  scenario({
+    category: 'diff',
+    description: 'Changed-files API read failure blocks replay.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['unknown_state'],
+    id: 'changed-files-api-read-failure',
+    overrides: { changedFilesSnapshot: { ...changedFiles(), apiReadOk: false } }
+  }),
+  scenario({
+    category: 'diff',
     description: 'Binary file blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['binary_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'binary-file',
     overrides: { changedFilesSnapshot: changedFiles([binaryFile()]) }
   }),
@@ -435,7 +483,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Submodule change blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['submodule_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'submodule-change',
     overrides: { changedFilesSnapshot: changedFiles([submoduleFile()]) }
   }),
@@ -443,7 +491,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Dependency change blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['dependency_change_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'dependency-change',
     overrides: { changedFilesSnapshot: changedFiles([dependencyChangeFile()]) }
   }),
@@ -451,7 +499,7 @@ const BASE_SCENARIOS = [
     category: 'diff',
     description: 'Generated dist change blocks auto-merge.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['generated_dist_requires_manual_merge'],
+    expectedReasonCodes: ['dangerous_change_detected'],
     id: 'generated-dist-change',
     overrides: { changedFilesSnapshot: changedFiles([generatedDistFile()]) }
   }),
@@ -460,7 +508,7 @@ const BASE_SCENARIOS = [
     category: 'replay-prevention',
     description: 'Duplicate dedupe key suppresses replay.',
     expectedDecision: skippedDecision(),
-    expectedReasonCodes: ['duplicate_suppressed'],
+    expectedReasonCodes: ['duplicate_operation'],
     id: 'duplicate-idempotency-key',
     overrides: {
       executionContext: executionContext({
@@ -484,14 +532,8 @@ const BASE_SCENARIOS = [
   scenario({
     category: 'replay-prevention',
     description: 'Fake adapter attempt limit blocks command execution.',
-    expectedDecision: {
-      adapterCalled: true,
-      commandCreated: true,
-      dryRun: true,
-      eligible: true,
-      executed: false
-    },
-    expectedReasonCodes: ['attempt_limit_exceeded', 'eligible_enable_auto_merge'],
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['attempt_limit_exceeded'],
     id: 'attempt-limit-exceeded',
     overrides: {
       executionContext: executionContext({
@@ -503,14 +545,8 @@ const BASE_SCENARIOS = [
   scenario({
     category: 'replay-prevention',
     description: 'Expired command timestamp blocks adapter acceptance.',
-    expectedDecision: {
-      adapterCalled: true,
-      commandCreated: true,
-      dryRun: true,
-      eligible: true,
-      executed: false
-    },
-    expectedReasonCodes: ['command_expired', 'eligible_enable_auto_merge'],
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['write_command_invalid'],
     id: 'command-expired',
     overrides: {
       executionContext: executionContext({
@@ -521,18 +557,37 @@ const BASE_SCENARIOS = [
   scenario({
     category: 'replay-prevention',
     description: 'Future command timestamp blocks adapter acceptance.',
-    expectedDecision: {
-      adapterCalled: true,
-      commandCreated: true,
-      dryRun: true,
-      eligible: true,
-      executed: false
-    },
-    expectedReasonCodes: ['command_from_future', 'eligible_enable_auto_merge'],
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['write_command_invalid'],
     id: 'future-timestamp',
     overrides: {
       executionContext: executionContext({
-        requestedAt: '2026-01-01T00:05:01.000Z'
+        requestedAt: '2026-01-01T00:08:01.000Z'
+      })
+    }
+  }),
+  scenario({
+    category: 'replay-prevention',
+    description: 'Expired review evidence report blocks the executor before command creation.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['report_expired'],
+    id: 'review-report-expired',
+    overrides: {
+      reviewEvidenceSnapshot: reviewEvidence({
+        checkedAt: '2025-12-30T23:59:59.000Z',
+        reviewedAt: '2025-12-30T23:58:00.000Z'
+      })
+    }
+  }),
+  scenario({
+    category: 'replay-prevention',
+    description: 'Future review evidence report blocks the executor before command creation.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['report_from_future'],
+    id: 'review-report-from-future',
+    overrides: {
+      reviewEvidenceSnapshot: reviewEvidence({
+        checkedAt: '2026-01-01T00:03:01.000Z'
       })
     }
   }),
@@ -540,7 +595,7 @@ const BASE_SCENARIOS = [
     category: 'success',
     description: 'Fully safe current-head reviewed candidate creates a command but Disabled adapter keeps write disabled.',
     expectedDecision: successDecision(),
-    expectedReasonCodes: ['eligible_enable_auto_merge', 'write_disabled'],
+    expectedReasonCodes: ['write_disabled'],
     id: 'safe-candidate-write-disabled',
     overrides: {}
   })
@@ -745,6 +800,7 @@ export function pullRequest(overrides = {}) {
 
 export function reviewEvidence(overrides = {}) {
   return {
+    ...overrides,
     issueComments: overrides.issueComments ?? [chatGptMarker('approved')],
     reviewThreads: overrides.reviewThreads ?? [],
     reviews: overrides.reviews ?? [review()]
@@ -765,6 +821,7 @@ export function changedFiles(files = [changedFile('docs/example.md')]) {
 
 export function consumerAudit(overrides = {}) {
   return {
+    ...overrides,
     ready: overrides.ready ?? true,
     reasonCodes: overrides.reasonCodes ?? []
   };
@@ -772,6 +829,7 @@ export function consumerAudit(overrides = {}) {
 
 export function protectionAudit(overrides = {}) {
   return {
+    ...overrides,
     ready: overrides.ready ?? true,
     reasonCodes: overrides.reasonCodes ?? [],
     repositorySettings: overrides.repositorySettings ?? {
@@ -791,9 +849,14 @@ export function executionContext(overrides = {}) {
     },
     adapter: 'disabled',
     config: automationConfig(),
+    currentBaseSha: FIXTURE_SHAS.base,
+    currentHeadSha: FIXTURE_SHAS.head,
     existingDedupeKeys: [],
     now: REGRESSION_NOW,
+    pullRequestNumber: 42,
+    repository: FIXTURE_REPOSITORY.fullName,
     requestedAt: REGRESSION_REQUESTED_AT,
+    runStartedAt: '2025-12-31T23:58:00.000Z',
     ...overrides
   };
 }
@@ -906,7 +969,7 @@ export function automationConfig(overrides = {}) {
 export function chatGptMarker(status, overrides = {}) {
   return {
     body: `<!-- chatgpt-review: ${status} -->`,
-    created_at: overrides.created_at ?? '2026-01-01T00:00:00.000Z',
+    created_at: overrides.created_at ?? '2025-12-31T23:57:00.000Z',
     headSha: overrides.headSha ?? FIXTURE_SHAS.head,
     user: { login: overrides.actor ?? 'chatgpt-reviewer' }
   };
@@ -918,7 +981,7 @@ export function review(overrides = {}) {
     commit_id: overrides.commit_id ?? FIXTURE_SHAS.head,
     id: overrides.id ?? 'review-1',
     state: overrides.state ?? 'APPROVED',
-    submitted_at: overrides.submitted_at ?? '2026-01-01T00:01:00.000Z',
+    submitted_at: overrides.submitted_at ?? '2025-12-31T23:57:00.000Z',
     user: { login: overrides.actor ?? 'example-reviewer' }
   };
 }

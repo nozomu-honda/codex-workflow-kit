@@ -235,7 +235,7 @@ Auto-merge consumer E2Eでは、`templates/workflows/reviewed-pr-auto-merge-even
 - dry-runではwrite処理が発生しない
 - Secret、`pull_request_target`、inline write処理を含まない
 
-Auto-merge regression replayでは、`fixtures/auto-merge-regressions/` のsanitized scenarioを既存auto-merge planとGitHub write command境界へ通します。詳細は [Auto-merge regression replay](auto-merge-regressions.md) を参照します。
+Auto-merge regression replayでは、`fixtures/auto-merge-regressions/` のsanitized scenarioをauto-merge dry-run executorの実入力契約へ変換し、`executeAutoMergeDryRun()` へ通します。詳細は [Auto-merge regression replay](auto-merge-regressions.md) を参照します。
 
 確認対象:
 
@@ -244,7 +244,7 @@ Auto-merge regression replayでは、`fixtures/auto-merge-regressions/` のsanit
 - CI pending / failure / required check missing / check head SHA mismatchを検出する
 - consumer audit / protection audit / Ruleset / bypass actor / force push / branch deletionの不足を検出する
 - dangerous diff、workflow permission increase、`pull_request_target`、secret-like追加、binary、submoduleを検出する
-- duplicate key、cooldown、attempt limit、command expired、future timestampを検出する
+- duplicate key、cooldown、attempt limit、report expired、report from future、command expired、future timestampを検出する
 - safe candidateでも `DisabledGitHubWriteAdapter` が `write_disabled` / `executed=false` で止める
 - fixtureに実repository、実URL、実メール、実token、Secret-like値がない
 - replay中にnetwork / GitHub API write / Secret参照が発生しない
