@@ -182,3 +182,5 @@ CLIが使うGitHub REST APIはGETだけです。必要なread対象:
 - write permission
 
 private repositoryを監査する場合は、consumer repositoryを読めるread-only tokenを環境変数 `GITHUB_TOKEN` または `GH_TOKEN` へ設定します。token値は引数、ログ、report、docsへ出しません。API read失敗、pagination不完了、権限不足、監査中のdefault branch変更はfail closedです。
+
+GitHub Enterprise Serverを監査する場合も、tokenを任意hostへ自動送信しません。`api.github.com` 以外へtokenを送るには、CLIで `--allow-token-host <host>` を明示します。paginationのnext URLも同じoriginとAPI base path内に限定し、redirect、HTTP、username/password付きURL、query/hash付きbase URLはfail closedです。
