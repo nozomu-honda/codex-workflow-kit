@@ -678,10 +678,17 @@ function validateReviewEvidence({ blockers, current, reviewEvidence }) {
     addBlocker(blockers, 'requested_reviewer_remaining', 'Requested reviewers or teams remain.', 'reviewEvidenceReport.requestedReviewers');
   }
   const reviewedAt = reviewEvidence.reviewedAt || reviewEvidence.checkedAt || '';
-  if (reviewedAt && isTimestampFromFuture(reviewedAt, current)) {
+  const reviewedAtFromFuture = reviewedAt && isTimestampFromFuture(reviewedAt, current);
+  const reviewedAtAfterCheckedAt = reviewedAt && isTimestampAfter(reviewedAt, reviewEvidence.checkedAt);
+  if (reviewedAtFromFuture) {
     addBlocker(blockers, 'report_from_future', 'Review evidence timestamp is newer than the execution time plus allowed clock skew.', 'reviewEvidenceReport.reviewedAt');
+  } else if (reviewedAtAfterCheckedAt) {
+    addBlocker(blockers, 'report_from_future', 'Review evidence timestamp is newer than the report timestamp.', 'reviewEvidenceReport.reviewedAt');
   }
-  if (reviewEvidence.currentRunEvidence === true || (reviewedAt && isValidTimestamp(reviewedAt) && Date.parse(reviewedAt) >= Date.parse(current.runStartedAt))) {
+  if (!reviewedAtFromFuture && !reviewedAtAfterCheckedAt && (
+    reviewEvidence.currentRunEvidence === true
+    || (reviewedAt && isValidTimestamp(reviewedAt) && Date.parse(reviewedAt) >= Date.parse(current.runStartedAt))
+  )) {
     addBlocker(blockers, 'review_evidence_from_current_run', 'Review evidence was created during the same dry-run.', 'reviewEvidenceReport.reviewedAt');
   }
 }
@@ -691,6 +698,13 @@ function isTimestampFromFuture(timestamp, current) {
     return false;
   }
   return Date.parse(timestamp) > Date.parse(current.now) + REPORT_FUTURE_CLOCK_SKEW_MS;
+}
+
+function isTimestampAfter(timestamp, referenceTimestamp) {
+  if (!isValidTimestamp(timestamp) || !isValidTimestamp(referenceTimestamp)) {
+    return false;
+  }
+  return Date.parse(timestamp) > Date.parse(referenceTimestamp);
 }
 
 function validateChecks({ blockers, checks, current, executionContext }) {

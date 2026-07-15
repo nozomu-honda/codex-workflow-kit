@@ -67,7 +67,7 @@ test('review evidenceなし、stale head、changes requested、未解決thread�
     'unresolved_review_thread'
   );
   assertBlocked(
-    baseInput({ reviewEvidenceReport: { reviewedAt: RUN_STARTED_AT } }),
+    baseInput({ reviewEvidenceReport: { checkedAt: RUN_STARTED_AT, reviewedAt: RUN_STARTED_AT } }),
     'review_evidence_from_current_run'
   );
 });
@@ -359,6 +359,11 @@ test('report timestampはexecution時刻より未来すぎる場合にfail close
   );
   assertBlocked(
     baseInput({ reviewEvidenceReport: { reviewedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future',
+    { commandCreated: false }
+  );
+  assertBlocked(
+    baseInput({ reviewEvidenceReport: { reviewedAt: plusMs(CHECKED_AT, 1) } }),
     'report_from_future',
     { commandCreated: false }
   );
