@@ -978,7 +978,7 @@ function auditWorkflowInputs(withValue, context) {
     if (!allowed.has(key)) {
       addError(errors, checks, 'unexpected_workflow_input', 'Caller workflow input is outside the capability contract.', {
         file: context.file,
-        path: `${context.path}.${key}`
+        path: sanitizedWorkflowInputPath(context.path, key)
       });
     }
   }
@@ -1208,11 +1208,50 @@ function extractGitHubExpressions(value) {
 }
 
 function referencesGitHubToken(expression) {
-  return /\bgithub\s*(?:\.\s*token|\[\s*(['"])token\1\s*\])/i.test(expression);
+  return contextReferences(expression, 'github').some((reference) => {
+    if (reference.access === 'dot') {
+      return reference.property === 'token';
+    }
+    return reference.access === 'bare' || reference.access === 'bracket';
+  });
 }
 
 function referencesSecretContext(expression) {
-  return /\bsecrets\s*(?:\.\s*[A-Za-z_][A-Za-z0-9_]*|\[\s*(['"])[^\]'"]+\1\s*\])/i.test(expression);
+  return contextReferences(expression, 'secrets').length > 0;
+}
+
+function contextReferences(expression, contextName) {
+  const text = String(expression ?? '');
+  const references = [];
+  const regex = new RegExp(`\\b${contextName}\\b`, 'gi');
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    const previous = text[match.index - 1] ?? '';
+    if (previous === '.' || /[A-Za-z0-9_]/.test(previous)) {
+      continue;
+    }
+
+    const afterContextIndex = match.index + contextName.length;
+    const whitespace = text.slice(afterContextIndex).match(/^\s*/)?.[0] ?? '';
+    const nextIndex = afterContextIndex + whitespace.length;
+    const next = text[nextIndex] ?? '';
+
+    if (next === '.') {
+      const property = text.slice(nextIndex + 1).match(/^\s*([A-Za-z_][A-Za-z0-9_]*)/)?.[1] ?? '';
+      references.push({ access: 'dot', property: property.toLowerCase() });
+      continue;
+    }
+
+    if (next === '[') {
+      references.push({ access: 'bracket' });
+      continue;
+    }
+
+    references.push({ access: 'bare' });
+  }
+
+  return references;
 }
 
 function containsConcreteSecretLikeValue(value) {
@@ -1266,6 +1305,10 @@ function sanitizedSecretPath(path) {
   return path
     .map((part) => isSecretLikeKey(part) ? '<secret-like-key>' : part)
     .join('.');
+}
+
+function sanitizedWorkflowInputPath(basePath, key) {
+  return sanitizedSecretPath([...String(basePath ?? '').split('.').filter(Boolean), key]);
 }
 
 function isAllowedPlaceholderValue(value) {

@@ -502,6 +502,17 @@ test('kit-ref is required when shared kit checkout is used and must match the re
 
 test('wrapped and bracket notation token or secret expressions fail closed without leaking expression details', async () => {
   const cases = [
+    { code: 'secret_reference_present', unsafe: '${{ secrets }}', value: '${{ secrets }}' },
+    { code: 'secret_reference_present', unsafe: '${{ toJSON(secrets) }}', value: '${{ toJSON(secrets) }}' },
+    { code: 'secret_reference_present', unsafe: "${{ format('{0}', secrets) }}", value: "${{ format('{0}', secrets) }}" },
+    { code: 'secret_reference_present', unsafe: '${{ fromJSON(toJSON(secrets)) }}', value: '${{ fromJSON(toJSON(secrets)) }}' },
+    { code: 'secret_reference_present', unsafe: 'secrets[inputs.name]', value: '${{ secrets[inputs.name] }}' },
+    { code: 'secret_reference_present', unsafe: 'secrets[github.event.key]', value: '${{ secrets[github.event.key] }}' },
+    { code: 'github_token_forwarding_present', unsafe: '${{ github }}', value: '${{ github }}' },
+    { code: 'github_token_forwarding_present', unsafe: '${{ toJSON(github) }}', value: '${{ toJSON(github) }}' },
+    { code: 'github_token_forwarding_present', unsafe: "${{ format('{0}', github) }}", value: "${{ format('{0}', github) }}" },
+    { code: 'github_token_forwarding_present', unsafe: '${{ fromJSON(toJSON(github)) }}', value: '${{ fromJSON(toJSON(github)) }}' },
+    { code: 'github_token_forwarding_present', unsafe: 'github[inputs.name]', value: '${{ github[inputs.name] }}' },
     { code: 'github_token_forwarding_present', unsafe: 'github.token', value: '${{ github.token }}' },
     { code: 'github_token_forwarding_present', unsafe: 'github.token', value: "${{ format('{0}', github.token) }}" },
     { code: 'github_token_forwarding_present', unsafe: 'github.token', value: '${{ toJSON(github.token) }}' },
@@ -542,6 +553,9 @@ test('safe expressions and descriptive token text are not treated as secret forw
   const safeValues = [
     '${{ github.actor }}',
     '${{ github.repository }}',
+    '${{ github.repository_owner }}',
+    '${{ github.event_name }}',
+    '${{ toJson(github.event) }}',
     '${{ vars.PUBLIC_CONFIG }}',
     'tokenという単語を含む説明文'
   ];
@@ -578,6 +592,73 @@ test('safe expressions and descriptive token text are not treated as secret forw
   });
   assert.equal(secretLikeVariable.ok, false);
   assert.equal(hasCode(secretLikeVariable, 'secret_like_key_present'), true);
+});
+
+test('unexpected workflow input paths sanitize secret-like keys and reports omit secret details', async () => {
+  const cases = [
+    {
+      key: 'PRIVATE_TOKEN',
+      value: '${{ secrets.PRIVATE_TOKEN }}',
+      expectedCodes: ['unexpected_workflow_input', 'secret_reference_present'],
+      forbidden: ['PRIVATE_TOKEN', 'secrets.PRIVATE_TOKEN', '${{ secrets.PRIVATE_TOKEN }}'],
+      sanitized: true
+    },
+    {
+      key: 'CLIENT_SECRET',
+      value: 'concrete-value',
+      expectedCodes: ['unexpected_workflow_input', 'secret_like_key_present'],
+      forbidden: ['CLIENT_SECRET', 'concrete-value'],
+      sanitized: true
+    },
+    {
+      key: 'API_TOKEN',
+      value: 'dummy-token',
+      expectedCodes: ['unexpected_workflow_input'],
+      forbidden: ['API_TOKEN', 'dummy-token'],
+      sanitized: true
+    },
+    {
+      key: 'EXTRA_INPUT',
+      value: 'value',
+      expectedCodes: ['unexpected_workflow_input'],
+      forbidden: [],
+      sanitized: false
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: (workflow) => {
+            workflow.jobs['review-routing'].with[entry.key] = entry.value;
+          }
+        }
+      })
+    });
+    const report = `${JSON.stringify(result)}\n${formatLiveConsumerAuditReport(result)}`;
+
+    assert.equal(result.ok, false, entry.key);
+    for (const code of entry.expectedCodes) {
+      assert.equal(hasCode(result, code), true, `${entry.key}:${code}`);
+    }
+    for (const value of entry.forbidden) {
+      assert.equal(report.includes(value), false, `${entry.key}:${value}`);
+    }
+    if (entry.sanitized) {
+      assert.equal(report.includes('<secret-like-key>'), true, entry.key);
+    } else {
+      assert.equal(report.includes('EXTRA_INPUT'), true);
+      assert.equal(hasCode(result, 'secret_reference_present'), false, entry.key);
+      assert.equal(hasCode(result, 'secret_like_key_present'), false, entry.key);
+    }
+    assert.equal(report.includes('secrets.PRIVATE_TOKEN'), false);
+    assert.equal(report.includes('${{ secrets.PRIVATE_TOKEN }}'), false);
+    assert.equal(report.includes('Authorization'), false);
+    assert.equal(report.includes('Cookie'), false);
+  }
 });
 
 test('known capability caller workflows require exactly one expected reusable workflow job', async () => {
