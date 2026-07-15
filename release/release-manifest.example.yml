@@ -8,10 +8,12 @@ capabilities:
   - event-normalization
   - review-routing-plan
   - auto-merge-plan
+  - auto-merge-dry-run-executor
   - main-follow-up-plan
   - repository-protection-audit
 changedCapabilities:
   - auto-merge-plan
+  - auto-merge-dry-run-executor
   - main-follow-up-plan
   - repository-protection-audit
 breakingChanges: []
@@ -25,6 +27,7 @@ reusableWorkflows:
   - .github/workflows/normalize-event.yml
   - .github/workflows/review-routing.yml
   - .github/workflows/auto-merge-plan.yml
+  - .github/workflows/auto-merge-dry-run-executor.yml
   - .github/workflows/main-follow-up-plan.yml
 callerTemplates:
   - templates/workflows/validate-config.yml

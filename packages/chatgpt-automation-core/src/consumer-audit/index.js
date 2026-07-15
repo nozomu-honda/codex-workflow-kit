@@ -326,6 +326,9 @@ export function auditLiveConsumerInstallation(options = {}) {
     checks
   });
 
+  const apiReadOk = snapshot.apiErrors.every((error) => isPaginationIssue(error?.code));
+  const paginationComplete = snapshot.paginationIncomplete !== true
+    && !snapshot.apiErrors.some((error) => isPaginationIssue(error?.code));
   let blockers = [...errors].sort(compareIssues);
   if (inventory.manualReviewRequired === true) {
     const manualReviewBlockers = [];
@@ -338,6 +341,8 @@ export function auditLiveConsumerInstallation(options = {}) {
   return stableObject({
     ok: ready,
     ready,
+    apiReadOk,
+    paginationComplete,
     dryRun: true,
     reportVersion: LIVE_CONSUMER_AUDIT_REPORT_VERSION,
     repository: inventory.repository,
@@ -358,7 +363,7 @@ export function auditLiveConsumerInstallation(options = {}) {
     warnings: [...warnings].sort(compareIssues),
     manualReviewRequired,
     checks: [...checks].sort(compareIssues),
-    checkedAt: options.checkedAt ?? null
+    checkedAt: normalizeCheckedAt(options.checkedAt ?? snapshot.checkedAt)
   });
 }
 
@@ -1618,6 +1623,7 @@ function normalizeSnapshot(value = {}) {
     defaultBranch: typeof value.defaultBranch === 'string' ? value.defaultBranch.trim() : '',
     defaultBranchStartSha: typeof value.defaultBranchStartSha === 'string' ? value.defaultBranchStartSha.trim() : '',
     defaultBranchEndSha: typeof value.defaultBranchEndSha === 'string' ? value.defaultBranchEndSha.trim() : '',
+    checkedAt: normalizeCheckedAt(value.checkedAt),
     files,
     workflowMetadata: workflowMetadataProvided
       ? value.workflowMetadata.map(normalizeWorkflowMetadata).filter((entry) => entry.path)
@@ -1626,6 +1632,19 @@ function normalizeSnapshot(value = {}) {
     apiErrors: Array.isArray(value.apiErrors) ? value.apiErrors : [],
     paginationIncomplete: value.paginationIncomplete === true
   };
+}
+
+function isPaginationIssue(code) {
+  const normalized = typeof code === 'string' ? code : '';
+  return normalized === 'pagination_incomplete'
+    || normalized === 'invalid_link_header'
+    || normalized.startsWith('pagination_');
+}
+
+function normalizeCheckedAt(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value.trim()))
+    ? value.trim()
+    : '';
 }
 
 function normalizeWorkflowMetadata(value) {

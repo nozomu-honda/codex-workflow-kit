@@ -75,6 +75,7 @@ test('external token still fails closed when ruleset bypass actors are not visib
   const { result } = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch(requests),
     githubToken: 'secret-token-value',
+    now: '2026-01-01T00:00:00.000Z',
     policy: policy(),
     repository: 'owner/example-repo',
     tokenSource: 'external-read-token'
@@ -87,6 +88,9 @@ test('external token still fails closed when ruleset bypass actors are not visib
   assert.equal(result.effectiveProtections.branchProtectionPresent, true);
   assert.equal(defaultRulesetVisibility.bypassActorsVisible, false);
   assert.equal(Object.prototype.hasOwnProperty.call(defaultRulesetVisibility, 'bypassActorCount'), false);
+  assert.equal(result.apiReadOk, true);
+  assert.equal(result.paginationComplete, true);
+  assert.equal(result.checkedAt, '2026-01-01T00:00:00.000Z');
   assert.equal(requests.length > 0, true);
   assert.equal(requests.every((request) => request.method === 'GET'), true);
   assert.equal(requests.filter((request) => request.path === '/repos/owner/example-repo/branches/master/protection').length, 2);
@@ -146,12 +150,14 @@ test('CLI prints stable JSON and does not expose token values', async () => {
   }, {
     fetchImpl: fakeFetch([], { includeBypassActors: true }),
     githubToken: 'another-secret-token',
+    now: '2026-01-01T00:00:00.000Z',
     readFile: readPolicyFixture
   });
   const parsed = JSON.parse(output.stdout);
 
   assert.equal(exitCode, 0);
   assert.equal(parsed.ready, true);
+  assert.equal(parsed.checkedAt, '2026-01-01T00:00:00.000Z');
   assert.equal(output.stdout.includes('another-secret-token'), false);
   assert.equal(output.stderr, '');
 });

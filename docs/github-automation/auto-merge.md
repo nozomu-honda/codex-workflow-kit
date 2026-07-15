@@ -157,6 +157,22 @@ Issue #42では、auto-merge planの安全性回帰scenarioを [Auto-merge regre
 
 このsuiteが成功しても、導入先Rulesetやrequired checksが実際に正しく設定されていること、GitHub UIでmerge可能であること、Issue #41のdry-run executorが実consumer上で動くことを確認した扱いにはしません。実consumer / Ruleset確認はRepository protection audit、Live consumer audit、または導入先Issueで別途実施します。
 
+## dry-run executor
+
+Issue #41では、auto-merge planだけで実writeへ進まず、[Auto-merge dry-run executor](auto-merge-dry-run-executor.md) で次を再集約します。
+
+- auto-merge plan
+- current-head review evidence
+- live consumer audit
+- repository protection audit
+- current PR snapshot
+- CI / required checks / Review evidence gate
+- changed files safety
+- idempotency / attempts / cooldown
+- existing github-write command validator
+
+executorはeligibleな場合だけwrite command候補を作りますが、本番経路のadapterは `DisabledGitHubWriteAdapter` のみです。したがってeligibleでも `write_disabled`、`executed=false` になり、mergeやauto-merge有効化は行いません。PR #130相当のreview evidenceなし状態は `review_evidence_missing` でblockし、commandを生成しません。
+
 ## outputs
 
 `.github/workflows/auto-merge-plan.yml` は次のoutputsを返します。

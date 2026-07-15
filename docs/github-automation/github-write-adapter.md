@@ -174,6 +174,18 @@ audit recordは最小限の許可fieldだけを出力します。
 
 converterはplanとworkflow境界で得たactor trust contextを受け取り、commandとvalidation contextを組で返します。validatorはこのvalidation contextがないcommandをvalid扱いしません。
 
+## dry-run executorからの利用
+
+Issue #41の [Auto-merge dry-run executor](auto-merge-dry-run-executor.md) は、独自command形式を作らず、このconverterとvalidatorをそのまま使います。
+
+- auto-merge planがeligibleで、review evidence / CI / consumer audit / protection audit / changed files / idempotency条件がすべて通った場合だけcommand候補を作る
+- command生成後も `validateWriteCommand()` へ通す
+- trusted actor contextはexecutor inputの外部検証済みcontextを使い、command payloadの自己申告だけでは通さない
+- 本番経路では `DisabledGitHubWriteAdapter` だけを使用する
+- valid commandでも `accepted=false`、`executed=false`、`reasonCode=write_disabled`
+
+このため、dry-run executorがeligibleでもIssue #25の実writeはまだ未実装です。
+
 ## CLI
 
 `scripts/plan-write-command.mjs` はplan JSONを読み、command候補とdisabled adapter結果をdeterministic JSONで出力します。
