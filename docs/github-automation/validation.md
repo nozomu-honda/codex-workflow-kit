@@ -80,10 +80,13 @@ npm run audit:template
 - Branch protectionなし、Rulesetなし、CIなし、Review evidence gateなしを検出する
 - approval 0、stale approval dismissalなし、conversation resolutionなしを検出する
 - force push許可、deletion許可、unexpected bypass actorを検出する
+- `bypass_actors: []` と `bypass_actors` 省略を区別し、可視性不明を `ruleset_bypass_visibility_unknown` でfail closedにする
 - inactive ruleset、branch pattern不一致、duplicate check名を検出する
 - merge queue有効時にmanual review warningを出す
-- API 403 / 404、pagination未完了、監査中の設定変更をfail closedにする
-- policy schemaとexample policyが一致する
+- API 403 / 404、開始時と終了時のpagination未完了、監査中のBranch protection / Ruleset detail変更をfail closedにする
+- policy schemaとexample policyが一致し、CLI runtimeでも不正policyをAPI request前にfail closedにする
+- 標準 `github-token` sourceでは完全監査を `ready=true` にしない
+- external read token contextでもAPI 403やRuleset bypass可視性不明はfail closedにする
 - CLIがGETだけを使い、tokenやAuthorizationを出力しない
 - workflowが `workflow_dispatch` only、`contents: read` only、Secretなしである
 
@@ -100,10 +103,12 @@ live consumerをread-onlyで確認する場合:
 GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
   --repository nozomu-honda/oshi-management-app \
   --policy release/protection-policy.example.yml \
+  --token-source external-read-token \
   --json
 ```
 
 このlive確認はGitHub API readだけを行い、Ruleset / Branch protection / Secret / Variables / labels / comments / deploy / releaseを変更しません。
+標準 `github.token` を使うworkflow実行はread-only診断であり、完全監査の成功証跡として扱いません。
 
 導入先を直接監査する場合:
 
