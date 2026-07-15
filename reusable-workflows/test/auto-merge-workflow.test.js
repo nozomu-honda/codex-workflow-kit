@@ -80,6 +80,20 @@ test('Issue #23 normalizerを呼び出し、plan scriptだけでoutputsを生成
   assert.equal(step.run, 'node .codex-workflow-kit/scripts/plan-auto-merge.mjs');
   assert.match(step.env.NORMALIZED_EVENT_JSON, /needs\.normalize-event\.outputs\.event_name/);
   assert.equal(step.env.GITHUB_TOKEN, '${{ github.token }}');
+  assert.equal(step.env.RUN_STARTED_AT, '${{ steps.run-start.outputs.run_started_at }}');
+});
+
+test('run開始時刻はcaller inputではなくplanner job内で生成する', async () => {
+  const { workflow } = await readWorkflow();
+  const planner = workflow.jobs['auto-merge-plan'];
+  const capture = planner.steps.find((step) => step.id === 'run-start');
+
+  assert.equal(Object.hasOwn(workflow.on.workflow_call.inputs, 'run-started-at'), false);
+  assert.equal(planner.steps[0], capture);
+  assert.equal(capture.shell, 'bash');
+  assert.match(capture.run, /date -u/);
+  assert.match(capture.run, /GITHUB_OUTPUT/);
+  assert.match(capture.run, /run_started_at/);
 });
 
 test('共有kitを固定refでcheckoutし、kit-ref検証を持つ', async () => {

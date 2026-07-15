@@ -74,7 +74,7 @@ scenario IDはstableなkebab-caseです。fixture値は `owner/example-repo`、`
 
 PR #130相当の回帰は `no-review-evidence-regression` として固定しています。このscenarioはCI successやmergeable条件が揃っていても、review submissions、threads、approved marker、`reviewed-by-chatgpt` labelがなく、`commandCreated=false` / `adapterCalled=false` で停止することを確認します。
 
-`same-run-review-evidence` は通常の `current-head-valid-review` と同じbase scenarioを使い回さず、`pull_request_review` trigger payload、run開始時刻、trigger側review ID、API取得側review ID、actor、current head SHAをfixtureへ明示します。採用可能なsame-run evidenceは、trigger payloadとAPI取得結果のreview ID / actor / head SHAが一致し、review timestampがrun開始秒より前に確定できる場合だけです。run開始後に作成されたevidence、run開始と同一秒で前後関係が確定できないevidence、trigger/API ID不一致、actor不一致、stale head SHAは個別scenarioで `commandCreated=false` として固定します。
+`same-run-review-evidence` は通常の `current-head-valid-review` と同じbase scenarioを使い回さず、`pull_request_review` trigger payload、run開始時刻、trigger側review ID、API取得側review ID、actor、current head SHAをfixtureへ明示します。採用可能なsame-run evidenceは、trigger payloadとAPI取得結果のreview ID / actor / head SHAが一致し、review timestampがrun開始秒より前に確定できる場合だけです。run開始後に作成されたevidence、run開始と同一秒で前後関係が確定できないevidence、trigger/API ID不一致、actor不一致、stale head SHAは個別scenarioで `commandCreated=false` として固定します。加えて `scripts/plan-auto-merge.test.mjs` はproduction CLI境界で `RUN_STARTED_AT` を同じ `runStartedAt` 引数契約へ渡し、欠落・空文字・不正timestampとevent payload値による代用をfail closedに固定します。
 
 ## Commands
 

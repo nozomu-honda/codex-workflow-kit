@@ -353,8 +353,11 @@ npm run lint:review-routing
 - outputsが `packages/chatgpt-automation-core/src/auto-merge/` のauto-merge output名と一致する
 - `kit-ref` はレビュー済み40桁commit SHAだけを許可する
 - `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- run開始時刻用のworkflow inputを持たず、planner job最初のstepでUTC timestampを生成してplan stepの `RUN_STARTED_AT` へ渡す
 - `scripts/plan-auto-merge.mjs` だけを実行する
 - `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+
+`scripts/plan-auto-merge.test.mjs` は `pull_request_review` 実イベント相当のCLI境界で、trigger review ID / actor / head SHA照合、run開始前の採用、開始後・同一秒・欠落・空文字・不正timestampの拒否を確認します。event payload内の時刻はruntime由来のrun開始時刻として代用しません。
 
 Auto-merge専用確認:
 

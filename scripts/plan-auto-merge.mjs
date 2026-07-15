@@ -87,6 +87,7 @@ async function main() {
     repositorySettings,
     reviewThreads,
     reviews,
+    runStartedAt: process.env.RUN_STARTED_AT ?? '',
     secretLikePatterns: config.secretLike?.hardBlockPatterns ?? DEFAULT_SECRET_LIKE_PATTERNS,
     workflowRuns
   });

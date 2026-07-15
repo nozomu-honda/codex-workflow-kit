@@ -685,9 +685,7 @@ function getSameRunReviewEvidenceBlocker({ eventPayload = {}, headSha = '', norm
     return '';
   }
 
-  const runStart = cleanString(runStartedAt)
-    || cleanString(eventPayload?.workflow_run?.run_started_at ?? eventPayload?.workflow_run?.created_at)
-    || cleanString(normalizedEvent.run_started_at ?? normalizedEvent.runStartedAt);
+  const runStart = cleanString(runStartedAt);
   const triggerTimingBlocker = sameRunTimingBlocker(trigger.timestamp, runStart);
   if (triggerTimingBlocker) {
     return triggerTimingBlocker;
