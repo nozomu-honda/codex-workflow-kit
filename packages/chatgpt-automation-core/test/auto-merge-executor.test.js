@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   executeAutoMergeDryRun,
+  REPORT_FUTURE_CLOCK_SKEW_MS,
   REVIEW_EVIDENCE_REPORT_VERSION
 } from '../src/auto-merge-executor/index.js';
 import {
@@ -337,6 +338,61 @@ test('consumer / protection audit block、schema不正、期限切れ、paginati
   assertBlocked(
     baseInput({ protectionAuditReport: { apiReadOk: false } }),
     'protection_audit_not_ready'
+  );
+});
+
+test('report timestampはexecution時刻より未来すぎる場合にfail closedになる', () => {
+  assertBlocked(
+    baseInput({ consumerAuditReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future',
+    { commandCreated: false }
+  );
+  assertBlocked(
+    baseInput({ protectionAuditReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future',
+    { commandCreated: false }
+  );
+  assertBlocked(
+    baseInput({ reviewEvidenceReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future',
+    { commandCreated: false }
+  );
+  assertBlocked(
+    baseInput({ reviewEvidenceReport: { reviewedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future',
+    { commandCreated: false }
+  );
+});
+
+test('report timestampのclock skew境界と通常timestampをdeterministicに扱う', () => {
+  const withinSkew = executeAutoMergeDryRun(baseInput({
+    consumerAuditReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS - 1) }
+  }));
+  const exactSkew = executeAutoMergeDryRun(baseInput({
+    consumerAuditReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS) }
+  }));
+  const nowTimestamp = executeAutoMergeDryRun(baseInput({
+    consumerAuditReport: { checkedAt: NOW }
+  }));
+  const normalPast = executeAutoMergeDryRun(baseInput({
+    consumerAuditReport: { checkedAt: CHECKED_AT }
+  }));
+
+  assert.equal(withinSkew.eligible, true, JSON.stringify(withinSkew, null, 2));
+  assert.equal(exactSkew.eligible, true, JSON.stringify(exactSkew, null, 2));
+  assert.equal(nowTimestamp.eligible, true, JSON.stringify(nowTimestamp, null, 2));
+  assert.equal(normalPast.eligible, true, JSON.stringify(normalPast, null, 2));
+  assertBlocked(
+    baseInput({ consumerAuditReport: { checkedAt: plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1) } }),
+    'report_from_future'
+  );
+  assertBlocked(
+    baseInput({ consumerAuditReport: { checkedAt: '2025-12-30T00:00:00.000Z' } }),
+    'report_expired'
+  );
+  assertBlocked(
+    baseInput({ consumerAuditReport: { checkedAt: 'not-a-date' } }),
+    'report_schema_invalid'
   );
 });
 
@@ -730,6 +786,10 @@ function checks(overrides = []) {
 
 function expectedWriteIdempotencyKey() {
   return `write-v1:enable-auto-merge:${FIXTURE_REPOSITORY.fullName}#42:${FIXTURE_SHAS.head}:${FIXTURE_SHAS.base}`;
+}
+
+function plusMs(timestamp, milliseconds) {
+  return new Date(Date.parse(timestamp) + milliseconds).toISOString();
 }
 
 function withoutField(input, reportName, field) {

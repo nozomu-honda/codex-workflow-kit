@@ -8,7 +8,10 @@ import {
   FIXTURE_REPOSITORY,
   FIXTURE_SHAS
 } from '../fixtures/github-events/index.js';
-import { REVIEW_EVIDENCE_REPORT_VERSION } from '../packages/chatgpt-automation-core/src/auto-merge-executor/index.js';
+import {
+  REPORT_FUTURE_CLOCK_SKEW_MS,
+  REVIEW_EVIDENCE_REPORT_VERSION
+} from '../packages/chatgpt-automation-core/src/auto-merge-executor/index.js';
 import { runAuditLiveConsumerCli } from './audit-live-consumer.mjs';
 import { runAuditRepositoryProtectionCli } from './audit-repository-protection.mjs';
 
@@ -130,6 +133,32 @@ test('audit producer CLI JSON output can be parsed and passed to executor CLI', 
   }
 });
 
+test('producer CLI JSON output with future timestamp is blocked by executor CLI', async () => {
+  const consumerAuditReport = await runLiveConsumerAuditJson();
+  const protectionAuditReport = await runProtectionAuditJson();
+  consumerAuditReport.checkedAt = plusMs(NOW, REPORT_FUTURE_CLOCK_SKEW_MS + 1);
+  const temp = writeInputs(baseInput({
+    consumerAuditReport,
+    protectionAuditReport
+  }));
+  try {
+    const result = runCli([
+      ...fileArgs(temp.files),
+      '--json'
+    ]);
+    const parsed = JSON.parse(result.stdout);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(parsed.eligible, false);
+    assert.equal(parsed.commandCreated, false);
+    assert.equal(parsed.adapterAccepted, false);
+    assert.equal(parsed.executed, false);
+    assert.equal(parsed.reasonCodes.includes('report_from_future'), true, JSON.stringify(parsed, null, 2));
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test('execute-auto-merge-dry-run CLIは--no-dry-runを拒否する', () => {
   const result = runCli(['--no-dry-run']);
 
@@ -231,7 +260,8 @@ function baseInput(overrides = {}) {
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 'live-consumer-audit.v1',
-      warnings: []
+      warnings: [],
+      ...(overrides.consumerAuditReport ?? {})
     },
     executionContext: {
       actorContext: {
@@ -265,7 +295,8 @@ function baseInput(overrides = {}) {
       ready: true,
       repository: FIXTURE_REPOSITORY.fullName,
       reportVersion: 1,
-      warnings: []
+      warnings: [],
+      ...(overrides.protectionAuditReport ?? {})
     },
     pullRequestSnapshot: {
       baseBranch: FIXTURE_REPOSITORY.defaultBranch,
@@ -528,4 +559,8 @@ function jsonResponse(body, options = {}) {
       ...(options.headers ?? {})
     }
   });
+}
+
+function plusMs(timestamp, milliseconds) {
+  return new Date(Date.parse(timestamp) + milliseconds).toISOString();
 }

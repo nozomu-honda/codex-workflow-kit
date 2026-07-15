@@ -107,7 +107,7 @@ test('workflowはvalidなblock decisionでもsanitized outputsを公開する', 
     dryRun: true,
     eligible: false,
     executed: false,
-    reasonCodes: ['review_evidence_missing'],
+    reasonCodes: ['report_from_future'],
     reportVersion: 'auto-merge-dry-run-executor.v1'
   }));
 
@@ -118,7 +118,7 @@ test('workflowはvalidなblock decisionでもsanitized outputsを公開する', 
     assert.match(outputs, /^command_created=false$/m);
     assert.match(outputs, /^adapter_accepted=false$/m);
     assert.match(outputs, /^executed=false$/m);
-    assert.match(outputs, /^reason_codes_json=\["review_evidence_missing"\]$/m);
+    assert.match(outputs, /^reason_codes_json=\["report_from_future"\]$/m);
     assert.match(outputs, /^result_json<<JSON$/m);
     assert.match(outputs, /"eligible":false/);
   } finally {

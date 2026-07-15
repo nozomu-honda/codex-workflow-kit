@@ -19,6 +19,7 @@ export const AUTO_MERGE_DRY_RUN_REASON_CODES = Object.freeze([
   'report_head_sha_mismatch',
   'report_base_sha_mismatch',
   'report_expired',
+  'report_from_future',
   'ci_not_successful',
   'required_check_missing',
   'protection_audit_not_ready',
@@ -38,6 +39,7 @@ export const AUTO_MERGE_DRY_RUN_REASON_CODES = Object.freeze([
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const DEFAULT_REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const REPORT_FUTURE_CLOCK_SKEW_MS = 60 * 1000;
 const DEFAULT_REQUIRED_CHECKS = Object.freeze(['CI', 'Review evidence gate']);
 const SAFE_MERGE_STATES = new Set(['clean', 'has_hooks', 'unstable']);
 const AUTO_MERGE_PLAN_ROOT_KEYS = new Set(['ok', 'outputs']);
@@ -569,7 +571,15 @@ function validateReportFreshness({ blockers, current, report, reportName }) {
     : DEFAULT_REPORT_MAX_AGE_MS;
   const nowMs = Date.parse(current.now);
   const timestampMs = Date.parse(timestamp);
-  if (Number.isFinite(nowMs) && nowMs - timestampMs > maxAgeMs) {
+  if (!Number.isFinite(nowMs)) {
+    addBlocker(blockers, 'report_schema_invalid', 'Execution context now timestamp is invalid.', 'executionContext.now');
+    return;
+  }
+  if (timestampMs > nowMs + REPORT_FUTURE_CLOCK_SKEW_MS) {
+    addBlocker(blockers, 'report_from_future', 'Report timestamp is newer than the execution time plus allowed clock skew.', `${reportName}.checkedAt`);
+    return;
+  }
+  if (nowMs - timestampMs > maxAgeMs) {
     addBlocker(blockers, 'report_expired', 'Report is older than the allowed dry-run window.', reportName);
   }
 }
@@ -668,9 +678,19 @@ function validateReviewEvidence({ blockers, current, reviewEvidence }) {
     addBlocker(blockers, 'requested_reviewer_remaining', 'Requested reviewers or teams remain.', 'reviewEvidenceReport.requestedReviewers');
   }
   const reviewedAt = reviewEvidence.reviewedAt || reviewEvidence.checkedAt || '';
+  if (reviewedAt && isTimestampFromFuture(reviewedAt, current)) {
+    addBlocker(blockers, 'report_from_future', 'Review evidence timestamp is newer than the execution time plus allowed clock skew.', 'reviewEvidenceReport.reviewedAt');
+  }
   if (reviewEvidence.currentRunEvidence === true || (reviewedAt && isValidTimestamp(reviewedAt) && Date.parse(reviewedAt) >= Date.parse(current.runStartedAt))) {
     addBlocker(blockers, 'review_evidence_from_current_run', 'Review evidence was created during the same dry-run.', 'reviewEvidenceReport.reviewedAt');
   }
+}
+
+function isTimestampFromFuture(timestamp, current) {
+  if (!isValidTimestamp(timestamp) || !isValidTimestamp(current.now)) {
+    return false;
+  }
+  return Date.parse(timestamp) > Date.parse(current.now) + REPORT_FUTURE_CLOCK_SKEW_MS;
 }
 
 function validateChecks({ blockers, checks, current, executionContext }) {
