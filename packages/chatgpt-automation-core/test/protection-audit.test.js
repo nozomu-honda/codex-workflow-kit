@@ -265,6 +265,70 @@ test('bypass actors are sanitized and unsafe actors block readiness', () => {
   assert.equal(JSON.stringify(admin).includes('"actorId"'), false);
 });
 
+test('ruleset bypass actor visibility is tracked separately from zero actors', () => {
+  const visibleZero = auditRepositoryProtection(safeInput({
+    rulesetDetails: [safeRuleset({ bypass_actors: [] })]
+  }));
+  const omitted = safeRuleset();
+  delete omitted.bypass_actors;
+  const unknown = auditRepositoryProtection(safeInput({
+    rulesetDetails: [omitted]
+  }));
+
+  assert.equal(visibleZero.ready, true, JSON.stringify(visibleZero, null, 2));
+  assert.deepEqual(visibleZero.bypassVisibility, [{
+    bypassActorsVisible: true,
+    bypassActorCount: 0,
+    ruleset: 'protect-default-branch'
+  }]);
+  assert.equal(unknown.ready, false);
+  assert.equal(resultCodes(unknown).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.deepEqual(unknown.bypassVisibility, [{
+    bypassActorsVisible: false,
+    ruleset: 'protect-default-branch'
+  }]);
+  assert.equal(JSON.stringify(unknown).includes('"bypassActorCount":0'), false);
+});
+
+test('ruleset bypass visibility unknown fails only for active default branch rulesets', () => {
+  const nonTarget = safeRuleset({
+    conditions: { ref_name: { exclude: [], include: ['refs/heads/release/*'] } }
+  });
+  const inactive = safeRuleset({ enforcement: 'evaluate' });
+  delete nonTarget.bypass_actors;
+  delete inactive.bypass_actors;
+
+  const nonTargetResult = auditRepositoryProtection(safeInput({ rulesetDetails: [nonTarget] }));
+  const inactiveResult = auditRepositoryProtection(safeInput({ rulesetDetails: [inactive] }));
+
+  assert.equal(resultCodes(nonTargetResult).includes('ruleset_bypass_visibility_unknown'), false);
+  assert.equal(resultCodes(nonTargetResult).includes('ruleset_target_mismatch'), true);
+  assert.equal(resultCodes(inactiveResult).includes('ruleset_bypass_visibility_unknown'), false);
+  assert.equal(resultCodes(inactiveResult).includes('expected_ruleset_not_active'), true);
+});
+
+test('one hidden bypass actor list among multiple active rulesets fails closed even when allowed actors are configured', () => {
+  const hidden = safeRuleset({ id: 202, name: 'hidden-bypass' });
+  delete hidden.bypass_actors;
+  const result = auditRepositoryProtection(safeInput({
+    expectedPolicy: {
+      ...DEFAULT_PROTECTION_POLICY,
+      allowedBypassActors: ['Team:pull_request'],
+      defaultBranch: 'master'
+    },
+    rulesetDetails: [
+      safeRuleset({ id: 101, name: 'visible-bypass', bypass_actors: [] }),
+      hidden
+    ]
+  }));
+  const serialized = JSON.stringify(result);
+
+  assert.equal(result.ready, false);
+  assert.equal(resultCodes(result).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(serialized.includes('actor_id'), false);
+  assert.equal(serialized.includes('api.github.com'), false);
+});
+
 test('inactive or non-target rulesets require manual review', () => {
   const inactive = auditRepositoryProtection(safeInput({
     rulesetDetails: [safeRuleset({ enforcement: 'evaluate' })]
@@ -339,6 +403,7 @@ test('API failures, pagination failure, and TOCTOU changes fail closed', () => {
     apiErrors: [{ code: 'protection_api_not_found', message: 'not found', path: 'repository' }]
   }));
   const pagination = auditRepositoryProtection(safeInput({ pagination: { rulesetsComplete: false } }));
+  const endPagination = auditRepositoryProtection(safeInput({ pagination: { rulesetsEndComplete: false } }));
   const changed = auditRepositoryProtection(safeInput({
     endSnapshot: {
       defaultBranch: 'master',
@@ -349,7 +414,54 @@ test('API failures, pagination failure, and TOCTOU changes fail closed', () => {
   assert.equal(resultCodes(api403).includes('protection_api_forbidden'), true);
   assert.equal(resultCodes(api404).includes('protection_api_not_found'), true);
   assert.equal(resultCodes(pagination).includes('ruleset_pagination_incomplete'), true);
+  assert.equal(endPagination.blockers.some((blocker) => blocker.path === 'rulesets.end'), true);
   assert.equal(resultCodes(changed).includes('protection_changed_during_audit'), true);
+});
+
+test('ruleset TOCTOU fingerprint detects detail and bypass visibility changes', () => {
+  const changedRule = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [safeRuleset({
+      rules: safeRuleset().rules.map((rule) => rule.type === 'pull_request'
+        ? {
+            ...rule,
+            parameters: {
+              ...rule.parameters,
+              required_approving_review_count: 2
+            }
+          }
+        : rule)
+    })],
+    endRulesets: []
+  }));
+  const hiddenBypass = safeRuleset();
+  delete hiddenBypass.bypass_actors;
+  const changedBypassVisibility = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [hiddenBypass],
+    endRulesets: []
+  }));
+  const unchanged = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [safeRuleset()],
+    endRulesets: []
+  }));
+
+  assert.equal(resultCodes(changedRule).includes('protection_changed_during_audit'), true);
+  assert.equal(resultCodes(changedBypassVisibility).includes('protection_changed_during_audit'), true);
+  assert.equal(resultCodes(unchanged).includes('protection_changed_during_audit'), false);
+});
+
+test('github-token source and weak direct policy inputs fail closed', () => {
+  const githubToken = auditRepositoryProtection(safeInput({ tokenSource: 'github-token' }));
+  const weakPolicy = auditRepositoryProtection(safeInput({
+    expectedPolicy: {
+      ...DEFAULT_PROTECTION_POLICY,
+      minimumApprovals: 0
+    }
+  }));
+
+  assert.equal(githubToken.ready, false);
+  assert.equal(resultCodes(githubToken).includes('administration_read_token_required'), true);
+  assert.equal(weakPolicy.ready, false);
+  assert.equal(resultCodes(weakPolicy).includes('protection_policy_validation_failed'), true);
 });
 
 test('branch protection fingerprint detects TOCTOU changes and keeps reports sanitized', () => {
