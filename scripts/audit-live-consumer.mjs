@@ -30,6 +30,7 @@ Options:
   --capability <name>           Desired capability. Can be repeated.
   --inventory <path>            Consumer audit inventory YAML.
   --github-api-url <url>        GitHub API URL. Defaults to ${DEFAULT_GITHUB_API_URL}.
+  --allow-token-host <host>     Allow token forwarding to this GitHub API host. Repeatable.
   --dry-run                     Required read-only mode. Default.
   --json                        Emit deterministic JSON.
   --help, -h                    Show this help.
@@ -61,6 +62,7 @@ export async function runAuditLiveConsumerCli(argv = process.argv.slice(2), io =
     const token = dependencies.token ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '';
     const snapshot = await collectLiveConsumerSnapshot({
       apiUrl: parsed.githubApiUrl,
+      allowedTokenHosts: parsed.allowedTokenHosts,
       consumer,
       fetchImpl: dependencies.fetchImpl ?? globalThis.fetch,
       token
@@ -96,6 +98,7 @@ export function parseArgs(argv) {
     desiredCapabilitySet: [],
     inventoryPath: undefined,
     githubApiUrl: DEFAULT_GITHUB_API_URL,
+    allowedTokenHosts: [],
     dryRun: true,
     json: false,
     help: false
@@ -127,7 +130,8 @@ export function parseArgs(argv) {
       '--workflow',
       '--capability',
       '--inventory',
-      '--github-api-url'
+      '--github-api-url',
+      '--allow-token-host'
     ].includes(arg)) {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) {
@@ -152,6 +156,8 @@ export function parseArgs(argv) {
         result.inventoryPath = value;
       } else if (arg === '--github-api-url') {
         result.githubApiUrl = value;
+      } else if (arg === '--allow-token-host') {
+        result.allowedTokenHosts.push(value);
       }
       continue;
     }
@@ -171,6 +177,7 @@ export function parseArgs(argv) {
 export async function collectLiveConsumerSnapshot(options) {
   const api = createGitHubApiClient({
     apiUrl: options.apiUrl ?? DEFAULT_GITHUB_API_URL,
+    allowedTokenHosts: options.allowedTokenHosts,
     fetchImpl: options.fetchImpl,
     token: options.token
   });
@@ -230,6 +237,11 @@ export function createGitHubApiClient(options = {}) {
   const apiUrl = normalizeApiUrl(options.apiUrl ?? DEFAULT_GITHUB_API_URL);
   const fetchImpl = options.fetchImpl;
   const token = typeof options.token === 'string' ? options.token.trim() : '';
+  const allowedTokenHosts = new Set([
+    'api.github.com',
+    ...(Array.isArray(options.allowedTokenHosts) ? options.allowedTokenHosts : [])
+  ].map(normalizeTokenHost).filter(Boolean));
+  const requestToken = token && allowedTokenHosts.has(apiUrl.hostname) ? token : '';
 
   if (typeof fetchImpl !== 'function') {
     throw new Error('fetch is required');
@@ -240,7 +252,7 @@ export function createGitHubApiClient(options = {}) {
       apiUrl,
       fetchImpl,
       path,
-      token
+      token: requestToken
     });
     return response.json;
   }
@@ -250,7 +262,7 @@ export function createGitHubApiClient(options = {}) {
       apiUrl,
       fetchImpl,
       path,
-      token
+      token: requestToken
     });
   }
 
@@ -347,12 +359,12 @@ export function getNextPath(linkHeader, apiUrl = DEFAULT_GITHUB_API_URL) {
       code: 'pagination_invalid_next_url'
     });
   }
-  return `${url.pathname}${url.search}`;
+  return `${relativeApiPath(url, expected)}${url.search}`;
 }
 
 async function githubRequest(options) {
   const apiUrl = normalizeApiUrl(options.apiUrl);
-  const url = new URL(options.path, apiUrl);
+  const url = buildApiUrl(apiUrl, options.path);
   if (url.origin !== apiUrl.origin) {
     throw new GitHubApiError('GitHub API host is not allowed.', {
       status: 0,
@@ -539,9 +551,74 @@ function statusCode(status) {
 }
 
 function normalizeApiUrl(value) {
-  const url = new URL(value);
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new GitHubApiError('GitHub API URL is malformed.', {
+      status: 0,
+      method: 'GET',
+      path: '',
+      code: 'api_url_invalid'
+    });
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+  ) {
+    throw new GitHubApiError('GitHub API URL is unsafe.', {
+      status: 0,
+      method: 'GET',
+      path: '',
+      code: 'api_url_invalid'
+    });
+  }
   url.pathname = url.pathname.endsWith('/') ? url.pathname : `${url.pathname}/`;
   return url;
+}
+
+function buildApiUrl(apiUrl, path) {
+  const relativePath = String(path ?? '').replace(/^\/+/, '');
+  const url = new URL(relativePath, apiUrl);
+  if (url.origin !== apiUrl.origin || !isWithinApiBasePath(url, apiUrl)) {
+    throw new GitHubApiError('GitHub API path is outside the configured base URL.', {
+      status: 0,
+      method: 'GET',
+      path: sanitizePathForError(path),
+      code: 'api_base_path_escape'
+    });
+  }
+  return url;
+}
+
+function relativeApiPath(url, apiUrl) {
+  if (!isWithinApiBasePath(url, apiUrl)) {
+    throw new GitHubApiError('GitHub API pagination next URL leaves the configured base path.', {
+      status: 0,
+      method: 'GET',
+      path: url.pathname,
+      code: 'pagination_base_path_escape'
+    });
+  }
+  if (apiUrl.pathname === '/') {
+    return url.pathname;
+  }
+  return `/${url.pathname.slice(apiUrl.pathname.length)}`;
+}
+
+function isWithinApiBasePath(url, apiUrl) {
+  return apiUrl.pathname === '/' || url.pathname.startsWith(apiUrl.pathname);
+}
+
+function normalizeTokenHost(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function sanitizePathForError(path) {
+  return String(path ?? '').replace(/\/\/[^/@\s]+:[^/@\s]+@/g, '//<redacted>@');
 }
 
 function encodePath(path) {

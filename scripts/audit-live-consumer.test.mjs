@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   GitHubApiError,
   collectLiveConsumerSnapshot,
+  createGitHubApiClient,
   getNextPath,
   githubRequestWithPagination,
   parseArgs,
@@ -23,6 +24,7 @@ test('CLI help, default dry-run, --dry-run, --no-dry-run, and invalid option are
   assert.equal(parseArgs(['--repository', 'owner/example-repo', '--expected-kit-sha', SHA]).dryRun, true);
   assert.equal(parseArgs(['--repository', 'owner/example-repo', '--expected-kit-sha', SHA, '--dry-run']).dryRun, true);
   assert.equal(parseArgs(['--repository', 'owner/example-repo', '--expected-kit-sha', SHA, '--no-dry-run']).ok, false);
+  assert.deepEqual(parseArgs(['--repository', 'owner/example-repo', '--expected-kit-sha', SHA, '--allow-token-host', 'github.example.com']).allowedTokenHosts, ['github.example.com']);
   assert.equal(parseArgs(['--bad']).ok, false);
 
   const help = await runCli(['--help']);
@@ -114,6 +116,98 @@ test('pagination reads page 2 and rejects cycles, external host, malformed next,
       token: ''
     }),
     (error) => error instanceof GitHubApiError && error.code === 'pagination_invalid_response'
+  );
+});
+
+test('GitHub API URL validation preserves GHES base path and rejects unsafe base URLs', async () => {
+  for (const apiUrl of [
+    'http://api.github.com',
+    'https://user@api.github.com',
+    'https://user:pass@api.github.com',
+    'https://api.github.com?token=dummy',
+    'https://api.github.com#fragment',
+    'file:///tmp/github'
+  ]) {
+    assert.throws(() => createGitHubApiClient({
+      apiUrl,
+      fetchImpl: async () => jsonResponse({})
+    }), (error) => error instanceof GitHubApiError && error.code === 'api_url_invalid');
+  }
+
+  const requests = [];
+  const client = createGitHubApiClient({
+    apiUrl: 'https://github.example.com/api/v3',
+    fetchImpl: async (url, init) => {
+      requests.push({
+        path: `${url.pathname}${url.search}`,
+        authorization: init.headers.authorization
+      });
+      return jsonResponse({ ok: true });
+    },
+    token: TOKEN
+  });
+
+  await client.get('/repos/owner/example-repo');
+  assert.equal(requests[0].path, '/api/v3/repos/owner/example-repo');
+  assert.equal(requests[0].authorization, undefined);
+});
+
+test('token forwarding is limited to GitHub.com or explicitly allowed GHES hosts', async () => {
+  const githubRequests = [];
+  await createGitHubApiClient({
+    apiUrl: 'https://api.github.com/',
+    fetchImpl: async (url, init) => {
+      githubRequests.push(init.headers.authorization);
+      return jsonResponse({ ok: true });
+    },
+    token: TOKEN
+  }).get('/repos/owner/example-repo');
+  assert.equal(githubRequests[0], `Bearer ${TOKEN}`);
+
+  const ghesDenied = [];
+  await createGitHubApiClient({
+    apiUrl: 'https://github.example.com/api/v3/',
+    fetchImpl: async (url, init) => {
+      ghesDenied.push(init.headers.authorization);
+      return jsonResponse({ ok: true });
+    },
+    token: TOKEN
+  }).get('/repos/owner/example-repo');
+  assert.equal(ghesDenied[0], undefined);
+
+  const ghesAllowed = [];
+  await createGitHubApiClient({
+    apiUrl: 'https://github.example.com/api/v3/',
+    allowedTokenHosts: ['github.example.com'],
+    fetchImpl: async (url, init) => {
+      ghesAllowed.push(init.headers.authorization);
+      return jsonResponse({ ok: true });
+    },
+    token: TOKEN
+  }).get('/repos/owner/example-repo');
+  assert.equal(ghesAllowed[0], `Bearer ${TOKEN}`);
+});
+
+test('GHES pagination preserves base path and rejects base path escape', async () => {
+  const ok = getNextPath(
+    '<https://github.example.com/api/v3/repos/owner/example-repo/actions/workflows?page=2>; rel="next"',
+    'https://github.example.com/api/v3'
+  );
+  assert.equal(ok, '/repos/owner/example-repo/actions/workflows?page=2');
+
+  await assert.rejects(
+    githubRequestWithPagination({
+      apiUrl: 'https://github.example.com/api/v3',
+      path: '/repos/owner/example-repo/actions/workflows?per_page=100',
+      fetchImpl: paginatedFetch(new Map([
+        ['/api/v3/repos/owner/example-repo/actions/workflows?per_page=100', {
+          body: [],
+          link: '<https://github.example.com/repos/owner/example-repo/actions/workflows?page=2>; rel="next"'
+        }]
+      ])),
+      token: ''
+    }),
+    (error) => error instanceof GitHubApiError && error.code === 'pagination_base_path_escape'
   );
 });
 

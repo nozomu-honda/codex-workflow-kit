@@ -10,6 +10,33 @@ export const LIVE_CONSUMER_INVENTORY_SCHEMA_VERSION = 1;
 const SHA40_LOWER_PATTERN = /^[a-f0-9]{40}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const PLACEHOLDER_REF = 'REPLACE_WITH_40_CHAR_COMMIT_SHA';
+const SECRET_LIKE_KEY_PARTS = new Set([
+  'authorization',
+  'cookie',
+  'gas',
+  'key',
+  'password',
+  'private',
+  'secret',
+  'token',
+  'url',
+  'webhook'
+]);
+const SECRET_LIKE_KEY_NAMES = new Set([
+  'accesstoken',
+  'apitoken',
+  'authorization',
+  'clientsecret',
+  'cookie',
+  'gasurl',
+  'gaswebappurl',
+  'password',
+  'privatekey',
+  'refreshtoken',
+  'secret',
+  'token',
+  'webhooksecret'
+]);
 const DISALLOWED_WRITE_PERMISSIONS = new Set([
   'contents',
   'pull-requests',
@@ -603,7 +630,38 @@ function auditJobs(jobs, context) {
     return { errors, warnings, checks, kitRefs, permissionSummaries, hasWritePermission, missingPermissions: true };
   }
 
-  for (const [jobName, job] of Object.entries(jobs)) {
+  const entries = Object.entries(jobs);
+  if (context.spec) {
+    if (entries.length > 1) {
+      addError(errors, checks, 'multiple_jobs_present', 'Caller workflow must contain exactly one job.', {
+        file: context.path,
+        path: 'jobs'
+      });
+    }
+    if (!Object.hasOwn(jobs, context.spec.expectedJob)) {
+      addError(errors, checks, 'expected_job_missing', 'Caller workflow is missing the expected job.', {
+        file: context.path,
+        path: `jobs.${context.spec.expectedJob}`
+      });
+      if (entries.length === 1) {
+        addError(errors, checks, 'job_name_mismatch', 'Caller workflow job name does not match the capability contract.', {
+          file: context.path,
+          path: `jobs.${entries[0][0]}`
+        });
+      }
+    }
+    for (const [jobName] of entries) {
+      if (jobName !== context.spec.expectedJob) {
+        addError(errors, checks, 'unexpected_job_present', 'Caller workflow contains an unexpected job.', {
+          file: context.path,
+          path: `jobs.${jobName}`
+        });
+      }
+    }
+  }
+
+  const reusableCallTargets = new Map();
+  for (const [jobName, job] of entries) {
     const jobPath = `jobs.${jobName}`;
     if (!isPlainObject(job)) {
       addError(errors, checks, 'job_object_required', 'Workflow job must be an object.', {
@@ -646,6 +704,7 @@ function auditJobs(jobs, context) {
       const usesAudit = auditUsesValue(job.uses, {
         file: context.path,
         path: `${jobPath}.uses`,
+        allowLocalReusableWorkflow: false,
         expectedKitRef: context.expectedKitRef,
         expectedReusableWorkflow: context.spec?.expectedReusableWorkflow,
         kitRepository: context.kitRepository
@@ -653,6 +712,17 @@ function auditJobs(jobs, context) {
       errors.push(...usesAudit.errors);
       checks.push(...usesAudit.checks);
       kitRefs.push(...usesAudit.kitRefs);
+      if (usesAudit.normalizedTarget) {
+        const previousJob = reusableCallTargets.get(usesAudit.normalizedTarget);
+        if (previousJob) {
+          addError(errors, checks, 'duplicate_reusable_call', 'Caller workflow must not call the same reusable workflow more than once.', {
+            file: context.path,
+            path: `${jobPath}.uses`
+          });
+        } else {
+          reusableCallTargets.set(usesAudit.normalizedTarget, jobName);
+        }
+      }
     }
 
     const inputAudit = auditWorkflowInputs(job.with, {
@@ -752,13 +822,21 @@ function auditUsesValue(value, context) {
   const errors = [];
   const checks = [];
   const kitRefs = [];
+  let normalizedTarget = '';
 
   if (value.startsWith('./')) {
-    addCheck(checks, 'local_uses_allowed', 'Local reusable workflow reference is allowed.', 'pass', {
+    if (context.allowLocalReusableWorkflow === true) {
+      addCheck(checks, 'local_uses_allowed', 'Local reusable workflow reference is allowed.', 'pass', {
+        file: context.file,
+        path: context.path
+      });
+      return { errors, checks, kitRefs, normalizedTarget: value };
+    }
+    addError(errors, checks, 'local_reusable_workflow_present', 'Local reusable workflow reference is not allowed for live consumer caller workflows.', {
       file: context.file,
       path: context.path
     });
-    return { errors, checks, kitRefs };
+    return { errors, checks, kitRefs, normalizedTarget: value };
   }
 
   const parsed = parseUses(value);
@@ -767,23 +845,41 @@ function auditUsesValue(value, context) {
       file: context.file,
       path: context.path
     });
-    return { errors, checks, kitRefs };
+    return { errors, checks, kitRefs, normalizedTarget };
   }
 
-  const refAudit = auditRef(parsed.ref, parsed.target.startsWith(`${context.kitRepository}/`) ? 'kit' : 'external', context);
+  const target = parseReusableWorkflowTarget(parsed.target);
+  normalizedTarget = target.ok ? `${target.repository}/${target.path}` : parsed.target;
+  if (!target.ok) {
+    addError(errors, checks, 'reusable_workflow_target_invalid', 'Reusable workflow target must use owner/repo/path form.', {
+      file: context.file,
+      path: context.path
+    });
+  }
+
+  const repositoryMatches = target.ok && target.repository === context.kitRepository;
+  const pathMatches = target.ok && target.path === context.expectedReusableWorkflow;
+  if (!repositoryMatches) {
+    addError(errors, checks, 'unexpected_reusable_workflow_repository', 'Caller workflow must reference the configured shared kit repository exactly.', {
+      file: context.file,
+      path: context.path
+    });
+  }
+  if (context.expectedReusableWorkflow && !pathMatches) {
+    addError(errors, checks, 'unexpected_reusable_workflow_path', 'Caller workflow uses an unexpected reusable workflow path.', {
+      file: context.file,
+      path: context.path
+    });
+  }
+
+  const refAudit = auditRef(parsed.ref, 'kit', context);
   errors.push(...refAudit.errors);
   checks.push(...refAudit.checks);
-  if (parsed.target.startsWith(`${context.kitRepository}/`)) {
+  if (repositoryMatches && pathMatches) {
     kitRefs.push(parsed.ref);
-    if (context.expectedReusableWorkflow && parsed.target !== `${context.kitRepository}/${context.expectedReusableWorkflow}`) {
-      addError(errors, checks, 'capability_caller_mismatch', 'Caller workflow uses an unexpected reusable workflow path.', {
-        file: context.file,
-        path: context.path
-      });
-    }
   }
 
-  return { errors, checks, kitRefs };
+  return { errors, checks, kitRefs, normalizedTarget };
 }
 
 function auditWorkflowInputs(withValue, context) {
@@ -857,29 +953,45 @@ function auditDangerousWorkflowStructure(workflow, file) {
   walk(workflow, (value, path) => {
     const key = path[path.length - 1] ?? '';
     const dotted = path.join('.');
+    const sanitizedPath = sanitizedSecretPath(path);
 
     if (key === 'secrets') {
       const code = value === 'inherit' ? 'secrets_inherit_present' : 'secret_usage_present';
       addError(errors, checks, code, 'Workflow must not pass secrets.', { file, path: dotted });
     }
 
+    if (isSecretLikeKey(key) && value !== undefined && value !== null) {
+      const secretKeyAudit = auditSecretLikeKeyValue(value, {
+        file,
+        path: sanitizedPath
+      });
+      errors.push(...secretKeyAudit.errors);
+      checks.push(...secretKeyAudit.checks);
+    }
+
     if (typeof value === 'string') {
       if (value.includes('${{ secrets.')) {
         addError(errors, checks, 'secret_reference_present', 'Workflow references secrets; secret names are intentionally not reported.', {
           file,
-          path: dotted
+          path: sanitizedPath
+        });
+      }
+      if (/\$\{\{\s*github\.token\s*\}\}/i.test(value)) {
+        addError(errors, checks, 'github_token_forwarding_present', 'Workflow forwards github.token through runtime configuration.', {
+          file,
+          path: sanitizedPath
         });
       }
       if (/Authorization|Bearer|Cookie|token|secret/i.test(value) && /\$\{\{\s*secrets\./.test(value)) {
         addError(errors, checks, 'secret_like_env_present', 'Workflow expands secret-like data into runtime configuration.', {
           file,
-          path: dotted
+          path: sanitizedPath
         });
       }
       if (containsConcreteSecretLikeValue(value)) {
         addError(errors, checks, 'secret_like_env_present', 'Workflow contains concrete credential-like data.', {
           file,
-          path: dotted
+          path: sanitizedPath
         });
       }
       if (key === 'run' && /github\.event|toJson\(github\.event\)/.test(value)) {
@@ -907,6 +1019,32 @@ function auditDangerousWorkflowStructure(workflow, file) {
   return { errors, warnings, checks };
 }
 
+function auditSecretLikeKeyValue(value, context) {
+  const errors = [];
+  const checks = [];
+  if (isAllowedPlaceholderValue(value)) {
+    return { errors, checks };
+  }
+
+  if (typeof value === 'string') {
+    if (/\$\{\{\s*secrets\./i.test(value)) {
+      addError(errors, checks, 'secret_reference_present', 'Workflow passes a secret reference through a secret-like key.', context);
+      return { errors, checks };
+    }
+    if (/\$\{\{\s*github\.token\s*\}\}/i.test(value)) {
+      addError(errors, checks, 'github_token_forwarding_present', 'Workflow forwards github.token through a secret-like key.', context);
+      return { errors, checks };
+    }
+    if (/\$\{\{\s*vars\./i.test(value)) {
+      addError(errors, checks, 'secret_like_key_present', 'Workflow passes a variable expression through a secret-like key.', context);
+      return { errors, checks };
+    }
+  }
+
+  addError(errors, checks, 'secret_like_key_present', 'Workflow sets a secret-like key; concrete values are intentionally not reported.', context);
+  return { errors, checks };
+}
+
 function containsConcreteSecretLikeValue(value) {
   if (/script\.google\.com\/macros\/s\/[^/\s]+\/exec/i.test(value)) {
     return true;
@@ -923,8 +1061,51 @@ function containsConcreteSecretLikeValue(value) {
     return true;
   }
 
-  const assignment = value.match(/\b(?:TOKEN|SECRET|CLIENT_SECRET|REFRESH_TOKEN|ACCESS_TOKEN)\s*=\s*([^\s'"]+)/);
+  const assignment = value.match(/\b(?:TOKEN|SECRET|CLIENT_SECRET|REFRESH_TOKEN|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY|WEBHOOK_SECRET|GAS_URL|GAS_WEB_APP_URL)\s*=\s*([^\s'"]+)/i);
   return Boolean(assignment && !isDummySecretValue(assignment[1]));
+}
+
+function isSecretLikeKey(key) {
+  const normalized = normalizeSecretLikeKey(key);
+  if (SECRET_LIKE_KEY_NAMES.has(normalized)) {
+    return true;
+  }
+  const parts = String(key ?? '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return parts.some((part) => SECRET_LIKE_KEY_PARTS.has(part))
+    && (
+      parts.includes('token')
+      || parts.includes('secret')
+      || parts.includes('authorization')
+      || parts.includes('cookie')
+      || parts.includes('password')
+      || (parts.includes('private') && parts.includes('key'))
+      || (parts.includes('webhook') && parts.includes('secret'))
+      || (parts.includes('gas') && parts.includes('url'))
+      || (parts.includes('gas') && parts.includes('web') && parts.includes('app') && parts.includes('url'))
+    );
+}
+
+function normalizeSecretLikeKey(key) {
+  return String(key ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function sanitizedSecretPath(path) {
+  return path
+    .map((part) => isSecretLikeKey(part) ? '<secret-like-key>' : part)
+    .join('.');
+}
+
+function isAllowedPlaceholderValue(value) {
+  if (value === '' || value === null || value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'string') {
+    return false;
+  }
+  return isDummySecretValue(value);
 }
 
 function isDummySecretValue(value) {
@@ -1365,6 +1546,18 @@ function parseUses(value) {
     ok: true,
     target: value.slice(0, atIndex),
     ref: value.slice(atIndex + 1)
+  };
+}
+
+function parseReusableWorkflowTarget(value) {
+  const parts = String(value ?? '').split('/');
+  if (parts.length < 3 || parts.some((part) => part.trim() === '')) {
+    return { ok: false, repository: '', path: '' };
+  }
+  return {
+    ok: true,
+    repository: `${parts[0]}/${parts[1]}`,
+    path: parts.slice(2).join('/')
   };
 }
 

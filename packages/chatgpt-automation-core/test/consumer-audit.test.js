@@ -166,6 +166,56 @@ test('fixed SHA audit rejects mutable, short, version tag, placeholder, mixed, a
   assert.equal(hasCode(mixed, 'mixed_kit_refs'), true);
 });
 
+test('caller reusable workflow target must match expected kit repository, path, and SHA exactly', async () => {
+  const cases = [
+    {
+      code: 'unexpected_reusable_workflow_repository',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].uses = `other-owner/codex-workflow-kit/.github/workflows/review-routing.yml@${SHA}`;
+      }
+    },
+    {
+      code: 'unexpected_reusable_workflow_repository',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].uses = `nozomu-honda/codex-workflow-kit-extra/.github/workflows/review-routing.yml@${SHA}`;
+      }
+    },
+    {
+      code: 'unexpected_reusable_workflow_path',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].uses = `nozomu-honda/codex-workflow-kit/.github/workflows/auto-merge-plan.yml@${SHA}`;
+      }
+    },
+    {
+      code: 'local_reusable_workflow_present',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].uses = './.github/workflows/review-routing.yml';
+      }
+    },
+    {
+      code: 'kit_ref_mismatch',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].uses = `nozomu-honda/codex-workflow-kit/.github/workflows/review-routing.yml@${OTHER_SHA}`;
+      }
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: entry.mutate
+        }
+      })
+    });
+
+    assert.equal(result.ok, false, entry.code);
+    assert.equal(hasCode(result, entry.code), true, entry.code);
+  }
+});
+
 test('trigger, permission, and secret-like dangerous workflow patterns fail closed', async () => {
   const cases = [
     {
@@ -247,6 +297,146 @@ test('trigger, permission, and secret-like dangerous workflow patterns fail clos
     assert.equal(result.ok, false, entry.code);
     assert.equal(hasCode(result, entry.code), true, entry.code);
     assertNoUnsafeOutput(JSON.stringify(result));
+  }
+});
+
+test('secret-like keys with concrete values, expressions, or token forwarding fail closed without leaking values', async () => {
+  const cases = [
+    {
+      code: 'secret_like_key_present',
+      unsafe: 'concrete-value',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].with['api-token'] = 'concrete-value';
+      }
+    },
+    {
+      code: 'secret_like_key_present',
+      unsafe: 'concrete-value',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].env = { CLIENT_SECRET: 'concrete-value' };
+      }
+    },
+    {
+      code: 'secret_like_key_present',
+      unsafe: 'concrete-value',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].with.Authorization = 'concrete-value';
+      }
+    },
+    {
+      code: 'secret_like_key_present',
+      unsafe: 'concrete-value',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].with.Cookie = 'concrete-value';
+      }
+    },
+    {
+      code: 'secret_reference_present',
+      unsafe: 'PRIVATE_TOKEN',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].with['api-token'] = '${{ secrets.PRIVATE_TOKEN }}';
+      }
+    },
+    {
+      code: 'github_token_forwarding_present',
+      unsafe: '${{ github.token }}',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].with['api-token'] = '${{ github.token }}';
+      }
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: entry.mutate
+        }
+      })
+    });
+    const serialized = `${JSON.stringify(result)}\n${formatLiveConsumerAuditReport(result)}`;
+
+    assert.equal(result.ok, false, entry.code);
+    assert.equal(hasCode(result, entry.code), true, entry.code);
+    assert.equal(serialized.includes(entry.unsafe), false, entry.unsafe);
+  }
+
+  const allowed = auditLiveConsumerInstallation({
+    consumer: validConsumer(),
+    snapshot: await validSnapshot({
+      mutateWorkflow: {
+        capability: 'review-routing-plan',
+        mutate: (workflow) => {
+          workflow.jobs['review-routing'].with['api-token'] = 'dummy-token';
+          workflow.jobs['review-routing'].with['display-name'] = 'concrete-value';
+        }
+      }
+    })
+  });
+  assert.equal(allowed.ok, true, JSON.stringify(allowed, null, 2));
+});
+
+test('known capability caller workflows require exactly one expected reusable workflow job', async () => {
+  const cases = [
+    {
+      code: 'job_name_mismatch',
+      mutate: (workflow) => {
+        workflow.jobs = { renamed: workflow.jobs['review-routing'] };
+      }
+    },
+    {
+      code: 'expected_job_missing',
+      mutate: (workflow) => {
+        workflow.jobs = { renamed: workflow.jobs['review-routing'] };
+      }
+    },
+    {
+      code: 'unexpected_job_present',
+      mutate: (workflow) => {
+        workflow.jobs.extra = structuredClone(workflow.jobs['review-routing']);
+      }
+    },
+    {
+      code: 'multiple_jobs_present',
+      mutate: (workflow) => {
+        workflow.jobs.extra = structuredClone(workflow.jobs['review-routing']);
+      }
+    },
+    {
+      code: 'duplicate_reusable_call',
+      mutate: (workflow) => {
+        workflow.jobs.extra = structuredClone(workflow.jobs['review-routing']);
+      }
+    },
+    {
+      code: 'workflow_permission_missing',
+      mutate: (workflow) => {
+        delete workflow.jobs['review-routing'].permissions.actions;
+      }
+    },
+    {
+      code: 'workflow_steps_present',
+      mutate: (workflow) => {
+        workflow.jobs['review-routing'].steps = [{ run: 'echo unsafe' }];
+      }
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: entry.mutate
+        }
+      })
+    });
+
+    assert.equal(result.ok, false, entry.code);
+    assert.equal(hasCode(result, entry.code), true, entry.code);
   }
 });
 

@@ -52,6 +52,8 @@ node scripts/audit-live-consumer.mjs \
 
 認証が必要なprivate repositoryを監査する場合は、環境変数 `GITHUB_TOKEN` または `GH_TOKEN` にread-only tokenを設定します。token値は引数に渡さず、ログやreportへ出しません。
 
+GitHub Enterprise Serverを監査する場合は、`--github-api-url https://github.example.com/api/v3` のようにAPI base URLを指定できます。`/api/v3` のbase pathはpaginationを含めて保持されます。`api.github.com` 以外のhostへtokenを送る場合は、`--allow-token-host github.example.com` を明示します。HTTP、username/password付きURL、query/hash付きURL、base path外へ逸脱するpagination URLはfail closedです。
+
 ## Inventory
 
 live consumer audit inventoryは `schemas/live-consumer-audit-inventory.schema.json` を正とします。例は `release/live-consumers.example.yml` です。
@@ -75,7 +77,22 @@ unknown key、path traversal、重複path、URL形式repository、mutable ref、
 
 ### Fixed SHA
 
-consumer内のkit参照は40桁小文字commit SHAだけを許可します。
+consumer内のkit参照は、capabilityごとに期待する共通キットrepository、reusable workflow path、40桁小文字commit SHAの完全一致だけを許可します。
+
+許可する形:
+
+```text
+nozomu-honda/codex-workflow-kit/.github/workflows/<expected>.yml@0123456789abcdef0123456789abcdef01234567
+```
+
+BLOCKする例:
+
+- 共通キット以外のrepository
+- 同一ownerの別repository
+- repository prefix偽装
+- capabilityと異なるreusable workflow path
+- expected SHAと異なるSHA
+- local `./.github/workflows/*.yml` 参照
 
 BLOCKする例:
 
@@ -89,7 +106,7 @@ BLOCKする例:
 - `REPLACE_WITH_40_CHAR_COMMIT_SHA`
 - 同じconsumer内のmixed refs
 
-external Actionも原則40桁SHA固定です。local `./` 参照は許可します。
+live consumer caller workflowでは、明示的なinventory契約なしのlocal reusable workflow参照は許可しません。
 
 ### Caller workflow scope
 
@@ -135,6 +152,19 @@ BLOCKする例:
 
 - `secrets: inherit`
 - `${{ secrets.* }}`
+- Secret-likeなkeyへの具体値または式の設定
+  - `api-token`
+  - `access-token`
+  - `refresh-token`
+  - `client-secret`
+  - `authorization`
+  - `cookie`
+  - `password`
+  - `private-key`
+  - `webhook-secret`
+  - `gas-url`
+  - `gas-web-app-url`
+- Secret-like inputへの `${{ github.token }}` 転送
 - workflow_call Secret input
 - workflow_dispatch Secret-like input
 - Authorization、token、Cookieをenvやshellへ展開する構成
@@ -143,7 +173,23 @@ BLOCKする例:
 - PR head codeやevent payloadをshellへ直接展開する構成
 - `eval`
 
-Secret名と値はreportへ出しません。検出結果はcode、path、fileだけに正規化します。
+Secret名と値はreportへ出しません。検出結果はcode、file、sanitized pathだけに正規化します。dummy、example、placeholder、redacted、空値はfixture用途として許可します。
+
+### Job structure
+
+既知capabilityのcaller workflowは、期待jobを1つだけ持つ必要があります。
+
+BLOCKする例:
+
+- `jobs` がobjectではない
+- 期待job名がない
+- job名がcapability契約と異なる
+- 余分なjobがある
+- 同じreusable workflowを複数jobで呼ぶ
+- `runs-on`、`steps`、`run`、`shell` がある
+- job-level `secrets` がある
+- job-level permissionが契約と異なる
+- `dry-run: true` がない
 
 ### Config / capability
 

@@ -119,8 +119,12 @@ npm run audit:consumer -- --root ../consumer-repo --expected-ref 0123456789abcde
 
 - inventory validationがURL repository、path traversal、重複path、unknown key、mutable ref、short SHA、version tag、placeholderをfail closedにする
 - fixed SHA、mixed refs、trigger、permission、`pull_request_target`、`secrets: inherit`、Secret-like構成を検出する
+- caller jobのreusable workflow参照先が、期待kit repository、期待workflow path、期待40桁SHAと完全一致する
+- local reusable workflow参照、別repository、prefix偽装、別workflow path、kit-ref不一致をfail closedにする
+- Secret-like keyと具体値、`${{ secrets.* }}`、`${{ github.token }}` 転送をfail closedにし、reportへ値やSecret名を出さない
+- 期待jobが正確に1つだけ存在し、余分なjobや重複reusable workflow呼び出しをfail closedにする
 - config / capability / caller workflow不一致を検出する
-- API read失敗、pagination不完了、branch SHA変化、binary / submodule / symlink / oversized fileをfail closedにする
+- API read失敗、pagination不完了、branch SHA変化、binary / submodule / symlink / oversized file、GHES API base path逸脱、未許可hostへのtoken転送をfail closedにする
 - JSON reportがdeterministicで、token、Cookie、Authorization、Secret値、API response全文、絶対pathを含まない
 - GitHub API write、workflow dispatch、consumer mutationが0回である
 
