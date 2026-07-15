@@ -25,6 +25,7 @@ npm run audit:template
 npm run test:events
 npm run test:review-routing
 npm run test:auto-merge
+npm run test:auto-merge-executor
 npm run test:main-follow-up
 npm run test:protection-audit
 npm run test:e2e:consumer
@@ -348,6 +349,36 @@ Auto-merge専用確認:
 npm run test:auto-merge
 npm run lint:auto-merge
 ```
+
+`.github/workflows/auto-merge-dry-run-executor.yml` は、Auto-merge dry-run executor reusable workflowとして静的検証します。
+
+確認対象:
+
+- `workflow_call` / `workflow_dispatch` だけを入口にする
+- Secret inputがない
+- workflow / job permissionsがread-onlyだけ
+- `kit-ref` はレビュー済み40桁commit SHAだけを許可する
+- `actions/checkout` はレビュー済み40桁commit SHAで固定し、`persist-credentials: false` にする
+- `scripts/execute-auto-merge-dry-run.mjs` だけでdecisionを作る
+- `pull_request_target`、Secret、`secrets: inherit`、write permissionを持たない
+- eligibleでも `executed=false`
+
+Auto-merge dry-run executor専用確認:
+
+```bash
+npm run test:auto-merge-executor
+npm run lint:auto-merge-executor
+```
+
+最低限のoffline fixture:
+
+- PR #130相当: CI成功、mergeable、review evidenceなし -> `review_evidence_missing`
+- current-head reviewed PR -> command生成後 `write_disabled`
+- stale review -> `stale_review_head`
+- protection不足 -> `protection_audit_not_ready`
+- consumer audit失敗 -> `consumer_audit_not_ready`
+- head変更 -> fail closed
+- duplicate -> `duplicate_operation`
 
 `.github/workflows/main-follow-up-plan.yml` は、Main follow-up plan reusable workflowとして静的検証します。
 

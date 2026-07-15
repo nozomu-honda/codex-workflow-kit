@@ -16,6 +16,7 @@
 - [Event normalization](event-normalization.md)
 - [ChatGPT review routing](review-routing.md)
 - [Reviewed PR auto-merge plan](auto-merge.md)
+- [Auto-merge dry-run executor](auto-merge-dry-run-executor.md)
 - [Main follow-up plan](main-follow-up.md)
 - [Migration](migration.md)
 - [Validation](validation.md)
@@ -28,6 +29,7 @@
 - 実イベントは薄いcaller workflowから共通reusable workflowへ渡し、共通形式へ正規化してから後続処理に渡す
 - ChatGPT review routingはrouting plan生成までを共通化し、write処理は後続Issueへ分離する
 - Reviewed PR auto-mergeはmerge候補plan生成までを共通化し、GitHub API writeや実mergeは後続Issueへ分離する
+- Auto-merge dry-run executorはplan、review evidence、consumer audit、protection audit、check、changed files、write command validationを集約し、eligibleでもDisabled adapterで `write_disabled` にする
 - Repository protection auditはconsumer repositoryのBranch protection / Ruleset / required checks / required reviews / bypassをread-onlyで監査し、設定変更は行わない
 - Main follow-upはdefault branch追従のplan生成までを共通化し、PR branch update、Codex起動、Queue Issue更新は後続Issueへ分離する
 - Live consumer auditは実consumer repositoryをread-onlyで監査し、fixed SHA、config、capability、trigger、permission、Secret-like構成をsanitized reportとして確認する

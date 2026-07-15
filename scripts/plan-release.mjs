@@ -32,6 +32,7 @@ const IMPLEMENTED_CAPABILITIES = Object.freeze([
   'event-normalization',
   'review-routing-plan',
   'auto-merge-plan',
+  'auto-merge-dry-run-executor',
   'main-follow-up-plan',
   'repository-protection-audit'
 ]);

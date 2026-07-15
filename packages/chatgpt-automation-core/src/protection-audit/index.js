@@ -95,6 +95,9 @@ export function auditRepositoryProtection(input = {}) {
   const mergeSettings = normalizeMergeSettings(input.mergeSettings ?? input.repository);
   const blockers = [];
   const warnings = [];
+  const apiReadOk = !Array.isArray(input.apiErrors) || input.apiErrors.length === 0;
+  const paginationComplete = input.pagination?.rulesetsComplete !== false;
+  const checkedAt = normalizeCheckedAt(input.checkedAt);
 
   addPolicyValidationFailures(blockers, policyErrors);
   addTokenCapabilityFailures(blockers, tokenSource);
@@ -144,11 +147,14 @@ export function auditRepositoryProtection(input = {}) {
   return {
     ok: ready,
     ready,
+    apiReadOk,
+    paginationComplete,
     manualReviewRequired,
     reportVersion: PROTECTION_AUDIT_REPORT_VERSION,
     repository: repository.fullName,
     defaultBranch,
     auditedSha,
+    checkedAt,
     effectiveProtections,
     requiredChecks,
     requiredReviews,
@@ -173,6 +179,9 @@ export function formatProtectionAuditResult(result) {
   lines.push(`repository: ${result.repository || '(unknown)'}`);
   lines.push(`defaultBranch: ${result.defaultBranch || '(unknown)'}`);
   lines.push(`auditedSha: ${result.auditedSha || '(unknown)'}`);
+  lines.push(`apiReadOk: ${result.apiReadOk}`);
+  lines.push(`paginationComplete: ${result.paginationComplete}`);
+  lines.push(`checkedAt: ${result.checkedAt || '(unknown)'}`);
   lines.push(`manualReviewRequired: ${result.manualReviewRequired}`);
   lines.push(`activeRulesets: ${result.effectiveProtections.activeRulesetCount}`);
   lines.push(`requiredChecks: ${result.requiredChecks.map((check) => check.name).join(', ') || '(none)'}`);
@@ -1156,6 +1165,11 @@ function escapeRegExp(value) {
 function cleanSha(value) {
   const text = cleanString(value);
   return /^[a-f0-9]{40}$/i.test(text) ? text.toLowerCase() : '';
+}
+
+function normalizeCheckedAt(value) {
+  const text = cleanString(value);
+  return Number.isFinite(Date.parse(text)) ? text : '';
 }
 
 function cleanString(value) {

@@ -4,7 +4,8 @@
 
 ### Added
 
-- Added release readiness planning for `auto-merge-plan`, `main-follow-up-plan`, and `repository-protection-audit`.
+- Added release readiness planning for `auto-merge-plan`, `auto-merge-dry-run-executor`, `main-follow-up-plan`, and `repository-protection-audit`.
+- Added the read-only `auto-merge-dry-run-executor` capability to aggregate auto-merge plan, review evidence, consumer audit, protection audit, checks, and Disabled adapter results.
 - Added read-only repository protection audit coverage for Branch protection, Rulesets, required checks, required reviews, bypass actors, and merge settings.
 - Added read-only release manifest and consumer inventory examples for fixed-SHA rollout planning.
 - Added fixed ref audit coverage for reusable workflows, caller templates, docs examples, and fixtures.

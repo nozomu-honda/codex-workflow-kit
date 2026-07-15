@@ -41,12 +41,16 @@ test('live audit CLI emits deterministic sanitized JSON and uses GET only', asyn
     const requests = [];
     const run = await runCli(['--inventory', inventoryPath, '--repository', 'owner/example-repo', '--json'], {
       fetchImpl: fakeGitHubFetch({ requests }),
+      now: '2026-01-01T00:00:00.000Z',
       token: TOKEN
     });
     const report = JSON.parse(run.stdout);
 
     assert.equal(run.exitCode, 0, `${run.stdout}\n${run.stderr}`);
     assert.equal(report.ok, true);
+    assert.equal(report.apiReadOk, true);
+    assert.equal(report.paginationComplete, true);
+    assert.equal(report.checkedAt, '2026-01-01T00:00:00.000Z');
     assert.equal(report.dryRun, true);
     assert.deepEqual(report.detectedKitRefs, [SHA]);
     assert.equal(report.repository, 'owner/example-repo');

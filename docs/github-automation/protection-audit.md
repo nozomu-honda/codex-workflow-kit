@@ -34,6 +34,9 @@ pure logicは `packages/chatgpt-automation-core/src/protection-audit/` にあり
 - `manualReviewRequired`
 - `defaultBranch`
 - `auditedSha`
+- `apiReadOk`
+- `paginationComplete`
+- `checkedAt`
 - `effectiveProtections`
 - `requiredChecks`
 - `requiredReviews`
@@ -47,6 +50,8 @@ pure logicは `packages/chatgpt-automation-core/src/protection-audit/` にあり
 - `reportVersion`
 
 reportはdeterministicな順序にし、token、Authorization、Cookie、Secret、API response全文、不要なactor内部IDを含めません。
+
+`auditedSha` は監査対象default branchのcommit SHAです。CLI producerは監査開始時と終了時にdefault branchを読み、TOCTOUがない場合だけそのSHAをreportします。`apiReadOk` はrepository / branch / protection / ruleset API readが安全に完了したこと、`paginationComplete` はruleset paginationが上限・循環なしで完了したこと、`checkedAt` はproducerが監査結果を確定した時刻を示します。
 
 ## Expected policy
 
@@ -282,6 +287,21 @@ GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
 - bypass actorに自動化actorや広いteamがいない
 - admin bypassに自動化が依存していない
 - merge queueが有効な場合はwrite側設計がqueue対応している
+
+## dry-run executor連携
+
+Issue #41のauto-merge dry-run executorは、Repository protection audit reportを事前条件として要求します。
+
+- `ready=true` であること
+- report versionがv1であること
+- `apiReadOk=true` と `paginationComplete=true`
+- `checkedAt` が有効で、executorのfreshness window内であること
+- repositoryがcurrent PR repositoryと一致すること
+- `defaultBranch` がPR base branchと一致すること
+- `auditedSha` がcurrent PR base SHAと一致すること
+- API failure、pagination未完了、TOCTOU検知、blocker、manual review requiredがないこと
+
+Repository protection audit reportはPR番号やPR headを監査しません。current PR head固有の安全性はreview evidence、changed files、checks、PR snapshot側で検証します。手動Ruleset確認の自己申告booleanだけでは通しません。schema検証済みproducer出力を入力し、不足設定があれば `protection_audit_not_ready` でblockします。executorもRulesetやBranch protectionを変更しません。
 
 ## Validation
 

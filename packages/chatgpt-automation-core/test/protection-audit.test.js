@@ -17,6 +17,7 @@ function safeInput(overrides = {}) {
   const defaultBranch = overrides.defaultBranch ?? 'master';
   return {
     branchProtection: safeBranchProtection(overrides.branchProtection),
+    checkedAt: '2026-01-01T00:00:00.000Z',
     defaultBranch,
     defaultBranchSha: SHA,
     expectedPolicy: {
@@ -165,6 +166,9 @@ test('safe protection is ready with deterministic sanitized report', () => {
   const result = auditRepositoryProtection(safeInput());
 
   assert.equal(result.ready, true);
+  assert.equal(result.apiReadOk, true);
+  assert.equal(result.paginationComplete, true);
+  assert.equal(result.checkedAt, '2026-01-01T00:00:00.000Z');
   assert.equal(result.manualReviewRequired, false);
   assert.equal(result.repository, 'owner/example-repo');
   assert.equal(result.auditedSha, SHA);
