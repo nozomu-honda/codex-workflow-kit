@@ -46,12 +46,28 @@ const PROTECTION_POLICY_ALLOWED_FIELDS = new Set([
   'requireSignedCommits'
 ]);
 const ALLOWED_MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
+const BOOLEAN_POLICY_FIELDS = Object.freeze([
+  'blockDeletion',
+  'blockForcePush',
+  'dismissStaleApprovals',
+  'enforceAdmins',
+  'requireCodeOwnerReview',
+  'requireConversationResolution',
+  'requireLastPushApproval',
+  'requireLinearHistory',
+  'requirePullRequest',
+  'requireReviewEvidenceGate',
+  'requireRuleset',
+  'requireSignedCommits'
+]);
 
 export function auditRepositoryProtection(input = {}) {
-  const expectedPolicy = normalizePolicy(input.expectedPolicy);
   const policyValidation = Array.isArray(input.policyValidationErrors)
     ? { errors: input.policyValidationErrors }
     : validateProtectionPolicyObject(input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY);
+  const expectedPolicy = policyValidation.errors.length === 0
+    ? normalizePolicy(input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY)
+    : normalizePolicy(DEFAULT_PROTECTION_POLICY);
   const repository = normalizeRepository(input.repository);
   const defaultBranch = cleanString(input.defaultBranch ?? repository.defaultBranch ?? expectedPolicy.defaultBranch);
   const auditedSha = cleanSha(input.defaultBranchSha ?? repository.defaultBranchSha ?? input.branch?.commit?.sha);
@@ -195,46 +211,69 @@ export function validateProtectionPolicyObject(value) {
     }
   }
 
-  if (!Array.isArray(value.requiredStatusChecks) || value.requiredStatusChecks.length === 0) {
-    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks must contain at least one check.', 'policy.requiredStatusChecks'));
-  } else {
-    for (const [index, check] of value.requiredStatusChecks.entries()) {
-      if (cleanString(check) === '') {
-        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks entries must be non-empty strings.', `policy.requiredStatusChecks.${index}`));
+  if (Object.prototype.hasOwnProperty.call(value, 'requiredStatusChecks')) {
+    if (!Array.isArray(value.requiredStatusChecks) || value.requiredStatusChecks.length === 0) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks must contain at least one check.', 'policy.requiredStatusChecks'));
+    } else {
+      for (const [index, check] of value.requiredStatusChecks.entries()) {
+        if (typeof check !== 'string' || check.length === 0) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks entries must be non-empty strings.', `policy.requiredStatusChecks.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.requiredStatusChecks)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks entries must be unique.', 'policy.requiredStatusChecks'));
       }
     }
   }
 
-  if (!Number.isInteger(value.minimumApprovals) || value.minimumApprovals < 1) {
+  if (Object.prototype.hasOwnProperty.call(value, 'minimumApprovals') && (!Number.isInteger(value.minimumApprovals) || !Number.isFinite(value.minimumApprovals) || value.minimumApprovals < 1)) {
     errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy minimumApprovals must be at least 1.', 'policy.minimumApprovals'));
   }
 
-  if (!Array.isArray(value.allowedMergeMethods) || value.allowedMergeMethods.length === 0) {
-    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods must contain at least one method.', 'policy.allowedMergeMethods'));
-  } else {
-    for (const [index, method] of value.allowedMergeMethods.entries()) {
-      if (!ALLOWED_MERGE_METHODS.has(cleanString(method).toLowerCase())) {
-        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods contains an unsupported method.', `policy.allowedMergeMethods.${index}`));
+  if (Object.prototype.hasOwnProperty.call(value, 'allowedMergeMethods')) {
+    if (!Array.isArray(value.allowedMergeMethods) || value.allowedMergeMethods.length === 0) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods must contain at least one method.', 'policy.allowedMergeMethods'));
+    } else {
+      for (const [index, method] of value.allowedMergeMethods.entries()) {
+        if (typeof method !== 'string' || !ALLOWED_MERGE_METHODS.has(method)) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods contains an unsupported method.', `policy.allowedMergeMethods.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.allowedMergeMethods)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods entries must be unique.', 'policy.allowedMergeMethods'));
       }
     }
   }
 
-  for (const field of [
-    'blockDeletion',
-    'blockForcePush',
-    'dismissStaleApprovals',
-    'requireConversationResolution',
-    'requirePullRequest',
-    'requireReviewEvidenceGate'
-  ]) {
+  if (Object.prototype.hasOwnProperty.call(value, 'allowedBypassActors')) {
+    if (!Array.isArray(value.allowedBypassActors)) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors must be an array.', 'policy.allowedBypassActors'));
+    } else {
+      for (const [index, actor] of value.allowedBypassActors.entries()) {
+        if (typeof actor !== 'string' || actor.length === 0) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors entries must be non-empty strings.', `policy.allowedBypassActors.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.allowedBypassActors)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors entries must be unique.', 'policy.allowedBypassActors'));
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'defaultBranch') && typeof value.defaultBranch !== 'string') {
+    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy defaultBranch must be a string.', 'policy.defaultBranch'));
+  }
+
+  for (const field of BOOLEAN_POLICY_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(value, field) && typeof value[field] !== 'boolean') {
       errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy boolean field is invalid.', `policy.${field}`));
     }
   }
 
+  const sortedErrors = sortIssues(errors);
   return {
-    ok: errors.length === 0,
-    errors
+    ok: sortedErrors.length === 0,
+    errors: sortedErrors
   };
 }
 
@@ -1026,6 +1065,10 @@ function normalizeStringArray(value, fallback = []) {
 
 function stableStringArray(value) {
   return normalizeStringArray(value).sort();
+}
+
+function hasDuplicateItems(value) {
+  return Array.isArray(value) && new Set(value).size !== value.length;
 }
 
 function normalizeTokenSource(value) {

@@ -70,7 +70,7 @@ test('github-token source cannot produce a complete ready audit', async () => {
   assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
 });
 
-test('fetchRepositoryProtectionAudit reads GitHub settings with GET only and returns sanitized ready report', async () => {
+test('external token still fails closed when ruleset bypass actors are not visible', async () => {
   const requests = [];
   const { result } = await fetchRepositoryProtectionAudit({
     fetchImpl: fakeFetch(requests),
@@ -79,18 +79,44 @@ test('fetchRepositoryProtectionAudit reads GitHub settings with GET only and ret
     repository: 'owner/example-repo',
     tokenSource: 'external-read-token'
   });
+  const defaultRulesetVisibility = result.bypassVisibility[0];
 
-  assert.equal(result.ready, true, JSON.stringify(result, null, 2));
+  assert.equal(result.ready, false, JSON.stringify(result, null, 2));
+  assert.equal(result.reasonCodes.includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(result.requiredChecks.some((check) => check.name === 'CI'), true);
+  assert.equal(result.effectiveProtections.branchProtectionPresent, true);
+  assert.equal(defaultRulesetVisibility.bypassActorsVisible, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(defaultRulesetVisibility, 'bypassActorCount'), false);
   assert.equal(requests.length > 0, true);
   assert.equal(requests.every((request) => request.method === 'GET'), true);
   assert.equal(requests.filter((request) => request.path === '/repos/owner/example-repo/branches/master/protection').length, 2);
   assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
 });
 
+test('fetchRepositoryProtectionAudit is ready only when bypass actors are explicitly visible', async () => {
+  const requests = [];
+  const { result } = await fetchRepositoryProtectionAudit({
+    fetchImpl: fakeFetch(requests, { includeBypassActors: true }),
+    githubToken: 'secret-token-value',
+    policy: policy(),
+    repository: 'owner/example-repo',
+    tokenSource: 'external-read-token'
+  });
+  const defaultRulesetVisibility = result.bypassVisibility[0];
+
+  assert.equal(result.ready, true, JSON.stringify(result, null, 2));
+  assert.equal(defaultRulesetVisibility.bypassActorsVisible, true);
+  assert.equal(defaultRulesetVisibility.bypassActorCount, 0);
+  assert.equal(result.bypassSummary.length, 0);
+  assert.equal(requests.length > 0, true);
+  assert.equal(requests.every((request) => request.method === 'GET'), true);
+  assert.equal(JSON.stringify(result).includes('secret-token-value'), false);
+});
+
 test('fetchRepositoryProtectionAudit refetches branch protection and blocks TOCTOU changes', async () => {
   const requests = [];
   const { result } = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch(requests, { changedBranchProtectionOnSecondRead: true }),
+    fetchImpl: fakeFetch(requests, { changedBranchProtectionOnSecondRead: true, includeBypassActors: true }),
     githubToken: 'secret-token-value',
     policy: policy(),
     repository: 'owner/example-repo',
@@ -118,7 +144,7 @@ test('CLI prints stable JSON and does not expose token values', async () => {
     stderr: (message) => { output.stderr += message; },
     stdout: (message) => { output.stdout += message; }
   }, {
-    fetchImpl: fakeFetch([]),
+    fetchImpl: fakeFetch([], { includeBypassActors: true }),
     githubToken: 'another-secret-token',
     readFile: readPolicyFixture
   });
@@ -184,14 +210,14 @@ test('redirects, 403, 404, and pagination loops are normalized safely', async ()
 
 test('external token context still fails closed on hidden bypass actors and final pagination issues', async () => {
   const hiddenBypass = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch([], { omitBypassActors: true }),
+    fetchImpl: fakeFetch([]),
     githubToken: 'token',
     policy: policy(),
     repository: 'owner/example-repo',
     tokenSource: 'external-read-token'
   });
   const endPagination = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch([], { paginatedRulesetsOnSecondRead: true }),
+    fetchImpl: fakeFetch([], { includeBypassActors: true, paginatedRulesetsOnSecondRead: true }),
     githubToken: 'token',
     maxPages: 1,
     policy: policy(),
@@ -199,7 +225,7 @@ test('external token context still fails closed on hidden bypass actors and fina
     tokenSource: 'external-read-token'
   });
   const endLoop = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch([], { loopRulesetsOnSecondRead: true }),
+    fetchImpl: fakeFetch([], { includeBypassActors: true, loopRulesetsOnSecondRead: true }),
     githubToken: 'token',
     policy: policy(),
     repository: 'owner/example-repo',
@@ -215,14 +241,14 @@ test('external token context still fails closed on hidden bypass actors and fina
 
 test('fetchRepositoryProtectionAudit detects final ruleset detail TOCTOU changes', async () => {
   const changedRuleset = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch([], { changedRulesetDetailOnSecondRead: true }),
+    fetchImpl: fakeFetch([], { changedRulesetDetailOnSecondRead: true, includeBypassActors: true }),
     githubToken: 'token',
     policy: policy(),
     repository: 'owner/example-repo',
     tokenSource: 'external-read-token'
   });
   const hiddenBypassAtEnd = await fetchRepositoryProtectionAudit({
-    fetchImpl: fakeFetch([], { omitBypassActorsOnSecondRead: true }),
+    fetchImpl: fakeFetch([], { includeBypassActors: true, omitBypassActorsOnSecondRead: true }),
     githubToken: 'token',
     policy: policy(),
     repository: 'owner/example-repo',
@@ -406,6 +432,7 @@ function fakeFetch(requests, options = {}) {
       rulesetDetailReads += 1;
       if (options.changedRulesetDetailOnSecondRead && rulesetDetailReads === 2) {
         return response(rulesetDetail({
+          ...(options.includeBypassActors ? { bypass_actors: [] } : {}),
           rules: rulesetDetail().rules.map((rule) => rule.type === 'pull_request'
             ? {
                 ...rule,
@@ -417,10 +444,8 @@ function fakeFetch(requests, options = {}) {
             : rule)
         }));
       }
-      if (options.omitBypassActors || (options.omitBypassActorsOnSecondRead && rulesetDetailReads === 2)) {
-        const detail = rulesetDetail();
-        delete detail.bypass_actors;
-        return response(detail);
+      if (options.includeBypassActors && !(options.omitBypassActorsOnSecondRead && rulesetDetailReads === 2)) {
+        return response(rulesetDetail({ bypass_actors: [] }));
       }
       return response(rulesetDetail());
     }
@@ -486,7 +511,6 @@ function rulesetSummary() {
 function rulesetDetail(overrides = {}) {
   return {
     ...rulesetSummary(),
-    bypass_actors: [],
     conditions: {
       ref_name: {
         exclude: [],

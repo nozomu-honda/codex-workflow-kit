@@ -43,7 +43,7 @@ GITHUB_TOKEN=<read-only-token> node scripts/audit-repository-protection.mjs \
   --json
 ```
 
-不足設定が見つかっても、このCLIはGitHub設定を変更しません。標準 `github.token` を使うworkflow実行はread-only診断であり、完全監査にはAdministration read相当のexternal read tokenを手動準備してCLIへ明示します。token値をログ、Issue、PR、READMEへ記録しません。
+不足設定が見つかっても、このCLIはGitHub設定を変更しません。標準 `github.token` を使うworkflow実行はread-only診断であり、live auditを進める場合はAdministration read相当のexternal read tokenを手動準備してCLIへ明示します。ただしRuleset `bypass_actors` は権限により省略されることがあり、external read tokenだけではbypass actorの完全性を保証しません。省略時は `ruleset_bypass_visibility_unknown` でmanual reviewに回します。token値をログ、Issue、PR、READMEへ記録しません。
 
 ## Validate config caller workflow
 
