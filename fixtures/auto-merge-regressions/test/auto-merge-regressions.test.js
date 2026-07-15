@@ -34,6 +34,11 @@ test('scenario collection is valid and contains required regression coverage', a
     'stale-human-approval',
     'stale-chatgpt-marker',
     'same-run-review-evidence',
+    'same-run-review-evidence-after-run-start',
+    'same-run-review-evidence-same-second',
+    'same-run-review-evidence-id-mismatch',
+    'same-run-review-evidence-actor-mismatch',
+    'same-run-review-evidence-stale-head',
     'changes-requested',
     'unresolved-review-thread',
     'requested-reviewer-remaining',
@@ -121,6 +126,26 @@ test('specific review and safety regressions keep expected reason codes', () => 
     executed: false,
     reasonCodes: ['eligible_enable_auto_merge', 'write_disabled']
   });
+  assertResult(byId['same-run-review-evidence-after-run-start'], {
+    eligible: false,
+    reasonCodes: ['same_run_review_evidence_after_run_start']
+  });
+  assertResult(byId['same-run-review-evidence-same-second'], {
+    eligible: false,
+    reasonCodes: ['same_run_review_evidence_indeterminate']
+  });
+  assertResult(byId['same-run-review-evidence-id-mismatch'], {
+    eligible: false,
+    reasonCodes: ['same_run_review_evidence_id_mismatch']
+  });
+  assertResult(byId['same-run-review-evidence-actor-mismatch'], {
+    eligible: false,
+    reasonCodes: ['same_run_review_evidence_actor_mismatch']
+  });
+  assertResult(byId['same-run-review-evidence-stale-head'], {
+    eligible: false,
+    reasonCodes: ['same_run_review_evidence_head_mismatch']
+  });
   assertResult(byId['unresolved-review-thread'], {
     eligible: false,
     reasonCodes: ['unresolved_review_threads']
@@ -162,6 +187,23 @@ test('specific review and safety regressions keep expected reason codes', () => 
     executed: false,
     reasonCodes: ['write_disabled']
   });
+});
+
+test('same-run review evidence scenario uses distinct trigger input from current-head success', () => {
+  const scenarios = Object.fromEntries(buildAutoMergeRegressionScenarios().map((entry) => [entry.id, entry]));
+  const sameRun = scenarios['same-run-review-evidence'];
+  const currentHead = scenarios['current-head-valid-review'];
+
+  assert.notDeepEqual(sameRun.eventPayload, currentHead.eventPayload);
+  assert.notDeepEqual(sameRun.normalizedEvent, currentHead.normalizedEvent);
+  assert.notDeepEqual(sameRun.reviewEvidenceSnapshot, currentHead.reviewEvidenceSnapshot);
+  assert.notDeepEqual(sameRun.executionContext, currentHead.executionContext);
+  assert.equal(sameRun.normalizedEvent.event_name, 'pull_request_review');
+  assert.equal(sameRun.executionContext.runStartedAt, '2026-01-01T00:00:00.000Z');
+  assert.equal(sameRun.eventPayload.review.id, sameRun.reviewEvidenceSnapshot.reviews[0].id);
+  assert.equal(sameRun.eventPayload.review.user.login, sameRun.reviewEvidenceSnapshot.reviews[0].user.login);
+  assert.equal(sameRun.eventPayload.review.commit_id, sameRun.reviewEvidenceSnapshot.reviews[0].commit_id);
+  assert.equal(currentHead.normalizedEvent.event_name, 'workflow_run');
 });
 
 test('schema and collection validation fail closed on malformed scenarios', () => {

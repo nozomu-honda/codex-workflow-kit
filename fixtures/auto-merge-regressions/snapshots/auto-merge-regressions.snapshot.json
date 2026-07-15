@@ -547,6 +547,76 @@
       }
     },
     {
+      "id": "same-run-review-evidence-actor-mismatch",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "same_run_review_evidence_actor_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-after-run-start",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "same_run_review_evidence_after_run_start"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-id-mismatch",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "same_run_review_evidence_id_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-same-second",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "same_run_review_evidence_indeterminate"
+        ]
+      }
+    },
+    {
+      "id": "same-run-review-evidence-stale-head",
+      "category": "review",
+      "result": {
+        "adapterCalled": false,
+        "commandCreated": false,
+        "dryRun": true,
+        "eligible": false,
+        "executed": false,
+        "reasonCodes": [
+          "same_run_review_evidence_head_mismatch"
+        ]
+      }
+    },
+    {
       "id": "secret-like-addition",
       "category": "diff",
       "result": {
@@ -633,7 +703,7 @@
   ],
   "summary": {
     "failed": 0,
-    "passed": 44,
-    "total": 44
+    "passed": 49,
+    "total": 49
   }
 }

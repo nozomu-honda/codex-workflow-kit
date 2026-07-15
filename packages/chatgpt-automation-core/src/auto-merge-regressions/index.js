@@ -24,6 +24,9 @@ export const AUTO_MERGE_REGRESSION_REQUIRED_KEYS = Object.freeze([
   'reviewEvidenceSnapshot',
   'scenarioVersion'
 ]);
+const AUTO_MERGE_REGRESSION_OPTIONAL_KEYS = Object.freeze([
+  'eventPayload'
+]);
 
 const SCENARIO_CATEGORIES = new Set([
   'audit',
@@ -247,7 +250,10 @@ export function validateScenario(scenario, prefix = '$') {
     };
   }
 
-  const allowedKeys = new Set(AUTO_MERGE_REGRESSION_REQUIRED_KEYS);
+  const allowedKeys = new Set([
+    ...AUTO_MERGE_REGRESSION_REQUIRED_KEYS,
+    ...AUTO_MERGE_REGRESSION_OPTIONAL_KEYS
+  ]);
   for (const key of Object.keys(scenario)) {
     if (!allowedKeys.has(key)) {
       errors.push({ code: 'unknown_key', path: `${prefix}.${key}` });
@@ -321,6 +327,7 @@ function createAutoMergePlanInput(scenario) {
     commitStatuses: scenario.ciSnapshot.commitStatuses,
     comparison: scenario.pullRequestSnapshot.comparison,
     config: scenario.executionContext.config,
+    eventPayload: scenario.eventPayload,
     existingDedupeKeys: scenario.executionContext.existingDedupeKeys,
     issueComments: scenario.reviewEvidenceSnapshot.issueComments,
     lastPlannedAt: scenario.executionContext.lastPlannedAt,
@@ -330,6 +337,7 @@ function createAutoMergePlanInput(scenario) {
     repositorySettings: scenario.protectionAuditSnapshot.repositorySettings,
     reviewThreads: scenario.reviewEvidenceSnapshot.reviewThreads,
     reviews: scenario.reviewEvidenceSnapshot.reviews,
+    runStartedAt: scenario.executionContext.runStartedAt,
     workflowRuns: scenario.ciSnapshot.workflowRuns
   };
 }

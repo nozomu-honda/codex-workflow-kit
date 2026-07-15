@@ -11,6 +11,10 @@ import { AUTO_MERGE_REGRESSION_SCENARIO_VERSION } from '../../packages/chatgpt-a
 
 export const REGRESSION_NOW = '2026-01-01T00:00:00.000Z';
 export const REGRESSION_REQUESTED_AT = '2026-01-01T00:00:00.000Z';
+export const SAME_RUN_REVIEW_ACTOR = 'chatgpt-reviewer';
+export const SAME_RUN_REVIEW_ID = 'same-run-review-9001';
+export const SAME_RUN_REVIEW_SUBMITTED_AT = '2025-12-31T23:59:00.000Z';
+export const SAME_RUN_STARTED_AT = '2026-01-01T00:00:00.000Z';
 
 const BASE_SCENARIOS = [
   scenario({
@@ -77,7 +81,58 @@ const BASE_SCENARIOS = [
     expectedDecision: successDecision(),
     expectedReasonCodes: ['eligible_enable_auto_merge', 'write_disabled'],
     id: 'same-run-review-evidence',
-    overrides: {}
+    overrides: sameRunReviewEvidenceOverrides()
+  }),
+  scenario({
+    category: 'review',
+    description: 'Same-run ChatGPT evidence created after the current run started is rejected.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['same_run_review_evidence_after_run_start'],
+    id: 'same-run-review-evidence-after-run-start',
+    overrides: sameRunReviewEvidenceOverrides({
+      reviewSubmittedAt: '2026-01-01T00:00:01.000Z'
+    })
+  }),
+  scenario({
+    category: 'review',
+    description: 'Same-run ChatGPT evidence in the same second as the run start is rejected as indeterminate.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['same_run_review_evidence_indeterminate'],
+    id: 'same-run-review-evidence-same-second',
+    overrides: sameRunReviewEvidenceOverrides({
+      reviewSubmittedAt: '2025-12-31T23:59:59.900Z',
+      runStartedAt: '2025-12-31T23:59:59.950Z'
+    })
+  }),
+  scenario({
+    category: 'review',
+    description: 'Same-run ChatGPT trigger review ID must match the API review evidence ID.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['same_run_review_evidence_id_mismatch'],
+    id: 'same-run-review-evidence-id-mismatch',
+    overrides: sameRunReviewEvidenceOverrides({
+      apiReviewId: 'same-run-review-9002'
+    })
+  }),
+  scenario({
+    category: 'review',
+    description: 'Same-run ChatGPT trigger actor must match the API review evidence actor.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['same_run_review_evidence_actor_mismatch'],
+    id: 'same-run-review-evidence-actor-mismatch',
+    overrides: sameRunReviewEvidenceOverrides({
+      apiActor: 'other-chatgpt-reviewer'
+    })
+  }),
+  scenario({
+    category: 'review',
+    description: 'Same-run ChatGPT trigger evidence for a stale head SHA is rejected.',
+    expectedDecision: skippedDecision(),
+    expectedReasonCodes: ['same_run_review_evidence_head_mismatch'],
+    id: 'same-run-review-evidence-stale-head',
+    overrides: sameRunReviewEvidenceOverrides({
+      evidenceHeadSha: FIXTURE_SHAS.before
+    })
   }),
   scenario({
     category: 'review',
@@ -119,7 +174,9 @@ const BASE_SCENARIOS = [
     expectedDecision: successDecision(),
     expectedReasonCodes: ['eligible_enable_auto_merge', 'write_disabled'],
     id: 'current-head-valid-review',
-    overrides: {}
+    overrides: {
+      eventPayload: workflowRunEventPayload()
+    }
   }),
 
   scenario({
@@ -514,6 +571,124 @@ export function scenario({ category, description, expectedDecision, expectedReas
   };
 
   return mergeScenario(base, overrides);
+}
+
+export function sameRunReviewEvidenceOverrides({
+  apiActor = SAME_RUN_REVIEW_ACTOR,
+  apiReviewId = SAME_RUN_REVIEW_ID,
+  currentHeadSha = FIXTURE_SHAS.head,
+  evidenceHeadSha = FIXTURE_SHAS.head,
+  reviewSubmittedAt = SAME_RUN_REVIEW_SUBMITTED_AT,
+  runStartedAt = SAME_RUN_STARTED_AT,
+  triggerActor = SAME_RUN_REVIEW_ACTOR,
+  triggerReviewId = SAME_RUN_REVIEW_ID
+} = {}) {
+  return {
+    eventPayload: pullRequestReviewEventPayload({
+      actor: triggerActor,
+      headSha: currentHeadSha,
+      reviewHeadSha: evidenceHeadSha,
+      reviewId: triggerReviewId,
+      submittedAt: reviewSubmittedAt
+    }),
+    executionContext: executionContext({
+      config: automationConfig({
+        autoMerge: { trustedReviewers: ['example-reviewer', SAME_RUN_REVIEW_ACTOR] }
+      }),
+      runStartedAt
+    }),
+    normalizedEvent: normalizedEvent({
+      actor: triggerActor,
+      event_action: 'submitted',
+      event_name: 'pull_request_review',
+      head_sha: currentHeadSha,
+      workflow_conclusion: '',
+      workflow_name: ''
+    }),
+    reviewEvidenceSnapshot: reviewEvidence({
+      issueComments: [],
+      reviews: [
+        review({
+          actor: apiActor,
+          body: '<!-- chatgpt-review: approved -->',
+          commit_id: evidenceHeadSha,
+          id: apiReviewId,
+          submitted_at: reviewSubmittedAt
+        })
+      ]
+    })
+  };
+}
+
+export function pullRequestReviewEventPayload({
+  actor = SAME_RUN_REVIEW_ACTOR,
+  headSha = FIXTURE_SHAS.head,
+  reviewHeadSha = FIXTURE_SHAS.head,
+  reviewId = SAME_RUN_REVIEW_ID,
+  submittedAt = SAME_RUN_REVIEW_SUBMITTED_AT
+} = {}) {
+  return {
+    action: 'submitted',
+    pull_request: {
+      base: {
+        ref: 'main',
+        repo: { full_name: FIXTURE_REPOSITORY.fullName },
+        sha: FIXTURE_SHAS.base
+      },
+      head: {
+        ref: 'feature/example-change',
+        repo: {
+          fork: false,
+          full_name: FIXTURE_REPOSITORY.fullName
+        },
+        sha: headSha
+      },
+      number: 42
+    },
+    repository: {
+      default_branch: 'main',
+      full_name: FIXTURE_REPOSITORY.fullName,
+      name: FIXTURE_REPOSITORY.name,
+      owner: { login: FIXTURE_REPOSITORY.owner }
+    },
+    review: {
+      body: '<!-- chatgpt-review: approved -->',
+      commit_id: reviewHeadSha,
+      id: reviewId,
+      state: 'APPROVED',
+      submitted_at: submittedAt,
+      user: { login: actor }
+    },
+    sender: { login: actor, type: 'User' }
+  };
+}
+
+export function workflowRunEventPayload({
+  headSha = FIXTURE_SHAS.head,
+  runStartedAt = '2025-12-31T23:58:00.000Z',
+  workflowRunId = 4001
+} = {}) {
+  return {
+    action: 'completed',
+    repository: {
+      default_branch: 'main',
+      full_name: FIXTURE_REPOSITORY.fullName,
+      name: FIXTURE_REPOSITORY.name,
+      owner: { login: FIXTURE_REPOSITORY.owner }
+    },
+    sender: { login: 'github-actions[bot]', type: 'Bot' },
+    workflow_run: {
+      conclusion: 'success',
+      event: 'pull_request',
+      head_branch: 'feature/example-change',
+      head_repository: { full_name: FIXTURE_REPOSITORY.fullName },
+      head_sha: headSha,
+      id: workflowRunId,
+      name: 'CI',
+      run_started_at: runStartedAt,
+      status: 'completed'
+    }
+  };
 }
 
 export function normalizedEvent(overrides = {}) {

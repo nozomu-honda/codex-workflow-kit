@@ -489,6 +489,62 @@ test('同一review sourceをChatGPT approvalとhuman approvalへ二重計上し�
   assert.equal(markerlessHuman.chatGptReviewCurrent, false);
 });
 
+test('same-run ChatGPT review evidenceはtrigger payloadとAPI取得結果の整合を要求する', () => {
+  const config = automationConfig({
+    autoMerge: {
+      trustedReviewers: ['owner', 'trusted-human', 'chatgpt-reviewer']
+    }
+  });
+  const base = {
+    config,
+    eventPayload: pullRequestReviewPayload(),
+    issueComments: [],
+    normalizedEvent: normalizedEvent({
+      actor: 'chatgpt-reviewer',
+      event_action: 'submitted',
+      event_name: 'pull_request_review',
+      workflow_conclusion: '',
+      workflow_name: ''
+    }),
+    reviews: [
+      approvalReview({
+        actor: 'chatgpt-reviewer',
+        body: '<!-- chatgpt-review: approved -->',
+        id: 'review-9001',
+        submitted_at: '2025-12-31T23:59:00.000Z'
+      })
+    ],
+    runStartedAt: '2026-01-01T00:00:00.000Z'
+  };
+  const accepted = createAutoMergePlan(baseInput(base));
+  assert.equal(accepted.outputs.eligible, 'true');
+
+  assertSkip(createAutoMergePlan(baseInput({
+    ...base,
+    eventPayload: pullRequestReviewPayload({ submittedAt: '2026-01-01T00:00:01.000Z' }),
+    reviews: [
+      approvalReview({
+        actor: 'chatgpt-reviewer',
+        body: '<!-- chatgpt-review: approved -->',
+        id: 'review-9001',
+        submitted_at: '2026-01-01T00:00:01.000Z'
+      })
+    ]
+  })), /same_run_review_evidence_after_run_start/);
+
+  assertSkip(createAutoMergePlan(baseInput({
+    ...base,
+    reviews: [
+      approvalReview({
+        actor: 'chatgpt-reviewer',
+        body: '<!-- chatgpt-review: approved -->',
+        id: 'review-9002',
+        submitted_at: '2025-12-31T23:59:00.000Z'
+      })
+    ]
+  })), /same_run_review_evidence_id_mismatch/);
+});
+
 test('CI pending / failure / cancelled / skippedはfail closedにする', () => {
   assertSkip(createAutoMergePlan(baseInput({ workflowRuns: [] })), /required_ci_pending/);
   assertSkip(createAutoMergePlan(baseInput({ workflowRuns: [workflowRun({ conclusion: 'failure' })] })), /required_ci_failed/);
@@ -936,6 +992,27 @@ function chatGptMarker(status, overrides = {}) {
     created_at: overrides.created_at ?? '2026-01-01T02:00:00.000Z',
     headSha: overrides.headSha ?? FIXTURE_SHAS.head,
     user: { login: overrides.actor ?? 'chatgpt-reviewer' }
+  };
+}
+
+function pullRequestReviewPayload(overrides = {}) {
+  return {
+    action: 'submitted',
+    pull_request: {
+      head: {
+        sha: FIXTURE_SHAS.head
+      },
+      number: 42
+    },
+    review: {
+      body: '<!-- chatgpt-review: approved -->',
+      commit_id: overrides.commit_id ?? FIXTURE_SHAS.head,
+      id: overrides.id ?? 'review-9001',
+      state: 'APPROVED',
+      submitted_at: overrides.submittedAt ?? '2025-12-31T23:59:00.000Z',
+      user: { login: overrides.actor ?? 'chatgpt-reviewer' }
+    },
+    sender: { login: overrides.actor ?? 'chatgpt-reviewer', type: 'User' }
   };
 }
 
