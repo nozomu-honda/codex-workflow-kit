@@ -152,6 +152,7 @@ BLOCKする例:
 
 - `secrets: inherit`
 - `${{ secrets.* }}`
+- `${{ secrets['NAME'] }}` / `${{ secrets["NAME"] }}`
 - Secret-likeなkeyへの具体値または式の設定
   - `api-token`
   - `access-token`
@@ -165,6 +166,8 @@ BLOCKする例:
   - `gas-url`
   - `gas-web-app-url`
 - Secret-like inputへの `${{ github.token }}` 転送
+- Secret-likeではないinputやenvでも、wrapper関数内のSecretまたはruntime token参照
+- `${{ github['token'] }}` / `${{ github["token"] }}` のbracket notation
 - workflow_call Secret input
 - workflow_dispatch Secret-like input
 - Authorization、token、Cookieをenvやshellへ展開する構成
@@ -173,7 +176,7 @@ BLOCKする例:
 - PR head codeやevent payloadをshellへ直接展開する構成
 - `eval`
 
-Secret名と値はreportへ出しません。検出結果はcode、file、sanitized pathだけに正規化します。dummy、example、placeholder、redacted、空値はfixture用途として許可します。
+Secret名、runtime token参照、式全文、値はreportへ出しません。検出結果はcode、file、sanitized pathだけに正規化します。dummy、example、placeholder、redacted、空値はfixture用途として許可します。
 
 ### Job structure
 
@@ -190,6 +193,20 @@ BLOCKする例:
 - job-level `secrets` がある
 - job-level permissionが契約と異なる
 - `dry-run: true` がない
+- capability契約で必須の `with` inputがない
+- `kit-ref` が必要なcapabilityで未指定、40桁SHAではない、または `uses` のrefと一致しない
+- capability契約にない `with` inputがある
+- `with` がobjectではない
+
+### Caller input contract
+
+Live consumer auditは、caller workflowの `with` をcapabilityごとの契約として検証します。
+
+- `config-validation`: `config-file` と `dry-run: true` が必須です。`config-file` はinventoryの `configPath` と一致する必要があります。このcapabilityのreusable workflowはshared kit checkoutを行わないため、`kit-ref` inputは使いません。
+- `event-normalization`: event/repository/actor系input、`permission-mode: read-only`、`requested-capability: normalize-only`、`repository-config-json`、`dry-run: true`、`kit-ref` が必須です。
+- `review-routing-plan` / `auto-merge-plan` / `main-follow-up-plan`: event/repository/actor系input、`repository-config-json`、`dry-run: true`、`kit-ref` が必須です。dedupeやtimestamp系inputは、各planの契約内ではoptionalです。
+
+input名は完全一致だけを許可します。大文字小文字違い、別名、追加input、`with: null`、配列、scalarはfail closedです。`kit-ref` はレビュー済み40桁小文字commit SHAで、job-level `uses` のrefと同一でなければなりません。
 
 ### Config / capability
 

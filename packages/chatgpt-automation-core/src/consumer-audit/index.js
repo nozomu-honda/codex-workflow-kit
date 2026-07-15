@@ -70,7 +70,14 @@ export const LIVE_CONSUMER_WORKFLOW_SPECS = Object.freeze({
     expectedJob: 'validate-config',
     expectedReusableWorkflow: '.github/workflows/validate-config.yml',
     allowedTriggers: ['workflow_dispatch'],
-    allowedPermissions: { contents: 'read' }
+    allowedPermissions: { contents: 'read' },
+    inputContract: workflowInputContract({
+      required: ['config-file', 'dry-run'],
+      validators: {
+        'config-file': { type: 'string', nonEmpty: true, matchesContext: 'expectedConfigPath' },
+        'dry-run': { type: 'boolean', equals: true }
+      }
+    })
   }),
   'event-normalization': Object.freeze({
     capability: 'event-normalization',
@@ -85,7 +92,40 @@ export const LIVE_CONSUMER_WORKFLOW_SPECS = Object.freeze({
       'pull_request',
       'push'
     ],
-    allowedPermissions: { contents: 'read' }
+    allowedPermissions: { contents: 'read' },
+    inputContract: workflowInputContract({
+      requiresKitRef: true,
+      required: [
+        'event-name',
+        'event-payload-json',
+        'repository',
+        'repository-owner',
+        'default-branch',
+        'actor',
+        'dry-run',
+        'permission-mode',
+        'requested-capability',
+        'repository-config-json',
+        'kit-ref'
+      ],
+      optional: ['event-action', 'ref-name', 'sha'],
+      validators: {
+        'event-name': { type: 'string', nonEmpty: true },
+        'event-action': { type: 'string' },
+        'event-payload-json': { type: 'string', nonEmpty: true },
+        repository: { type: 'string', nonEmpty: true },
+        'repository-owner': { type: 'string', nonEmpty: true },
+        'default-branch': { type: 'string', nonEmpty: true },
+        actor: { type: 'string', nonEmpty: true },
+        'ref-name': { type: 'string' },
+        sha: { type: 'string' },
+        'dry-run': { type: 'boolean', equals: true },
+        'permission-mode': { type: 'string', equals: 'read-only' },
+        'requested-capability': { type: 'string', equals: 'normalize-only' },
+        'repository-config-json': { type: 'string' },
+        'kit-ref': { type: 'kit-ref' }
+      }
+    })
   }),
   'review-routing-plan': Object.freeze({
     capability: 'review-routing-plan',
@@ -101,7 +141,14 @@ export const LIVE_CONSUMER_WORKFLOW_SPECS = Object.freeze({
       'push',
       'workflow_dispatch'
     ],
-    allowedPermissions: readPlannerPermissions()
+    allowedPermissions: readPlannerPermissions(),
+    inputContract: plannerInputContract({
+      optional: ['event-action', 'ref-name', 'sha', 'existing-dedupe-keys', 'last-routed-at'],
+      validators: {
+        'existing-dedupe-keys': { type: 'string' },
+        'last-routed-at': { type: 'string' }
+      }
+    })
   }),
   'auto-merge-plan': Object.freeze({
     capability: 'auto-merge-plan',
@@ -117,7 +164,14 @@ export const LIVE_CONSUMER_WORKFLOW_SPECS = Object.freeze({
       'pull_request',
       'workflow_dispatch'
     ],
-    allowedPermissions: readPlannerPermissions()
+    allowedPermissions: readPlannerPermissions(),
+    inputContract: plannerInputContract({
+      optional: ['event-action', 'ref-name', 'sha', 'existing-dedupe-keys', 'last-planned-at'],
+      validators: {
+        'existing-dedupe-keys': { type: 'string' },
+        'last-planned-at': { type: 'string' }
+      }
+    })
   }),
   'main-follow-up-plan': Object.freeze({
     capability: 'main-follow-up-plan',
@@ -125,7 +179,22 @@ export const LIVE_CONSUMER_WORKFLOW_SPECS = Object.freeze({
     expectedJob: 'main-follow-up-plan',
     expectedReusableWorkflow: '.github/workflows/main-follow-up-plan.yml',
     allowedTriggers: ['push', 'pull_request', 'workflow_dispatch'],
-    allowedPermissions: readPlannerPermissions()
+    allowedPermissions: readPlannerPermissions(),
+    inputContract: plannerInputContract({
+      optional: [
+        'event-action',
+        'ref-name',
+        'sha',
+        'existing-dedupe-keys',
+        'attempt-counts-json',
+        'last-attempted-at-json'
+      ],
+      validators: {
+        'existing-dedupe-keys': { type: 'string' },
+        'attempt-counts-json': { type: 'string' },
+        'last-attempted-at-json': { type: 'string' }
+      }
+    })
   })
 });
 
@@ -207,6 +276,7 @@ export function auditLiveConsumerInstallation(options = {}) {
       source: file.content,
       spec,
       expectedKitRef: inventory.expectedKitRef,
+      expectedConfigPath: inventory.configPath,
       kitRepository
     });
     const metadataAudit = auditWorkflowMetadata({
@@ -441,7 +511,7 @@ function auditWorkflowFile(options) {
   const kitRefs = [];
   const triggers = [];
   const permissions = {};
-  const { path, source, spec, expectedKitRef, kitRepository } = options;
+  const { path, source, spec, expectedKitRef, expectedConfigPath, kitRepository } = options;
   const parsed = parseYaml(source);
 
   if (!parsed.ok) {
@@ -493,6 +563,7 @@ function auditWorkflowFile(options) {
     path,
     spec,
     expectedKitRef,
+    expectedConfigPath,
     kitRepository
   });
   errors.push(...jobAudit.errors);
@@ -695,13 +766,14 @@ function auditJobs(jobs, context) {
       }
     }
 
+    let usesAudit = { errors: [], checks: [], kitRefs: [], normalizedTarget: '', kitRef: '' };
     if (typeof job.uses !== 'string') {
       addError(errors, checks, 'workflow_uses_missing', 'Caller job must use a reusable workflow with job-level uses.', {
         file: context.path,
         path: `${jobPath}.uses`
       });
     } else {
-      const usesAudit = auditUsesValue(job.uses, {
+      usesAudit = auditUsesValue(job.uses, {
         file: context.path,
         path: `${jobPath}.uses`,
         allowLocalReusableWorkflow: false,
@@ -728,7 +800,10 @@ function auditJobs(jobs, context) {
     const inputAudit = auditWorkflowInputs(job.with, {
       file: context.path,
       path: `${jobPath}.with`,
-      expectedKitRef: context.expectedKitRef
+      expectedKitRef: context.expectedKitRef,
+      expectedConfigPath: context.expectedConfigPath,
+      spec: context.spec,
+      usesRef: usesAudit.kitRef
     });
     errors.push(...inputAudit.errors);
     checks.push(...inputAudit.checks);
@@ -823,6 +898,7 @@ function auditUsesValue(value, context) {
   const checks = [];
   const kitRefs = [];
   let normalizedTarget = '';
+  let kitRef = '';
 
   if (value.startsWith('./')) {
     if (context.allowLocalReusableWorkflow === true) {
@@ -830,13 +906,13 @@ function auditUsesValue(value, context) {
         file: context.file,
         path: context.path
       });
-      return { errors, checks, kitRefs, normalizedTarget: value };
+      return { errors, checks, kitRefs, normalizedTarget: value, kitRef };
     }
     addError(errors, checks, 'local_reusable_workflow_present', 'Local reusable workflow reference is not allowed for live consumer caller workflows.', {
       file: context.file,
       path: context.path
     });
-    return { errors, checks, kitRefs, normalizedTarget: value };
+    return { errors, checks, kitRefs, normalizedTarget: value, kitRef };
   }
 
   const parsed = parseUses(value);
@@ -845,7 +921,7 @@ function auditUsesValue(value, context) {
       file: context.file,
       path: context.path
     });
-    return { errors, checks, kitRefs, normalizedTarget };
+    return { errors, checks, kitRefs, normalizedTarget, kitRef };
   }
 
   const target = parseReusableWorkflowTarget(parsed.target);
@@ -877,15 +953,17 @@ function auditUsesValue(value, context) {
   checks.push(...refAudit.checks);
   if (repositoryMatches && pathMatches) {
     kitRefs.push(parsed.ref);
+    kitRef = parsed.ref;
   }
 
-  return { errors, checks, kitRefs, normalizedTarget };
+  return { errors, checks, kitRefs, normalizedTarget, kitRef };
 }
 
 function auditWorkflowInputs(withValue, context) {
   const errors = [];
   const checks = [];
   const kitRefs = [];
+  const contract = context.spec?.inputContract ?? workflowInputContract({});
 
   if (!isPlainObject(withValue)) {
     addError(errors, checks, 'workflow_inputs_missing', 'Caller workflow must pass expected read-only inputs.', {
@@ -895,11 +973,43 @@ function auditWorkflowInputs(withValue, context) {
     return { errors, checks, kitRefs };
   }
 
+  const allowed = new Set([...contract.required, ...contract.optional]);
+  for (const key of Object.keys(withValue)) {
+    if (!allowed.has(key)) {
+      addError(errors, checks, 'unexpected_workflow_input', 'Caller workflow input is outside the capability contract.', {
+        file: context.file,
+        path: `${context.path}.${key}`
+      });
+    }
+  }
+
+  for (const key of contract.required) {
+    if (!Object.hasOwn(withValue, key)) {
+      addError(errors, checks, key === 'kit-ref' ? 'kit_ref_input_missing' : 'required_workflow_input_missing', 'Caller workflow is missing a required input.', {
+        file: context.file,
+        path: `${context.path}.${key}`
+      });
+    }
+  }
+
   if (withValue['dry-run'] !== true) {
     addError(errors, checks, 'dry_run_not_true', 'Caller workflow dry-run input must be true.', {
       file: context.file,
       path: `${context.path}.dry-run`
     });
+  }
+
+  for (const [key, validator] of Object.entries(contract.validators)) {
+    if (!Object.hasOwn(withValue, key)) {
+      continue;
+    }
+    const value = withValue[key];
+    if (!workflowInputValueMatches(value, validator, context)) {
+      addError(errors, checks, key === 'kit-ref' ? 'kit_ref_input_invalid' : 'workflow_input_invalid', 'Caller workflow input value does not match the capability contract.', {
+        file: context.file,
+        path: `${context.path}.${key}`
+      });
+    }
   }
 
   if (typeof withValue['kit-ref'] === 'string') {
@@ -912,6 +1022,26 @@ function auditWorkflowInputs(withValue, context) {
     });
     errors.push(...refAudit.errors);
     checks.push(...refAudit.checks);
+  }
+
+  if (
+    contract.requiresKitRef
+    && typeof withValue['kit-ref'] === 'string'
+    && typeof context.usesRef === 'string'
+    && context.usesRef
+    && withValue['kit-ref'] !== context.usesRef
+  ) {
+    addError(errors, checks, 'kit_ref_uses_mismatch', 'Caller workflow kit-ref input must match the reusable workflow ref.', {
+      file: context.file,
+      path: `${context.path}.kit-ref`
+    });
+  }
+
+  if (errors.length === 0) {
+    addCheck(checks, 'workflow_inputs_ok', 'Caller workflow inputs match the capability contract.', 'pass', {
+      file: context.file,
+      path: context.path
+    });
   }
 
   return { errors, checks, kitRefs };
@@ -970,18 +1100,13 @@ function auditDangerousWorkflowStructure(workflow, file) {
     }
 
     if (typeof value === 'string') {
-      if (value.includes('${{ secrets.')) {
-        addError(errors, checks, 'secret_reference_present', 'Workflow references secrets; secret names are intentionally not reported.', {
-          file,
-          path: sanitizedPath
-        });
-      }
-      if (/\$\{\{\s*github\.token\s*\}\}/i.test(value)) {
-        addError(errors, checks, 'github_token_forwarding_present', 'Workflow forwards github.token through runtime configuration.', {
-          file,
-          path: sanitizedPath
-        });
-      }
+      const expressionAudit = auditSecretExpressionReferences(value, {
+        file,
+        path: sanitizedPath
+      });
+      errors.push(...expressionAudit.errors);
+      checks.push(...expressionAudit.checks);
+
       if (/Authorization|Bearer|Cookie|token|secret/i.test(value) && /\$\{\{\s*secrets\./.test(value)) {
         addError(errors, checks, 'secret_like_env_present', 'Workflow expands secret-like data into runtime configuration.', {
           file,
@@ -1027,12 +1152,10 @@ function auditSecretLikeKeyValue(value, context) {
   }
 
   if (typeof value === 'string') {
-    if (/\$\{\{\s*secrets\./i.test(value)) {
-      addError(errors, checks, 'secret_reference_present', 'Workflow passes a secret reference through a secret-like key.', context);
-      return { errors, checks };
-    }
-    if (/\$\{\{\s*github\.token\s*\}\}/i.test(value)) {
-      addError(errors, checks, 'github_token_forwarding_present', 'Workflow forwards github.token through a secret-like key.', context);
+    const expressionAudit = auditSecretExpressionReferences(value, context);
+    errors.push(...expressionAudit.errors);
+    checks.push(...expressionAudit.checks);
+    if (expressionAudit.errors.length > 0) {
       return { errors, checks };
     }
     if (/\$\{\{\s*vars\./i.test(value)) {
@@ -1043,6 +1166,53 @@ function auditSecretLikeKeyValue(value, context) {
 
   addError(errors, checks, 'secret_like_key_present', 'Workflow sets a secret-like key; concrete values are intentionally not reported.', context);
   return { errors, checks };
+}
+
+function auditSecretExpressionReferences(value, context) {
+  const errors = [];
+  const checks = [];
+  const expressionKinds = detectSecretExpressionReferences(value);
+
+  if (expressionKinds.has('secret')) {
+    addError(errors, checks, 'secret_reference_present', 'Workflow references a secret expression; secret names are intentionally not reported.', context);
+  }
+  if (expressionKinds.has('github-token')) {
+    addError(errors, checks, 'github_token_forwarding_present', 'Workflow forwards a runtime token through configuration.', context);
+  }
+
+  return { errors, checks };
+}
+
+function detectSecretExpressionReferences(value) {
+  const kinds = new Set();
+  for (const expression of extractGitHubExpressions(value)) {
+    if (referencesSecretContext(expression)) {
+      kinds.add('secret');
+    }
+    if (referencesGitHubToken(expression)) {
+      kinds.add('github-token');
+    }
+  }
+  return kinds;
+}
+
+function extractGitHubExpressions(value) {
+  const text = String(value ?? '');
+  const expressions = [];
+  const regex = /\$\{\{([\s\S]*?)\}\}/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    expressions.push(match[1] ?? '');
+  }
+  return expressions;
+}
+
+function referencesGitHubToken(expression) {
+  return /\bgithub\s*(?:\.\s*token|\[\s*(['"])token\1\s*\])/i.test(expression);
+}
+
+function referencesSecretContext(expression) {
+  return /\bsecrets\s*(?:\.\s*[A-Za-z_][A-Za-z0-9_]*|\[\s*(['"])[^\]'"]+\1\s*\])/i.test(expression);
 }
 
 function containsConcreteSecretLikeValue(value) {
@@ -1527,6 +1697,89 @@ function readPlannerPermissions() {
     checks: 'read',
     statuses: 'read'
   };
+}
+
+function workflowInputContract(options = {}) {
+  return Object.freeze({
+    requiresKitRef: options.requiresKitRef === true,
+    required: Object.freeze(stableArray(options.required ?? [])),
+    optional: Object.freeze(stableArray(options.optional ?? [])),
+    validators: Object.freeze(stableObject(options.validators ?? {}))
+  });
+}
+
+function plannerInputContract(options = {}) {
+  const required = [
+    'event-name',
+    'event-payload-json',
+    'repository',
+    'repository-owner',
+    'default-branch',
+    'actor',
+    'dry-run',
+    'repository-config-json',
+    'kit-ref'
+  ];
+  const validators = {
+    'event-name': { type: 'string', nonEmpty: true },
+    'event-action': { type: 'string' },
+    'event-payload-json': { type: 'string', nonEmpty: true },
+    repository: { type: 'string', nonEmpty: true },
+    'repository-owner': { type: 'string', nonEmpty: true },
+    'default-branch': { type: 'string', nonEmpty: true },
+    actor: { type: 'string', nonEmpty: true },
+    'ref-name': { type: 'string' },
+    sha: { type: 'string' },
+    'dry-run': { type: 'boolean', equals: true },
+    'repository-config-json': { type: 'string' },
+    'kit-ref': { type: 'kit-ref' },
+    ...(options.validators ?? {})
+  };
+
+  return workflowInputContract({
+    requiresKitRef: true,
+    required,
+    optional: options.optional ?? ['event-action', 'ref-name', 'sha'],
+    validators
+  });
+}
+
+function workflowInputValueMatches(value, validator, context) {
+  if (!validator || !validator.type) {
+    return true;
+  }
+
+  if (validator.type === 'kit-ref') {
+    return typeof value === 'string' && SHA40_LOWER_PATTERN.test(value) && (!context.expectedKitRef || value === context.expectedKitRef);
+  }
+
+  if (validator.type === 'string') {
+    if (typeof value !== 'string') {
+      return false;
+    }
+    if (validator.nonEmpty === true && value.trim() === '') {
+      return false;
+    }
+    if (Object.hasOwn(validator, 'equals') && value !== validator.equals) {
+      return false;
+    }
+    if (validator.matchesContext && value !== context[validator.matchesContext]) {
+      return false;
+    }
+    return true;
+  }
+
+  if (validator.type === 'boolean') {
+    if (typeof value !== 'boolean') {
+      return false;
+    }
+    if (Object.hasOwn(validator, 'equals') && value !== validator.equals) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function parseYaml(source) {

@@ -369,13 +369,215 @@ test('secret-like keys with concrete values, expressions, or token forwarding fa
       mutateWorkflow: {
         capability: 'review-routing-plan',
         mutate: (workflow) => {
-          workflow.jobs['review-routing'].with['api-token'] = 'dummy-token';
-          workflow.jobs['review-routing'].with['display-name'] = 'concrete-value';
+          workflow.jobs['review-routing'].env = {
+            CLIENT_SECRET: 'dummy-token',
+            DISPLAY_NAME: 'concrete-value'
+          };
         }
       }
     })
   });
   assert.equal(allowed.ok, true, JSON.stringify(allowed, null, 2));
+});
+
+test('caller workflow inputs match capability contracts and fail closed on missing or unexpected inputs', async () => {
+  const baseline = auditLiveConsumerInstallation({ consumer: validConsumer(), snapshot: await validSnapshot() });
+  assert.equal(baseline.ok, true, JSON.stringify(baseline, null, 2));
+
+  for (const [capability, spec] of Object.entries(LIVE_CONSUMER_WORKFLOW_SPECS)) {
+    for (const requiredInput of spec.inputContract.required) {
+      const result = auditLiveConsumerInstallation({
+        consumer: validConsumer(),
+        snapshot: await validSnapshot({
+          mutateWorkflow: {
+            capability,
+            mutate: (workflow) => {
+              delete workflow.jobs[spec.expectedJob].with[requiredInput];
+            }
+          }
+        })
+      });
+      assert.equal(result.ok, false, `${capability}:${requiredInput}`);
+      assert.equal(hasCode(result, requiredInput === 'kit-ref' ? 'kit_ref_input_missing' : 'required_workflow_input_missing'), true, `${capability}:${requiredInput}`);
+    }
+
+    const unexpected = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability,
+          mutate: (workflow) => {
+            workflow.jobs[spec.expectedJob].with.EXTRA_INPUT = 'value';
+          }
+        }
+      })
+    });
+    assert.equal(unexpected.ok, false, `${capability}:unexpected`);
+    assert.equal(hasCode(unexpected, 'unexpected_workflow_input'), true, `${capability}:unexpected`);
+
+    for (const value of [false, 'true']) {
+      const result = auditLiveConsumerInstallation({
+        consumer: validConsumer(),
+        snapshot: await validSnapshot({
+          mutateWorkflow: {
+            capability,
+            mutate: (workflow) => {
+              workflow.jobs[spec.expectedJob].with['dry-run'] = value;
+            }
+          }
+        })
+      });
+      assert.equal(result.ok, false, `${capability}:dry-run:${value}`);
+      assert.equal(hasCode(result, 'dry_run_not_true'), true, `${capability}:dry-run:${value}`);
+    }
+
+    for (const value of [null, [], 'scalar']) {
+      const result = auditLiveConsumerInstallation({
+        consumer: validConsumer(),
+        snapshot: await validSnapshot({
+          mutateWorkflow: {
+            capability,
+            mutate: (workflow) => {
+              workflow.jobs[spec.expectedJob].with = value;
+            }
+          }
+        })
+      });
+      assert.equal(result.ok, false, `${capability}:with:${JSON.stringify(value)}`);
+      assert.equal(hasCode(result, 'workflow_inputs_missing'), true, `${capability}:with:${JSON.stringify(value)}`);
+    }
+
+    if (spec.inputContract.optional.length > 0) {
+      const optionalMissing = auditLiveConsumerInstallation({
+        consumer: validConsumer(),
+        snapshot: await validSnapshot({
+          mutateWorkflow: {
+            capability,
+            mutate: (workflow) => {
+              delete workflow.jobs[spec.expectedJob].with[spec.inputContract.optional[0]];
+            }
+          }
+        })
+      });
+      assert.equal(optionalMissing.ok, true, JSON.stringify(optionalMissing, null, 2));
+    }
+  }
+});
+
+test('kit-ref is required when shared kit checkout is used and must match the reusable workflow ref', async () => {
+  for (const [capability, spec] of Object.entries(LIVE_CONSUMER_WORKFLOW_SPECS)) {
+    if (!spec.inputContract.requiresKitRef) {
+      continue;
+    }
+
+    const missing = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability,
+          mutate: (workflow) => {
+            delete workflow.jobs[spec.expectedJob].with['kit-ref'];
+          }
+        }
+      })
+    });
+    assert.equal(missing.ok, false, `${capability}:missing`);
+    assert.equal(hasCode(missing, 'kit_ref_input_missing'), true, `${capability}:missing`);
+
+    const mismatched = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability,
+          mutate: (workflow) => {
+            workflow.jobs[spec.expectedJob].with['kit-ref'] = OTHER_SHA;
+          }
+        }
+      })
+    });
+    assert.equal(mismatched.ok, false, `${capability}:mismatch`);
+    assert.equal(hasCode(mismatched, 'kit_ref_uses_mismatch'), true, `${capability}:mismatch`);
+  }
+});
+
+test('wrapped and bracket notation token or secret expressions fail closed without leaking expression details', async () => {
+  const cases = [
+    { code: 'github_token_forwarding_present', unsafe: 'github.token', value: '${{ github.token }}' },
+    { code: 'github_token_forwarding_present', unsafe: 'github.token', value: "${{ format('{0}', github.token) }}" },
+    { code: 'github_token_forwarding_present', unsafe: 'github.token', value: '${{ toJSON(github.token) }}' },
+    { code: 'github_token_forwarding_present', unsafe: "github['token']", value: "${{ github['token'] }}" },
+    { code: 'github_token_forwarding_present', unsafe: 'github["token"]', value: '${{ github["token"] }}' },
+    { code: 'github_token_forwarding_present', unsafe: 'github.token', value: 'Bearer ${{ github.token }}' },
+    { code: 'secret_reference_present', unsafe: 'PRIVATE_TOKEN', value: '${{ secrets.PRIVATE_TOKEN }}' },
+    { code: 'secret_reference_present', unsafe: 'PRIVATE_TOKEN', value: "${{ format('{0}', secrets.PRIVATE_TOKEN) }}" },
+    { code: 'secret_reference_present', unsafe: 'PRIVATE_TOKEN', value: "${{ secrets['PRIVATE_TOKEN'] }}" },
+    { code: 'secret_reference_present', unsafe: 'PRIVATE_TOKEN', value: '${{ secrets["PRIVATE_TOKEN"] }}' }
+  ];
+
+  for (const entry of cases) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: (workflow) => {
+            workflow.jobs['review-routing'].with.payload = entry.value;
+          }
+        }
+      })
+    });
+    const report = `${JSON.stringify(result)}\n${formatLiveConsumerAuditReport(result)}`;
+
+    assert.equal(result.ok, false, entry.value);
+    assert.equal(hasCode(result, entry.code), true, entry.value);
+    assert.equal(report.includes(entry.unsafe), false, entry.unsafe);
+    assert.equal(report.includes(entry.value), false, entry.value);
+    assert.equal(report.includes('Authorization'), false);
+    assert.equal(report.includes('Cookie'), false);
+    assert.equal(report.includes('Error:'), false);
+  }
+});
+
+test('safe expressions and descriptive token text are not treated as secret forwarding', async () => {
+  const safeValues = [
+    '${{ github.actor }}',
+    '${{ github.repository }}',
+    '${{ vars.PUBLIC_CONFIG }}',
+    'tokenという単語を含む説明文'
+  ];
+
+  for (const value of safeValues) {
+    const result = auditLiveConsumerInstallation({
+      consumer: validConsumer(),
+      snapshot: await validSnapshot({
+        mutateWorkflow: {
+          capability: 'review-routing-plan',
+          mutate: (workflow) => {
+            workflow.jobs['review-routing'].with.payload = value;
+          }
+        }
+      })
+    });
+
+    assert.equal(result.ok, false, value);
+    assert.equal(hasCode(result, 'unexpected_workflow_input'), true, value);
+    assert.equal(hasCode(result, 'github_token_forwarding_present'), false, value);
+    assert.equal(hasCode(result, 'secret_reference_present'), false, value);
+  }
+
+  const secretLikeVariable = auditLiveConsumerInstallation({
+    consumer: validConsumer(),
+    snapshot: await validSnapshot({
+      mutateWorkflow: {
+        capability: 'review-routing-plan',
+        mutate: (workflow) => {
+          workflow.jobs['review-routing'].with['api-token'] = '${{ vars.PUBLIC_CONFIG }}';
+        }
+      }
+    })
+  });
+  assert.equal(secretLikeVariable.ok, false);
+  assert.equal(hasCode(secretLikeVariable, 'secret_like_key_present'), true);
 });
 
 test('known capability caller workflows require exactly one expected reusable workflow job', async () => {
