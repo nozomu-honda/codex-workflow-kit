@@ -19,6 +19,7 @@ const KIT_REF = FIXTURE_SHAS.base;
 const CONFIG_SOURCE = readFileSync(new URL('../templates/chatgpt-automation.yml', import.meta.url), 'utf8');
 const VALIDATE_CONFIG_WORKFLOW_SOURCE = readFileSync(new URL('../templates/workflows/validate-config.yml', import.meta.url), 'utf8')
   .replaceAll('REPLACE_WITH_40_CHAR_COMMIT_SHA', KIT_REF);
+const PROTECTION_POLICY_SCHEMA_SOURCE = readFileSync(new URL('../schemas/protection-policy.schema.json', import.meta.url), 'utf8');
 const POLICY_YAML = `defaultBranch: ${FIXTURE_REPOSITORY.defaultBranch}
 requiredStatusChecks:
   - CI
@@ -350,6 +351,8 @@ async function runProtectionAuditJson() {
   const exitCode = await runAuditRepositoryProtectionCli([
     '--repository',
     FIXTURE_REPOSITORY.fullName,
+    '--token-source',
+    'external-read-token',
     '--json'
   ], {
     stdout: (message) => { output.stdout += message; },
@@ -358,7 +361,7 @@ async function runProtectionAuditJson() {
     fetchImpl: fakeProtectionFetch(),
     githubToken: 'dummy-token',
     now: CHECKED_AT,
-    readFile: async () => POLICY_YAML
+    readFile: async (path) => String(path).includes('protection-policy.schema.json') ? PROTECTION_POLICY_SCHEMA_SOURCE : POLICY_YAML
   });
   assert.equal(exitCode, 0, `${output.stdout}\n${output.stderr}`);
   return JSON.parse(output.stdout);

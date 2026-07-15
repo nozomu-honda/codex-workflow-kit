@@ -95,6 +95,7 @@ const PROTECTION_AUDIT_KEYS = new Set([
   'baseSha',
   'blockers',
   'bypassSummary',
+  'bypassVisibility',
   'checkedAt',
   'defaultBranch',
   'dryRun',
@@ -109,6 +110,7 @@ const PROTECTION_AUDIT_KEYS = new Set([
   'reportVersion',
   'requiredChecks',
   'requiredReviews',
+  'tokenSource',
   'warnings'
 ]);
 const PULL_REQUEST_KEYS = new Set([

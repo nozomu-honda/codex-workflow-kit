@@ -22,12 +22,63 @@ export const DEFAULT_PROTECTION_POLICY = Object.freeze({
 
 const REVIEW_EVIDENCE_GATE_NAMES = new Set(['review evidence gate', 'review-evidence-gate']);
 const DEFAULT_BRANCH_TOKEN = '~DEFAULT_BRANCH';
+const VALID_TOKEN_SOURCES = new Set(['github-token', 'external-read-token']);
+const PROTECTION_POLICY_REQUIRED_FIELDS = Object.freeze([
+  'requiredStatusChecks',
+  'requirePullRequest',
+  'minimumApprovals',
+  'dismissStaleApprovals',
+  'requireConversationResolution',
+  'blockForcePush',
+  'blockDeletion',
+  'allowedMergeMethods',
+  'requireReviewEvidenceGate'
+]);
+const PROTECTION_POLICY_ALLOWED_FIELDS = new Set([
+  ...PROTECTION_POLICY_REQUIRED_FIELDS,
+  'allowedBypassActors',
+  'defaultBranch',
+  'enforceAdmins',
+  'requireCodeOwnerReview',
+  'requireLastPushApproval',
+  'requireLinearHistory',
+  'requireRuleset',
+  'requireSignedCommits'
+]);
+const ALLOWED_MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
+const POLICY_ERROR_CODES = new Set([
+  'protection_policy_parse_failed',
+  'protection_policy_validation_failed'
+]);
+const SAFE_POLICY_PATH_PATTERN = /^policy(?:\.[A-Za-z0-9_-]+)*$/;
+const SECRET_LIKE_PATTERN = /ghp_|github_pat_|ghs_|gho_|authorization|cookie|begin .*private key|client_secret|private_key|\btoken\b/i;
+const BOOLEAN_POLICY_FIELDS = Object.freeze([
+  'blockDeletion',
+  'blockForcePush',
+  'dismissStaleApprovals',
+  'enforceAdmins',
+  'requireCodeOwnerReview',
+  'requireConversationResolution',
+  'requireLastPushApproval',
+  'requireLinearHistory',
+  'requirePullRequest',
+  'requireReviewEvidenceGate',
+  'requireRuleset',
+  'requireSignedCommits'
+]);
 
 export function auditRepositoryProtection(input = {}) {
-  const expectedPolicy = normalizePolicy(input.expectedPolicy);
+  const rawPolicy = input.expectedPolicy ?? DEFAULT_PROTECTION_POLICY;
+  const corePolicyValidation = validateProtectionPolicyObject(rawPolicy);
+  const externalPolicyErrors = normalizeExternalPolicyErrors(input.policyValidationErrors);
+  const policyErrors = mergePolicyErrors(corePolicyValidation.errors, externalPolicyErrors);
+  const expectedPolicy = corePolicyValidation.errors.length === 0
+    ? normalizePolicy(rawPolicy)
+    : normalizePolicy(DEFAULT_PROTECTION_POLICY);
   const repository = normalizeRepository(input.repository);
   const defaultBranch = cleanString(input.defaultBranch ?? repository.defaultBranch ?? expectedPolicy.defaultBranch);
   const auditedSha = cleanSha(input.defaultBranchSha ?? repository.defaultBranchSha ?? input.branch?.commit?.sha);
+  const tokenSource = normalizeTokenSource(input.tokenSource);
   const branchProtection = normalizeBranchProtection(input.branchProtection);
   const rulesets = normalizeRulesets({
     defaultBranch,
@@ -40,6 +91,7 @@ export function auditRepositoryProtection(input = {}) {
   const effectiveProtections = collectEffectiveProtections({ activeRulesets, branchProtection });
   const requiredReviews = collectRequiredReviews({ effectiveProtections });
   const bypassSummary = collectBypassSummary(activeRulesets);
+  const bypassVisibility = collectBypassVisibility(activeRulesets);
   const mergeSettings = normalizeMergeSettings(input.mergeSettings ?? input.repository);
   const blockers = [];
   const warnings = [];
@@ -47,6 +99,8 @@ export function auditRepositoryProtection(input = {}) {
   const paginationComplete = input.pagination?.rulesetsComplete !== false;
   const checkedAt = normalizeCheckedAt(input.checkedAt);
 
+  addPolicyValidationFailures(blockers, policyErrors);
+  addTokenCapabilityFailures(blockers, tokenSource);
   addApiFailures(blockers, input.apiErrors);
   addPaginationFailures(blockers, input.pagination);
   addTocTouFailures(blockers, input);
@@ -74,6 +128,7 @@ export function auditRepositoryProtection(input = {}) {
   evaluateBypassActors({
     blockers,
     bypassSummary,
+    bypassVisibility,
     expectedPolicy,
     warnings
   });
@@ -104,7 +159,9 @@ export function auditRepositoryProtection(input = {}) {
     requiredChecks,
     requiredReviews,
     bypassSummary,
+    bypassVisibility,
     mergeSettings,
+    ...(tokenSource ? { tokenSource } : {}),
     blockers: sortedBlockers,
     warnings: sortedWarnings,
     reasonCodes: [...new Set([...sortedBlockers, ...sortedWarnings].map((issue) => issue.code))].sort()
@@ -113,6 +170,11 @@ export function auditRepositoryProtection(input = {}) {
 
 export function formatProtectionAuditResult(result) {
   const lines = [];
+  const bypassVisibility = Array.isArray(result.bypassVisibility) ? result.bypassVisibility : [];
+  const unknownBypassRulesets = bypassVisibility.filter((entry) => entry.bypassActorsVisible === false).length;
+  const visibleBypassActorCount = bypassVisibility
+    .filter((entry) => entry.bypassActorsVisible === true)
+    .reduce((total, entry) => total + (Number(entry.bypassActorCount) || 0), 0);
   lines.push(`Repository protection audit: ${result.ready ? 'READY' : 'NOT READY'}`);
   lines.push(`repository: ${result.repository || '(unknown)'}`);
   lines.push(`defaultBranch: ${result.defaultBranch || '(unknown)'}`);
@@ -124,7 +186,8 @@ export function formatProtectionAuditResult(result) {
   lines.push(`activeRulesets: ${result.effectiveProtections.activeRulesetCount}`);
   lines.push(`requiredChecks: ${result.requiredChecks.map((check) => check.name).join(', ') || '(none)'}`);
   lines.push(`minimumApprovals: ${result.requiredReviews.minimumApprovals}`);
-  lines.push(`bypassActors: ${result.bypassSummary.length}`);
+  lines.push(`bypassActorsVisible: ${unknownBypassRulesets === 0 ? 'confirmed' : 'unknown'}`);
+  lines.push(`visibleBypassActorCount: ${visibleBypassActorCount}`);
   lines.push(`reasonCodes: ${result.reasonCodes.join(', ') || '(none)'}`);
 
   if (result.blockers.length > 0) {
@@ -142,6 +205,92 @@ export function formatProtectionAuditResult(result) {
   }
 
   return `${lines.join('\n')}\n`;
+}
+
+export function validateProtectionPolicyObject(value) {
+  const errors = [];
+
+  if (!isPlainObject(value)) {
+    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy root must be an object.', 'policy'));
+    return { ok: false, errors };
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!PROTECTION_POLICY_ALLOWED_FIELDS.has(key)) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy contains an unknown field.', `policy.${key}`));
+    }
+  }
+
+  for (const field of PROTECTION_POLICY_REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(value, field)) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy is missing a required field.', `policy.${field}`));
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'requiredStatusChecks')) {
+    if (!Array.isArray(value.requiredStatusChecks) || value.requiredStatusChecks.length === 0) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks must contain at least one check.', 'policy.requiredStatusChecks'));
+    } else {
+      for (const [index, check] of value.requiredStatusChecks.entries()) {
+        if (typeof check !== 'string' || check.length === 0) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks entries must be non-empty strings.', `policy.requiredStatusChecks.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.requiredStatusChecks)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy requiredStatusChecks entries must be unique.', 'policy.requiredStatusChecks'));
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'minimumApprovals') && (!Number.isInteger(value.minimumApprovals) || !Number.isFinite(value.minimumApprovals) || value.minimumApprovals < 1)) {
+    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy minimumApprovals must be at least 1.', 'policy.minimumApprovals'));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'allowedMergeMethods')) {
+    if (!Array.isArray(value.allowedMergeMethods) || value.allowedMergeMethods.length === 0) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods must contain at least one method.', 'policy.allowedMergeMethods'));
+    } else {
+      for (const [index, method] of value.allowedMergeMethods.entries()) {
+        if (typeof method !== 'string' || !ALLOWED_MERGE_METHODS.has(method)) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods contains an unsupported method.', `policy.allowedMergeMethods.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.allowedMergeMethods)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedMergeMethods entries must be unique.', 'policy.allowedMergeMethods'));
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'allowedBypassActors')) {
+    if (!Array.isArray(value.allowedBypassActors)) {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors must be an array.', 'policy.allowedBypassActors'));
+    } else {
+      for (const [index, actor] of value.allowedBypassActors.entries()) {
+        if (typeof actor !== 'string' || actor.length === 0) {
+          errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors entries must be non-empty strings.', `policy.allowedBypassActors.${index}`));
+        }
+      }
+      if (hasDuplicateItems(value.allowedBypassActors)) {
+        errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy allowedBypassActors entries must be unique.', 'policy.allowedBypassActors'));
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'defaultBranch') && typeof value.defaultBranch !== 'string') {
+    errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy defaultBranch must be a string.', 'policy.defaultBranch'));
+  }
+
+  for (const field of BOOLEAN_POLICY_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && typeof value[field] !== 'boolean') {
+      errors.push(policyIssue('protection_policy_validation_failed', 'Protection policy boolean field is invalid.', `policy.${field}`));
+    }
+  }
+
+  const sortedErrors = sortIssues(errors);
+  return {
+    ok: sortedErrors.length === 0,
+    errors: sortedErrors
+  };
 }
 
 function normalizePolicy(value = {}) {
@@ -265,11 +414,14 @@ function normalizeRuleset(value, defaultBranch) {
   const includes = normalizeStringArray(refName.include, ['refs/heads/*']);
   const excludes = normalizeStringArray(refName.exclude);
   const rules = Array.isArray(value.rules) ? value.rules : [];
+  const bypassActors = normalizeRulesetBypassActors(value);
 
   return {
     id: String(value.id ?? value.node_id ?? value.name ?? ''),
     active: enforcement === 'active',
-    bypassActors: Array.isArray(value.bypass_actors) ? value.bypass_actors : Array.isArray(value.bypassActors) ? value.bypassActors : [],
+    bypassActors: bypassActors.items,
+    ...(bypassActors.visible ? { bypassActorCount: bypassActors.items.length } : {}),
+    bypassActorsVisible: bypassActors.visible,
     conditions: {
       include: includes,
       exclude: excludes
@@ -281,6 +433,27 @@ function normalizeRuleset(value, defaultBranch) {
     sourceType: cleanString(value.source_type ?? value.sourceType),
     target,
     updatedAt: cleanString(value.updated_at ?? value.updatedAt)
+  };
+}
+
+function normalizeRulesetBypassActors(value) {
+  if (Object.prototype.hasOwnProperty.call(value, 'bypass_actors') && Array.isArray(value.bypass_actors)) {
+    return {
+      items: value.bypass_actors,
+      visible: true
+    };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'bypassActors') && Array.isArray(value.bypassActors)) {
+    return {
+      items: value.bypassActors,
+      visible: true
+    };
+  }
+
+  return {
+    items: [],
+    visible: false
   };
 }
 
@@ -457,6 +630,9 @@ function collectBypassSummary(activeRulesets) {
   const entries = [];
 
   for (const ruleset of activeRulesets) {
+    if (ruleset.bypassActorsVisible !== true) {
+      continue;
+    }
     for (const actor of ruleset.bypassActors) {
       entries.push({
         actorType: cleanString(actor.actor_type ?? actor.actorType) || 'unknown',
@@ -470,6 +646,16 @@ function collectBypassSummary(activeRulesets) {
     a.ruleset.localeCompare(b.ruleset)
     || a.actorType.localeCompare(b.actorType)
     || a.bypassMode.localeCompare(b.bypassMode));
+}
+
+function collectBypassVisibility(activeRulesets) {
+  return activeRulesets
+    .map((ruleset) => ({
+      bypassActorsVisible: ruleset.bypassActorsVisible === true,
+      ...(ruleset.bypassActorsVisible === true ? { bypassActorCount: ruleset.bypassActors.length } : {}),
+      ruleset: ruleset.name || 'unnamed-ruleset'
+    }))
+    .sort((a, b) => a.ruleset.localeCompare(b.ruleset));
 }
 
 function normalizeMergeSettings(value = {}) {
@@ -579,8 +765,19 @@ function evaluateRequiredReviews({ blockers, effectiveProtections, expectedPolic
   }
 }
 
-function evaluateBypassActors({ blockers, bypassSummary, expectedPolicy }) {
+function evaluateBypassActors({ blockers, bypassSummary, bypassVisibility, expectedPolicy }) {
   const allowed = new Set(expectedPolicy.allowedBypassActors);
+
+  for (const visibility of bypassVisibility) {
+    if (visibility.bypassActorsVisible !== true) {
+      addBlocker(
+        blockers,
+        'ruleset_bypass_visibility_unknown',
+        'Ruleset bypass actor visibility could not be confirmed.',
+        `rulesets.bypassVisibility.${visibility.ruleset}`
+      );
+    }
+  }
 
   for (const bypass of bypassSummary) {
     const key = `${bypass.actorType}:${bypass.bypassMode}`;
@@ -626,9 +823,96 @@ function addApiFailures(blockers, apiErrors = []) {
   }
 }
 
+function addPolicyValidationFailures(blockers, errors = []) {
+  for (const error of Array.isArray(errors) ? errors : []) {
+    addBlocker(
+      blockers,
+      normalizePolicyErrorCode(error.code),
+      normalizePolicyErrorMessage(error.code),
+      sanitizePolicyPath(error.path)
+    );
+  }
+}
+
+function normalizeExternalPolicyErrors(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry) => {
+    if (!isPlainObject(entry)) {
+      return policyIssue('protection_policy_validation_failed', normalizePolicyErrorMessage('protection_policy_validation_failed'), 'policy');
+    }
+
+    const code = normalizePolicyErrorCode(entry.code);
+    return policyIssue(code, normalizePolicyErrorMessage(code), sanitizePolicyPath(entry.path));
+  });
+}
+
+function mergePolicyErrors(coreErrors = [], externalErrors = []) {
+  const deduped = new Map();
+  for (const error of [...coreErrors, ...externalErrors]) {
+    const code = normalizePolicyErrorCode(error.code);
+    const path = sanitizePolicyPath(error.path);
+    const key = `${code}\0${path}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, policyIssue(code, normalizePolicyErrorMessage(code), path));
+    }
+  }
+  return sortIssues([...deduped.values()]);
+}
+
+function normalizePolicyErrorCode(value) {
+  const code = cleanString(value);
+  return POLICY_ERROR_CODES.has(code) ? code : 'protection_policy_validation_failed';
+}
+
+function normalizePolicyErrorMessage(code) {
+  return normalizePolicyErrorCode(code) === 'protection_policy_parse_failed'
+    ? 'Protection policy could not be parsed.'
+    : 'Protection policy validation failed.';
+}
+
+function sanitizePolicyPath(value) {
+  const path = cleanString(value);
+  if (!path || !SAFE_POLICY_PATH_PATTERN.test(path) || SECRET_LIKE_PATTERN.test(path)) {
+    return 'policy';
+  }
+  return path;
+}
+
+function addTokenCapabilityFailures(blockers, tokenSource) {
+  if (!tokenSource) {
+    return;
+  }
+
+  if (tokenSource === 'github-token') {
+    addBlocker(
+      blockers,
+      'administration_read_token_required',
+      'Repository protection audit requires an explicit Administration read token for complete live verification.',
+      'githubToken'
+    );
+    return;
+  }
+
+  if (!VALID_TOKEN_SOURCES.has(tokenSource)) {
+    addBlocker(
+      blockers,
+      'repository_protection_audit_token_insufficient',
+      'Repository protection audit token source is not recognized for complete live verification.',
+      'githubToken'
+    );
+  }
+}
+
 function addPaginationFailures(blockers, pagination = {}) {
-  if (pagination.rulesetsComplete === false) {
-    addBlocker(blockers, 'ruleset_pagination_incomplete', 'Ruleset pagination did not complete.', 'rulesets');
+  if (pagination.rulesetsComplete === false || pagination.rulesetsStartComplete === false) {
+    addBlocker(blockers, 'ruleset_pagination_incomplete', 'Ruleset pagination did not complete at audit start.', 'rulesets.start');
+  }
+
+  if (pagination.rulesetsEndComplete === false) {
+    addBlocker(blockers, 'ruleset_pagination_incomplete', 'Ruleset pagination did not complete at audit end.', 'rulesets.end');
   }
 }
 
@@ -653,6 +937,23 @@ function addTocTouFailures(blockers, input) {
 
   if (cleanString(start.defaultBranch) !== cleanString(end.defaultBranch) || cleanSha(start.defaultBranchSha) !== cleanSha(end.defaultBranchSha)) {
     addBlocker(blockers, 'protection_changed_during_audit', 'Default branch or default branch SHA changed during the audit.', 'tocTou.defaultBranch');
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, 'endRulesets') || Object.prototype.hasOwnProperty.call(input, 'endRulesetDetails')) {
+    const defaultBranch = cleanString(input.defaultBranch ?? input.repository?.default_branch ?? input.repository?.defaultBranch ?? input.expectedPolicy?.defaultBranch);
+    const startRulesetFingerprint = rulesetAuditFingerprint({
+      defaultBranch,
+      details: input.rulesetDetails,
+      summaries: input.rulesets
+    });
+    const endRulesetFingerprint = rulesetAuditFingerprint({
+      defaultBranch: cleanString(end.defaultBranch) || defaultBranch,
+      details: input.endRulesetDetails,
+      summaries: input.endRulesets
+    });
+    if (startRulesetFingerprint !== endRulesetFingerprint) {
+      addBlocker(blockers, 'protection_changed_during_audit', 'Ruleset settings changed during the audit.', 'tocTou.rulesets');
+    }
   }
 }
 
@@ -686,6 +987,96 @@ function branchProtectionFingerprint(value) {
   });
 }
 
+function rulesetAuditFingerprint({ defaultBranch, details, summaries }) {
+  return JSON.stringify(normalizeRulesets({ defaultBranch, details, summaries }).map((ruleset) => ({
+    active: ruleset.active,
+    bypassActors: ruleset.bypassActorsVisible === true
+      ? ruleset.bypassActors
+        .map((actor) => ({
+          actorType: cleanString(actor.actor_type ?? actor.actorType) || 'unknown',
+          bypassMode: cleanString(actor.bypass_mode ?? actor.bypassMode) || 'unknown'
+        }))
+        .sort((a, b) => a.actorType.localeCompare(b.actorType) || a.bypassMode.localeCompare(b.bypassMode))
+      : null,
+    bypassActorsVisible: ruleset.bypassActorsVisible,
+    conditions: {
+      exclude: stableStringArray(ruleset.conditions.exclude),
+      include: stableStringArray(ruleset.conditions.include)
+    },
+    enforcement: ruleset.enforcement,
+    matchesDefaultBranch: ruleset.matchesDefaultBranch,
+    name: ruleset.name,
+    rules: sanitizeRulesetRulesForFingerprint(ruleset.rules),
+    target: ruleset.target
+  })));
+}
+
+function sanitizeRulesetRulesForFingerprint(rules = []) {
+  return (Array.isArray(rules) ? rules : [])
+    .map((rule) => {
+      const type = cleanString(rule.type);
+      const parameters = isPlainObject(rule.parameters) ? rule.parameters : {};
+
+      if (type === 'required_status_checks') {
+        const checks = Array.isArray(parameters.required_status_checks)
+          ? parameters.required_status_checks
+          : Array.isArray(parameters.requiredStatusChecks)
+            ? parameters.requiredStatusChecks
+            : [];
+        return {
+          checks: checks
+            .map((check) => ({
+              integrationId: check.integration_id ?? check.integrationId ?? check.app_id ?? check.appId ?? null,
+              name: cleanString(check.context ?? check.name)
+            }))
+            .filter((check) => check.name)
+            .sort((a, b) => a.name.localeCompare(b.name) || String(a.integrationId ?? '').localeCompare(String(b.integrationId ?? ''))),
+          strict: parameters.strict_required_status_checks_policy === true || parameters.strictRequiredStatusChecksPolicy === true,
+          type
+        };
+      }
+
+      if (type === 'pull_request') {
+        return {
+          dismissStaleApprovals: parameters.dismiss_stale_reviews_on_push === true || parameters.dismissStaleReviewsOnPush === true,
+          minimumApprovals: Number(parameters.required_approving_review_count ?? parameters.requiredApprovingReviewCount ?? 0) || 0,
+          requireCodeOwnerReview: parameters.require_code_owner_review === true || parameters.requireCodeOwnerReview === true,
+          requireConversationResolution: parameters.required_review_thread_resolution === true || parameters.requiredReviewThreadResolution === true,
+          requireLastPushApproval: parameters.require_last_push_approval === true || parameters.requireLastPushApproval === true,
+          type
+        };
+      }
+
+      return {
+        parameters: stableSanitizedValue(parameters),
+        type
+      };
+    })
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
+function stableSanitizedValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stableSanitizedValue(entry));
+  }
+
+  if (!isPlainObject(value)) {
+    if (['string', 'number', 'boolean'].includes(typeof value) || value === null) {
+      return value;
+    }
+    return null;
+  }
+
+  const result = {};
+  for (const key of Object.keys(value).sort()) {
+    if (/actor|authorization|cookie|secret|token/i.test(key)) {
+      continue;
+    }
+    result[key] = stableSanitizedValue(value[key]);
+  }
+  return result;
+}
+
 function addBlocker(blockers, code, message, path = '') {
   blockers.push(issue(code, message, path, true));
 }
@@ -701,6 +1092,10 @@ function issue(code, message, path, manualReviewRequired) {
     ...(path ? { path } : {}),
     ...(manualReviewRequired ? { manualReviewRequired: true } : {})
   };
+}
+
+function policyIssue(code, message, path) {
+  return issue(normalizePolicyErrorCode(code), message, sanitizePolicyPath(path), true);
 }
 
 function sortIssues(issues) {
@@ -729,6 +1124,19 @@ function normalizeStringArray(value, fallback = []) {
   return source
     .map((entry) => cleanString(entry))
     .filter(Boolean);
+}
+
+function stableStringArray(value) {
+  return normalizeStringArray(value).sort();
+}
+
+function hasDuplicateItems(value) {
+  return Array.isArray(value) && new Set(value).size !== value.length;
+}
+
+function normalizeTokenSource(value) {
+  const tokenSource = cleanString(value);
+  return tokenSource ? tokenSource : '';
 }
 
 function isReviewEvidenceGateName(value) {

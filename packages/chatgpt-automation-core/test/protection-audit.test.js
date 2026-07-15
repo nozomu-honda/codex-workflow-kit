@@ -6,7 +6,8 @@ import YAML from 'yaml';
 import {
   DEFAULT_PROTECTION_POLICY,
   auditRepositoryProtection,
-  formatProtectionAuditResult
+  formatProtectionAuditResult,
+  validateProtectionPolicyObject
 } from '../src/protection-audit/index.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
@@ -116,6 +117,49 @@ function safeRuleset(overrides = {}) {
 
 function resultCodes(result) {
   return result.reasonCodes;
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function withPolicyChange(basePolicy, mutate) {
+  const next = clone(basePolicy);
+  mutate(next);
+  return next;
+}
+
+function invalidProtectionPolicy() {
+  return {
+    ...DEFAULT_PROTECTION_POLICY,
+    allowedBypassActors: [''],
+    allowedMergeMethods: ['squash', 'squash'],
+    defaultBranch: 123,
+    enforceAdmins: 0,
+    minimumApprovals: 0,
+    requireLastPushApproval: null,
+    requireRuleset: 'false',
+    requiredStatusChecks: [],
+    unexpectedField: 'ghp_redacted-placeholder-secret'
+  };
+}
+
+function ajvPolicyPaths(errors = []) {
+  return errors.map((error) => {
+    const parts = error.instancePath
+      .split('/')
+      .filter(Boolean)
+      .map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+
+    if (error.keyword === 'required' && error.params?.missingProperty) {
+      parts.push(error.params.missingProperty);
+    }
+    if (error.keyword === 'additionalProperties' && error.params?.additionalProperty) {
+      parts.push(error.params.additionalProperty);
+    }
+
+    return ['policy', ...parts].join('.');
+  }).sort();
 }
 
 test('safe protection is ready with deterministic sanitized report', () => {
@@ -269,6 +313,70 @@ test('bypass actors are sanitized and unsafe actors block readiness', () => {
   assert.equal(JSON.stringify(admin).includes('"actorId"'), false);
 });
 
+test('ruleset bypass actor visibility is tracked separately from zero actors', () => {
+  const visibleZero = auditRepositoryProtection(safeInput({
+    rulesetDetails: [safeRuleset({ bypass_actors: [] })]
+  }));
+  const omitted = safeRuleset();
+  delete omitted.bypass_actors;
+  const unknown = auditRepositoryProtection(safeInput({
+    rulesetDetails: [omitted]
+  }));
+
+  assert.equal(visibleZero.ready, true, JSON.stringify(visibleZero, null, 2));
+  assert.deepEqual(visibleZero.bypassVisibility, [{
+    bypassActorsVisible: true,
+    bypassActorCount: 0,
+    ruleset: 'protect-default-branch'
+  }]);
+  assert.equal(unknown.ready, false);
+  assert.equal(resultCodes(unknown).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.deepEqual(unknown.bypassVisibility, [{
+    bypassActorsVisible: false,
+    ruleset: 'protect-default-branch'
+  }]);
+  assert.equal(JSON.stringify(unknown).includes('"bypassActorCount":0'), false);
+});
+
+test('ruleset bypass visibility unknown fails only for active default branch rulesets', () => {
+  const nonTarget = safeRuleset({
+    conditions: { ref_name: { exclude: [], include: ['refs/heads/release/*'] } }
+  });
+  const inactive = safeRuleset({ enforcement: 'evaluate' });
+  delete nonTarget.bypass_actors;
+  delete inactive.bypass_actors;
+
+  const nonTargetResult = auditRepositoryProtection(safeInput({ rulesetDetails: [nonTarget] }));
+  const inactiveResult = auditRepositoryProtection(safeInput({ rulesetDetails: [inactive] }));
+
+  assert.equal(resultCodes(nonTargetResult).includes('ruleset_bypass_visibility_unknown'), false);
+  assert.equal(resultCodes(nonTargetResult).includes('ruleset_target_mismatch'), true);
+  assert.equal(resultCodes(inactiveResult).includes('ruleset_bypass_visibility_unknown'), false);
+  assert.equal(resultCodes(inactiveResult).includes('expected_ruleset_not_active'), true);
+});
+
+test('one hidden bypass actor list among multiple active rulesets fails closed even when allowed actors are configured', () => {
+  const hidden = safeRuleset({ id: 202, name: 'hidden-bypass' });
+  delete hidden.bypass_actors;
+  const result = auditRepositoryProtection(safeInput({
+    expectedPolicy: {
+      ...DEFAULT_PROTECTION_POLICY,
+      allowedBypassActors: ['Team:pull_request'],
+      defaultBranch: 'master'
+    },
+    rulesetDetails: [
+      safeRuleset({ id: 101, name: 'visible-bypass', bypass_actors: [] }),
+      hidden
+    ]
+  }));
+  const serialized = JSON.stringify(result);
+
+  assert.equal(result.ready, false);
+  assert.equal(resultCodes(result).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(serialized.includes('actor_id'), false);
+  assert.equal(serialized.includes('api.github.com'), false);
+});
+
 test('inactive or non-target rulesets require manual review', () => {
   const inactive = auditRepositoryProtection(safeInput({
     rulesetDetails: [safeRuleset({ enforcement: 'evaluate' })]
@@ -343,6 +451,7 @@ test('API failures, pagination failure, and TOCTOU changes fail closed', () => {
     apiErrors: [{ code: 'protection_api_not_found', message: 'not found', path: 'repository' }]
   }));
   const pagination = auditRepositoryProtection(safeInput({ pagination: { rulesetsComplete: false } }));
+  const endPagination = auditRepositoryProtection(safeInput({ pagination: { rulesetsEndComplete: false } }));
   const changed = auditRepositoryProtection(safeInput({
     endSnapshot: {
       defaultBranch: 'master',
@@ -353,7 +462,54 @@ test('API failures, pagination failure, and TOCTOU changes fail closed', () => {
   assert.equal(resultCodes(api403).includes('protection_api_forbidden'), true);
   assert.equal(resultCodes(api404).includes('protection_api_not_found'), true);
   assert.equal(resultCodes(pagination).includes('ruleset_pagination_incomplete'), true);
+  assert.equal(endPagination.blockers.some((blocker) => blocker.path === 'rulesets.end'), true);
   assert.equal(resultCodes(changed).includes('protection_changed_during_audit'), true);
+});
+
+test('ruleset TOCTOU fingerprint detects detail and bypass visibility changes', () => {
+  const changedRule = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [safeRuleset({
+      rules: safeRuleset().rules.map((rule) => rule.type === 'pull_request'
+        ? {
+            ...rule,
+            parameters: {
+              ...rule.parameters,
+              required_approving_review_count: 2
+            }
+          }
+        : rule)
+    })],
+    endRulesets: []
+  }));
+  const hiddenBypass = safeRuleset();
+  delete hiddenBypass.bypass_actors;
+  const changedBypassVisibility = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [hiddenBypass],
+    endRulesets: []
+  }));
+  const unchanged = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [safeRuleset()],
+    endRulesets: []
+  }));
+
+  assert.equal(resultCodes(changedRule).includes('protection_changed_during_audit'), true);
+  assert.equal(resultCodes(changedBypassVisibility).includes('protection_changed_during_audit'), true);
+  assert.equal(resultCodes(unchanged).includes('protection_changed_during_audit'), false);
+});
+
+test('github-token source and weak direct policy inputs fail closed', () => {
+  const githubToken = auditRepositoryProtection(safeInput({ tokenSource: 'github-token' }));
+  const weakPolicy = auditRepositoryProtection(safeInput({
+    expectedPolicy: {
+      ...DEFAULT_PROTECTION_POLICY,
+      minimumApprovals: 0
+    }
+  }));
+
+  assert.equal(githubToken.ready, false);
+  assert.equal(resultCodes(githubToken).includes('administration_read_token_required'), true);
+  assert.equal(weakPolicy.ready, false);
+  assert.equal(resultCodes(weakPolicy).includes('protection_policy_validation_failed'), true);
 });
 
 test('branch protection fingerprint detects TOCTOU changes and keeps reports sanitized', () => {
@@ -442,6 +598,252 @@ test('unchanged branch protection fingerprint allows audit to continue', () => {
 
   assert.equal(result.ready, true, JSON.stringify(result, null, 2));
   assert.equal(resultCodes(result).includes('protection_changed_during_audit'), false);
+});
+
+test('core policy validator matches JSON Schema for valid and invalid policies', async () => {
+  const schema = JSON.parse(await readFile(new URL('../../../schemas/protection-policy.schema.json', import.meta.url), 'utf8'));
+  const basePolicy = YAML.parse(await readFile(new URL('../../../release/protection-policy.example.yml', import.meta.url), 'utf8'));
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  const validate = ajv.compile(schema);
+  const booleanFields = [
+    'blockDeletion',
+    'blockForcePush',
+    'dismissStaleApprovals',
+    'enforceAdmins',
+    'requireCodeOwnerReview',
+    'requireConversationResolution',
+    'requireLastPushApproval',
+    'requireLinearHistory',
+    'requirePullRequest',
+    'requireReviewEvidenceGate',
+    'requireRuleset',
+    'requireSignedCommits'
+  ];
+  const requiredFields = [
+    'allowedMergeMethods',
+    'blockDeletion',
+    'blockForcePush',
+    'dismissStaleApprovals',
+    'minimumApprovals',
+    'requireConversationResolution',
+    'requirePullRequest',
+    'requireReviewEvidenceGate',
+    'requiredStatusChecks'
+  ];
+  const validPolicies = [
+    { name: 'example policy', policy: basePolicy },
+    { name: 'empty default branch is valid', policy: withPolicyChange(basePolicy, (policy) => { policy.defaultBranch = ''; }) },
+    { name: 'allowed bypass actors may be omitted', policy: withPolicyChange(basePolicy, (policy) => { delete policy.allowedBypassActors; }) },
+    { name: 'empty allowed bypass actors is valid', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedBypassActors = []; }) }
+  ];
+  const invalidPolicies = [
+    { name: 'root array', path: 'policy', policy: [] },
+    { name: 'defaultBranch non-string', path: 'policy.defaultBranch', policy: withPolicyChange(basePolicy, (policy) => { policy.defaultBranch = 123; }) },
+    { name: 'requiredStatusChecks non-array', path: 'policy.requiredStatusChecks', policy: withPolicyChange(basePolicy, (policy) => { policy.requiredStatusChecks = 'CI'; }) },
+    { name: 'requiredStatusChecks empty', path: 'policy.requiredStatusChecks', policy: withPolicyChange(basePolicy, (policy) => { policy.requiredStatusChecks = []; }) },
+    { name: 'requiredStatusChecks non-string entry', path: 'policy.requiredStatusChecks.0', policy: withPolicyChange(basePolicy, (policy) => { policy.requiredStatusChecks = [1]; }) },
+    { name: 'requiredStatusChecks empty string entry', path: 'policy.requiredStatusChecks.0', policy: withPolicyChange(basePolicy, (policy) => { policy.requiredStatusChecks = ['']; }) },
+    { name: 'requiredStatusChecks duplicate', path: 'policy.requiredStatusChecks', policy: withPolicyChange(basePolicy, (policy) => { policy.requiredStatusChecks = ['CI', 'CI']; }) },
+    { name: 'minimumApprovals numeric string', path: 'policy.minimumApprovals', policy: withPolicyChange(basePolicy, (policy) => { policy.minimumApprovals = '1'; }) },
+    { name: 'minimumApprovals decimal', path: 'policy.minimumApprovals', policy: withPolicyChange(basePolicy, (policy) => { policy.minimumApprovals = 1.5; }) },
+    { name: 'minimumApprovals NaN', path: 'policy.minimumApprovals', policy: withPolicyChange(basePolicy, (policy) => { policy.minimumApprovals = Number.NaN; }) },
+    { name: 'minimumApprovals Infinity', path: 'policy.minimumApprovals', policy: withPolicyChange(basePolicy, (policy) => { policy.minimumApprovals = Number.POSITIVE_INFINITY; }) },
+    { name: 'allowedMergeMethods non-array', path: 'policy.allowedMergeMethods', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedMergeMethods = 'squash'; }) },
+    { name: 'allowedMergeMethods empty', path: 'policy.allowedMergeMethods', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedMergeMethods = []; }) },
+    { name: 'allowedMergeMethods enum', path: 'policy.allowedMergeMethods.0', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedMergeMethods = ['octopus']; }) },
+    { name: 'allowedMergeMethods duplicate', path: 'policy.allowedMergeMethods', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedMergeMethods = ['squash', 'squash']; }) },
+    { name: 'allowedBypassActors non-array', path: 'policy.allowedBypassActors', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedBypassActors = 'team/release'; }) },
+    { name: 'allowedBypassActors non-string entry', path: 'policy.allowedBypassActors.0', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedBypassActors = [1]; }) },
+    { name: 'allowedBypassActors empty string entry', path: 'policy.allowedBypassActors.0', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedBypassActors = ['']; }) },
+    { name: 'allowedBypassActors duplicate', path: 'policy.allowedBypassActors', policy: withPolicyChange(basePolicy, (policy) => { policy.allowedBypassActors = ['Team:release', 'Team:release']; }) },
+    { name: 'unknown field', path: 'policy.unexpectedField', policy: withPolicyChange(basePolicy, (policy) => { policy.unexpectedField = 'redacted-placeholder-value'; }) }
+  ];
+
+  for (const field of booleanFields) {
+    invalidPolicies.push({
+      name: `${field} non-boolean`,
+      path: `policy.${field}`,
+      policy: withPolicyChange(basePolicy, (policy) => { policy[field] = 'true'; })
+    });
+  }
+
+  for (const field of requiredFields) {
+    invalidPolicies.push({
+      name: `${field} missing`,
+      path: `policy.${field}`,
+      policy: withPolicyChange(basePolicy, (policy) => { delete policy[field]; })
+    });
+  }
+
+  for (const entry of validPolicies) {
+    const core = validateProtectionPolicyObject(entry.policy);
+    const schemaOk = validate(entry.policy);
+
+    assert.equal(schemaOk, true, entry.name);
+    assert.equal(core.ok, true, `${entry.name}: ${JSON.stringify(core.errors, null, 2)}`);
+    assert.deepEqual(core.errors, [], entry.name);
+  }
+
+  for (const entry of invalidPolicies) {
+    const core = validateProtectionPolicyObject(entry.policy);
+    const schemaOk = validate(entry.policy);
+    const schemaPaths = ajvPolicyPaths(validate.errors);
+    const corePaths = core.errors.map((error) => error.path).sort();
+
+    assert.equal(schemaOk, false, entry.name);
+    assert.equal(core.ok, false, entry.name);
+    assert.equal(schemaPaths.includes(entry.path), true, `${entry.name}: ${JSON.stringify(validate.errors, null, 2)}`);
+    assert.equal(corePaths.includes(entry.path), true, `${entry.name}: ${JSON.stringify(core.errors, null, 2)}`);
+    assert.equal(core.errors.every((error) => error.code === 'protection_policy_validation_failed'), true, entry.name);
+    assert.deepEqual(validateProtectionPolicyObject(entry.policy).errors, core.errors, entry.name);
+  }
+});
+
+test('invalid direct policy is fail-closed and does not influence audit output', () => {
+  const invalidPolicy = withPolicyChange(DEFAULT_PROTECTION_POLICY, (policy) => {
+    policy.defaultBranch = 'leaky-branch-name';
+    policy.minimumApprovals = '2';
+    policy.unexpectedField = 'redacted-placeholder-value';
+  });
+  const result = auditRepositoryProtection(safeInput({ expectedPolicy: invalidPolicy }));
+  const serialized = JSON.stringify(result);
+
+  assert.equal(result.ready, false);
+  assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true);
+  assert.equal(serialized.includes('redacted-placeholder-value'), false);
+  assert.equal(serialized.includes('leaky-branch-name'), false);
+});
+
+test('policyValidationErrors cannot bypass core policy validation', () => {
+  const cases = [
+    { name: 'external empty errors', policyValidationErrors: [] },
+    { name: 'external null errors', policyValidationErrors: null },
+    { name: 'external omitted errors' },
+    {
+      name: 'external unrelated error',
+      policyValidationErrors: [{ code: 'unrelated_external_code', message: 'everything is fine', path: 'policy.external' }]
+    },
+    {
+      name: 'external duplicate valid-looking error',
+      policyValidationErrors: [
+        { code: 'ok', message: 'valid policy', path: 'policy.minimumApprovals' },
+        { code: 'ok', message: 'valid policy duplicate', path: 'policy.minimumApprovals' }
+      ]
+    }
+  ];
+
+  for (const entry of cases) {
+    const result = auditRepositoryProtection(safeInput({
+      expectedPolicy: invalidProtectionPolicy(),
+      ...(Object.prototype.hasOwnProperty.call(entry, 'policyValidationErrors')
+        ? { policyValidationErrors: entry.policyValidationErrors }
+        : {})
+    }));
+    const serialized = JSON.stringify(result);
+
+    assert.equal(result.ready, false, entry.name);
+    assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.minimumApprovals'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.enforceAdmins'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requireLastPushApproval'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requireRuleset'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.requiredStatusChecks'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.allowedMergeMethods'), true, entry.name);
+    assert.equal(result.blockers.some((blocker) => blocker.path === 'policy.allowedBypassActors.0'), true, entry.name);
+    assert.equal(result.defaultBranch, 'master', entry.name);
+    assert.equal(serialized.includes('ghp_redacted-placeholder-secret'), false, entry.name);
+    assert.equal(serialized.includes('everything is fine'), false, entry.name);
+    assert.equal(serialized.includes('valid policy'), false, entry.name);
+  }
+});
+
+test('policyValidationErrors are sanitized, deduplicated, and deterministic', () => {
+  const externalErrors = [
+    {
+      code: 'unknown_external_code',
+      message: 'Authorization: Bearer ghp_redacted-placeholder-token',
+      path: 'policy.minimumApprovals'
+    },
+    {
+      code: 'unknown_external_code',
+      message: 'Cookie: secret=value',
+      path: 'policy.minimumApprovals'
+    },
+    {
+      code: 'protection_policy_parse_failed',
+      message: 'stack trace with token ghp_redacted-placeholder-token',
+      path: 'policy.requiredStatusChecks[0]'
+    },
+    'not an object'
+  ];
+  const result = auditRepositoryProtection(safeInput({
+    policyValidationErrors: externalErrors
+  }));
+  const repeated = auditRepositoryProtection(safeInput({
+    policyValidationErrors: externalErrors
+  }));
+  const serialized = JSON.stringify(result);
+  const externalPolicyBlockers = result.blockers.filter((blocker) =>
+    blocker.code === 'protection_policy_parse_failed'
+    || blocker.code === 'protection_policy_validation_failed');
+
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.blockers, repeated.blockers);
+  assert.equal(resultCodes(result).includes('protection_policy_validation_failed'), true);
+  assert.equal(resultCodes(result).includes('protection_policy_parse_failed'), true);
+  assert.equal(
+    externalPolicyBlockers.filter((blocker) => blocker.code === 'protection_policy_validation_failed' && blocker.path === 'policy.minimumApprovals').length,
+    1
+  );
+  assert.equal(
+    externalPolicyBlockers.filter((blocker) => blocker.code === 'protection_policy_parse_failed' && blocker.path === 'policy').length,
+    1
+  );
+  assert.equal(serialized.includes('Authorization'), false);
+  assert.equal(serialized.includes('Cookie'), false);
+  assert.equal(serialized.includes('ghp_redacted-placeholder-token'), false);
+  assert.equal(serialized.includes('stack trace'), false);
+});
+
+test('valid policy with external validation errors follows sanitized additive behavior', () => {
+  const noExternalError = auditRepositoryProtection(safeInput({
+    policyValidationErrors: []
+  }));
+  const externalValidationError = auditRepositoryProtection(safeInput({
+    policyValidationErrors: [{
+      code: 'protection_policy_validation_failed',
+      message: 'do not echo this token ghp_redacted-placeholder-token',
+      path: 'policy.allowedMergeMethods'
+    }]
+  }));
+
+  assert.equal(noExternalError.ready, true, JSON.stringify(noExternalError, null, 2));
+  assert.equal(externalValidationError.ready, false);
+  assert.equal(resultCodes(externalValidationError).includes('protection_policy_validation_failed'), true);
+  assert.equal(externalValidationError.blockers.some((blocker) => blocker.path === 'policy.allowedMergeMethods'), true);
+  assert.equal(JSON.stringify(externalValidationError).includes('ghp_redacted-placeholder-token'), false);
+});
+
+test('policy validation hardening preserves existing independent blockers', () => {
+  const invalidPolicyWithGithubToken = auditRepositoryProtection(safeInput({
+    expectedPolicy: invalidProtectionPolicy(),
+    policyValidationErrors: [],
+    tokenSource: 'github-token'
+  }));
+  const hiddenBypass = safeRuleset();
+  delete hiddenBypass.bypass_actors;
+  const hiddenBypassResult = auditRepositoryProtection(safeInput({
+    rulesetDetails: [hiddenBypass]
+  }));
+  const changedRuleset = auditRepositoryProtection(safeInput({
+    endRulesetDetails: [hiddenBypass],
+    endRulesets: []
+  }));
+
+  assert.equal(resultCodes(invalidPolicyWithGithubToken).includes('protection_policy_validation_failed'), true);
+  assert.equal(resultCodes(invalidPolicyWithGithubToken).includes('administration_read_token_required'), true);
+  assert.equal(resultCodes(hiddenBypassResult).includes('ruleset_bypass_visibility_unknown'), true);
+  assert.equal(resultCodes(changedRuleset).includes('protection_changed_during_audit'), true);
 });
 
 test('policy schema validates the example policy', async () => {
